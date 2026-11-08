@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local runtime and data
+run/
+data/
+dist/
+*.local
+
+# Secrets and environment files
+.env
+.env.*
+*.key
+*.pem
+credentials*
+
+# Internal product specification kept locally, not published
+docs/PRODUCT_SPEC_0.1.md
