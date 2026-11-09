@@ -92,7 +92,10 @@ def _patch_engine_register():
     try:
         import engine as _fce
     except ImportError:
-        return False
+        try:
+            from . import engine as _fce
+        except ImportError:
+            return False
     if getattr(_fce, "_gate_registry_patched", False):
         return True
     _fce._original_register = _fce.register
@@ -388,9 +391,15 @@ def version_approval(declared_version, changed_on, ledger_text, ledger_path=""):
 
 
 def find_approval_ledger(start_dir):
-    """向上找审批册：环境变量 XTGL_SHENPI 优先；否则按「层目录/30_taizhang」形态搜索。
+    """向上找审批册：环境变量 XTGL_SHENPI 优先；否则只认「本层/30_taizhang/shenpi_jilu.txt」。
 
     端无关：不写任何端名，只认 30_taizhang 这个台账层目录名。
+
+    2026-11-09 修：不再扫描上下层目录的**兄弟目录**。旧实现会在发布仓布局
+    （各仓同级）或活区布局（三端同级）下，向上走到父目录后翻兄弟目录，
+    于是本端会读到别仓／别端审批册；A10 的判定理由因此变成
+    「审批册里没有条目」而不是「本端无审批册」，红得对但理由错。
+    判定结论仍是 DENY，只把取件范围收回到从 start_dir 到根的直系祖先。
     """
     env = os.environ.get("XTGL_SHENPI")
     if env and os.path.isfile(env):
@@ -400,16 +409,6 @@ def find_approval_ledger(start_dir):
         direct = os.path.join(cur, "30_taizhang", "shenpi_jilu.txt")
         if os.path.isfile(direct):
             return direct
-        try:
-            subs = sorted(os.listdir(cur))
-        except OSError:
-            subs = []
-        for name in subs:
-            if not os.path.isdir(os.path.join(cur, name)):
-                continue
-            p = os.path.join(cur, name, "30_taizhang", "shenpi_jilu.txt")
-            if os.path.isfile(p):
-                return p
         parent = os.path.dirname(cur)
         if parent == cur:
             break
@@ -454,7 +453,10 @@ class GateRegistry:
 
     def _engine_mod(self):
         if self._engine is None:
-            import engine as _eng  # 与 _patch_engine_register() 同一导入口径
+            try:
+                import engine as _eng  # 与 _patch_engine_register() 同一导入口径
+            except ImportError:
+                from . import engine as _eng
             self._engine = _eng
         return self._engine
 

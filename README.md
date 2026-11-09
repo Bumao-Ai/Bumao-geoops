@@ -18,7 +18,7 @@ AI is already part of survey work, but tasks, permissions, tool calls and delive
 
 Bumao Core provides general governance: rule execution, gates, evidence and audit. GeoOps does only the survey domain and does not copy the kernel.
 
-The kernel is vendored at `kernel/bumao_core/`: an unmodified copy of Bumao Core `v0.2.0-beta.3` (commit `4c6c601`). GeoOps adaptation lives only in `geoops/core_adapter/`; no survey business code is added to the kernel. Cloning this repository is enough to run the scaffold.
+The kernel is vendored at `kernel/bumao_core/`: synced from Bumao Core `v0.2.0` (commit `f315041`). GeoOps adaptation lives only in `geoops/core_adapter/`; no survey business code is added to the kernel. Cloning this repository is enough to run the scaffold.
 
 ## What exists today
 
