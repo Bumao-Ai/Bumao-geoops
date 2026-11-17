@@ -2,6 +2,32 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased — 2026-11-17 — real OpenAI-compatible model runtime
+
+### Added
+
+- `geoops/ai/runtime.py`: OpenAI-compatible `POST /chat/completions` client,
+  configured from `GEOOPS_MODEL_BASE_URL`, `GEOOPS_MODEL_API_KEY`,
+  `GEOOPS_MODEL_NAME` (optional `GEOOPS_MODEL_TIMEOUT`). Missing configuration
+  raises `NOT_CONFIGURED`; provider HTTP errors, invalid JSON, empty messages
+  and unreachable endpoints fail explicitly. The key is never returned by
+  `status()` or written to audit/log output.
+- `geoops/ai/nodes.py`: a workflow node that makes a real model call and
+  records the reply, usage and latency; an unconfigured runtime makes the run
+  `ERROR`, never a fake `PASS`.
+- API: `GET /api/v1/model-runtime`, `POST /api/v1/model-runtime/probe`,
+  `POST /api/v1/model-runtime/chat`, permission `model:invoke`.
+- Console: model-runtime card on AI resources with state, model, endpoint,
+  auth, timeout, real probe and real prompt; no placeholder output.
+- CLI: `python -m geoops.ai status|probe|chat`.
+- Launcher: passes `var\console-tokens.json` when present; local token in
+  `var\console-token.txt` (ignored, never committed).
+- Docs: `docs/MODEL_RUNTIME.md`.
+
+### Tests
+
+- `213 tests OK`; `test_model_runtime.py` uses a real local HTTP provider.
+
 ## Unreleased — 2026-11-17 — 0.1 release surface and book-style console
 
 ### Added

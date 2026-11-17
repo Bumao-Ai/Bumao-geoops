@@ -28,6 +28,7 @@ PERMISSIONS = (
     "deliverable:write",
     "quality:write",
     "review:write",
+    "model:invoke",
     "audit:read",
 )
 TOKEN_FORMAT = "geoops-tokens"

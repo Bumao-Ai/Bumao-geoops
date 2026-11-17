@@ -26,6 +26,7 @@ import sys
 import uuid
 
 from geoops.api import AuditLog, PermissionPolicy, create_server
+from geoops.ai import ModelRuntime
 from geoops.artifacts import ArtifactStore
 from geoops.catalog import Catalog
 from geoops.domain import DeliverableRegistry, DomainRegistry, TaskEngine
@@ -110,6 +111,7 @@ def main(argv=None) -> int:
         report_dir=os.path.join(PROJECT_ROOT, "var", "quality"),
     )
     rules = _load_rules()
+    model_runtime = ModelRuntime.from_env()
     policy = None
     if args.tokens:
         policy = PermissionPolicy.from_file(args.tokens)
@@ -136,12 +138,18 @@ def main(argv=None) -> int:
         catalog=catalog,
         deliverables=deliverables,
         quality=quality,
+        model_runtime=model_runtime,
         host=args.host,
         port=args.port,
     )
     url = "http://%s:%d/ui/" % (args.host, server.server_address[1])
     print("GeoOps console: %s" % url, flush=True)
     print("writes: %s" % ("enabled" if policy is not None else "disabled (read-only)"), flush=True)
+    model_status = model_runtime.status()
+    print("model runtime: %s%s" % (
+        model_status["state"],
+        (" (" + model_status["model"] + " @ " + model_status["endpoint"] + ")") if model_status["configured"] else " (" + model_status["reason"] + ")",
+    ), flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

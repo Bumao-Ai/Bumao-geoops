@@ -14,6 +14,7 @@ Read endpoints:
     GET /api/v1/deliverables       registered deliverables (optional ?task_id=)
     GET /api/v1/quality-reports    quality reports (optional ?task_id=)
     GET /api/v1/settings           roles, permission matrix and caller grants
+    GET /api/v1/model-runtime      whether a real model endpoint is configured
     GET /api/v1/deliverables       registered deliverables (optional ?task_id=)
     GET /api/v1/quality-reports    quality reports (optional ?task_id= / ?target_id=)
     GET /api/v1/settings           permission matrix, storage and kernel identity
@@ -35,6 +36,8 @@ Write endpoints (only when a permission policy is supplied):
     POST /api/v1/quality-reports   (quality:write)
     POST /api/v1/reviews           (review:write)
     POST /api/v1/deliverables/<id>/archive (deliverable:write, accepted only)
+    POST /api/v1/model-runtime/probe (model:invoke; real provider call)
+    POST /api/v1/model-runtime/chat  (model:invoke; real prompt, real reply)
 
 Writes are refused before the body is read when the caller is not authorised:
 an unknown or missing token returns 401, a token without the required
@@ -52,6 +55,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 from geoops.api.security import PERMISSIONS, AuditLog, PermissionPolicy
+from geoops.ai import ModelRuntime, ModelRuntimeError
 from geoops.catalog import Catalog, CatalogError
 from geoops.domain.datasets_store import DatasetError, DatasetRegistry
 from geoops.domain.deliverables import DeliverableError, DeliverableRegistry
@@ -127,6 +131,7 @@ def create_server(
     deliverables: Optional[Any] = None,
     quality: Optional[Any] = None,
     reviews: Optional[Any] = None,
+    model_runtime: Optional[ModelRuntime] = None,
     host: str = "127.0.0.1",
     port: int = 0,
 ) -> ThreadingHTTPServer:
@@ -145,6 +150,7 @@ def create_server(
         quality if quality is not None else QualityService(registry, dataset_registry)
     )
     review_engine = reviews if reviews is not None else ReviewEngine(registry)
+    runtime = model_runtime if model_runtime is not None else ModelRuntime.from_env()
 
     class Handler(BaseHTTPRequestHandler):
         # -- read ---------------------------------------------------------
@@ -270,16 +276,20 @@ def create_server(
                 rows = [row.to_dict() for row in quality_service.list(task_id)]
                 self._json(200, {"count": len(rows), "reports": rows})
                 return
+            if path == "/api/v1/model-runtime":
+                self._json(200, {"runtime": runtime.status()})
+                return
             if path == "/api/v1/settings":
                 token_perms = policy.permissions(self._token()) if policy is not None else []
                 self._json(
                     200,
                     {
                         "context": extra_data,
+                        "model_runtime": runtime.status(),
                         "roles": [
                             {"role": "系统管理员", "permissions": list(PERMISSIONS)},
-                            {"role": "项目负责人", "permissions": ["project:write", "task:create", "task:transition", "dataset:write", "catalog:write", "deliverable:write", "quality:write", "review:write", "audit:read"]},
-                            {"role": "作业人员", "permissions": ["task:create", "task:transition", "dataset:write", "deliverable:write", "quality:write"]},
+                            {"role": "项目负责人", "permissions": ["project:write", "task:create", "task:transition", "dataset:write", "catalog:write", "deliverable:write", "quality:write", "review:write", "model:invoke", "audit:read"]},
+                            {"role": "作业人员", "permissions": ["task:create", "task:transition", "dataset:write", "deliverable:write", "quality:write", "model:invoke"]},
                             {"role": "审核人员", "permissions": ["review:write", "quality:write", "audit:read"]},
                             {"role": "只读", "permissions": []},
                         ],
@@ -352,10 +362,62 @@ def create_server(
         # -- write --------------------------------------------------------
         def do_POST(self):
             path = urlparse(self.path).path
-            if not writes_enabled:
+            if path not in ("/api/v1/model-runtime/probe", "/api/v1/model-runtime/chat") and not writes_enabled:
                 self._json(404, {"error": "write endpoints not configured"})
                 self._drain_body()
                 return
+            if path == "/api/v1/model-runtime/probe":
+                if policy is None:
+                    self._json(404, {"error": "model runtime endpoint is read-only"})
+                    return
+                if not self._authorize("model:invoke", path):
+                    return
+                try:
+                    result = runtime.probe()
+                except ModelRuntimeError as exc:
+                    status = 400 if exc.code in ("NOT_CONFIGURED", "EMPTY_PROMPT") else 502
+                    self._deny(status, "%s: %s" % (exc.code, exc), path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "model probe passed", 200)
+                self._json(200, {"result": result, "runtime": runtime.status()})
+                return
+
+            if path == "/api/v1/model-runtime/chat":
+                if policy is None:
+                    self._json(404, {"error": "model runtime endpoint is read-only"})
+                    return
+                if not self._authorize("model:invoke", path):
+                    return
+                payload = self._read_json()
+                if payload is None:
+                    return
+                prompt = str(payload.get("prompt") or "").strip()
+                if not prompt:
+                    self._deny(400, "prompt is empty", path)
+                    return
+                if len(prompt) > 8000:
+                    self._deny(413, "prompt is longer than 8000 characters", path)
+                    return
+                system = str(payload.get("system") or "")
+                if len(system) > 4000:
+                    self._deny(413, "system is longer than 4000 characters", path)
+                    return
+                try:
+                    result = runtime.invoke(
+                        prompt,
+                        system=system,
+                        temperature=payload.get("temperature"),
+                        max_tokens=payload.get("max_tokens") or 512,
+                    )
+                except (ModelRuntimeError, TypeError, ValueError) as exc:
+                    code = getattr(exc, "code", "BAD_REQUEST")
+                    status = 400 if code in ("NOT_CONFIGURED", "EMPTY_PROMPT") else 502
+                    self._deny(status, "%s: %s" % (code, exc), path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "model invocation", 200)
+                self._json(200, {"result": result, "runtime": runtime.status()})
+                return
+
             if path == "/api/v1/tasks":
                 if not self._authorize("task:create", path):
                     return

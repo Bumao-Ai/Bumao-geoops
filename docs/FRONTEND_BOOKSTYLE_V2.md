@@ -45,6 +45,7 @@
 - 质量页：三层质检发起、人工抽样依据、逐层证据、报告落盘路径、报告列表。
 - 成果页：成果登记（sha256 / 大小）、文件簿、accepted 后才可归档。
 - 设置页：服务端权限矩阵、角色键、调用方令牌授权、存储配置状态。
+- AI 资源页：真实模型运行时卡片，显示 `READY / NOT_CONFIGURED`、模型、端点、认证、超时；可发真实探针与提示词，回复、耗时与 token 用量实时回显。接入步骤见 `docs/MODEL_RUNTIME.md`。
 
 ## 5. 截图
 
@@ -62,10 +63,11 @@
 - `v2-reviews.png`
 - `v2-trace.png`
 - `v2-settings.png`
+- `v2-model-runtime.png`（AI 资源页；`NOT_CONFIGURED` 的真实状态，没有假回复）
 
 ## 6. 验证
 
-- 单元测试：`206 tests OK`（新增 `test_quality_deliverable.py` 7 条、`test_api_quality.py` 3 条）。
+- 单元测试：`213 tests OK`（新增 `test_model_runtime.py` 7 条，含真实本地 HTTP 提供方契约测试）。
 - 冒烟：`python -m geoops.smoke` 断言导航为十二段。
 - 质检真实记录：`QR-f84ef6838a`，对象 `DLV-ac0105fd55`，报告文件
   `<repo>\var\quality\QR-f84ef6838a.json`，状态 `PARTIAL`（空间宽高/范围未登记，专业抽样已记录）。

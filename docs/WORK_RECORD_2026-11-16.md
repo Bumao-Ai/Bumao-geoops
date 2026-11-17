@@ -373,3 +373,30 @@ API 与归档版本链未补齐。逐项对照见 `docs/ENGINEERING_TIER.md` 第
 
 第 3/5/6/7/10/14 项：无用户真实遥感影像；无真实 AI 模型运行时；Agent 无执行器；机器无
 GDAL/QGIS/Rasterio；质检缺分类/几何精度指标；追溯需运行与文件环填满。0.1 不宣称正式完成。
+## 二十三、2026-11-17 增量：真实模型运行时接入
+
+### 代码
+
+- 新增 `geoops/ai/runtime.py`：OpenAI-compatible `POST /chat/completions` 客户端。
+  端点/密钥/模型只从 `GEOOPS_MODEL_BASE_URL`、`GEOOPS_MODEL_API_KEY`、`GEOOPS_MODEL_NAME`
+  读取；未配置抛 `NOT_CONFIGURED`，不生成占位回复。
+- 新增 `geoops/ai/nodes.py`：`model_chat_node` 在 workflow 内发起真实模型调用，记录
+  text/model/usage/elapsed_ms；未配置时运行记录为 `ERROR`，不会假装 `PASS`。
+- 新增 `geoops/ai/__main__.py`：`python -m geoops.ai status|probe|chat`，不启动服务也能验证。
+- API 新增 `GET /api/v1/model-runtime`、`POST /api/v1/model-runtime/probe`、
+  `POST /api/v1/model-runtime/chat`；权限新增 `model:invoke`，调用写审计。
+- 控制台 AI 资源页新增“模型运行时”卡片：状态、模型、端点、认证、超时；测试连接与
+  运行模型均发真实请求，回复/耗时/token 用量回显。未配置显示 NOT_CONFIGURED 并在输出框
+  写明缺哪个环境变量。
+- `启动布猫测绘智序.cmd` 在 `var\console-tokens.json` 存在时自动带 `--tokens`；
+  本机明文令牌放 `var\console-token.txt`，`var/` 已被 .gitignore 忽略。
+- 新增 `docs/MODEL_RUNTIME.md`：Ollama / LM Studio / vLLM / 云端 OpenAI-compatible
+  的启动命令、三种验证方式、错误码、边界与安全约束。
+
+### 验证
+
+- `test_model_runtime.py` 7 条：未配置拒绝、真实本地 HTTP 提供方请求体与鉴权、上游 401
+  不泄露密钥、workflow 节点真实调用、API probe/chat 与令牌权限。
+- 全量 **213 tests OK**；smoke **73 assertions PASS**。
+- 控制台实拍 `docs/ui-preview/v2-model-runtime.png`：AI 资源页 + 真实 NOT_CONFIGURED 状态。
+- 当前机器无模型端点，未虚构任何模型回复；需要用户提供端点/模型/密钥后才会 READY。

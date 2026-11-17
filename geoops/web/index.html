@@ -257,6 +257,18 @@
       </div>
 
       <div class="card">
+        <h3>Model runtime <span class="zh">真实模型运行时</span><span class="right"><span class="pill idle" id="modelRuntimeStatus">读取中</span></span></h3>
+        <div class="runtime-grid" id="modelRuntimeRows"></div>
+        <div class="runtime-run">
+          <label class="field"><span>测试提示词</span><input id="modelPrompt" value="用一句中文说明你能为测绘成果做什么。" autocomplete="off"></label>
+          <button class="btn ghost" id="modelProbe" type="button">测试连接</button>
+          <button class="btn" id="modelRun" type="button">运行模型</button>
+        </div>
+        <pre class="runtime-output" id="modelOutput">尚未调用。配置环境变量并重启服务后，这里显示真实模型回复；没有配置时不会生成占位内容。</pre>
+        <div class="note">服务端只从环境变量读端点与密钥：<code>GEOOPS_MODEL_BASE_URL</code>、<code>GEOOPS_MODEL_API_KEY</code>、<code>GEOOPS_MODEL_NAME</code>。密钥不进浏览器、不写入仓库。测试与运行需要 <code>model:invoke</code>。</div>
+      </div>
+
+      <div class="card">
         <h3>Register resource <span class="zh">登记资源</span></h3>
         <form class="wform" id="catalogForm" autocomplete="off">
           <div class="wgrid">

@@ -7,7 +7,7 @@
   var state = { section: "overview", status: "", taskQuery: "", artifactQuery: "", auditQuery: "",
                 overview: null, tasks: [], rules: null, artifacts: [], audit: null, runs: [],
                 projects: [], datasets: [], catalog: null, reviews: [], trace: null, token: "",
-                deliverables: [], qualityReports: [], settings: null, lastQuality: null };
+                deliverables: [], qualityReports: [], settings: null, lastQuality: null, modelRuntime: null };
 
   function readUi() {
     try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; }
@@ -35,7 +35,7 @@
     }
     if (section === "projects") loadProjects();
     if (section === "tasks") loadTasks();
-    if (section === "resources") loadCatalog();
+    if (section === "resources") { loadCatalog(); loadModelRuntime(); }
     if (section === "data") loadDatasets();
     if (section === "runs") loadRuns();
     if (section === "rules") loadRules();
@@ -770,6 +770,83 @@
     }).join("");
   }
   document.getElementById("catalogReload").addEventListener("click", loadCatalog);
+
+  /* ---------- 真实模型运行时 ---------- */
+  function loadModelRuntime() {
+    var box = document.getElementById("modelRuntimeRows");
+    if (!box) return;
+    box.innerHTML = '<div class="empty-mini">读取 /api/v1/model-runtime…</div>';
+    api("/api/v1/model-runtime").then(function (res) {
+      if (res.status !== 200) {
+        box.innerHTML = emptyBox("未", "模型运行时接口不可用", "接口返回 " + res.status + "。");
+        return;
+      }
+      state.modelRuntime = (res.body && res.body.runtime) || {};
+      renderModelRuntime(state.modelRuntime);
+    }).catch(function () {
+      box.innerHTML = emptyBox("断", "取不到模型运行时", "服务未启动或网络不可达。");
+    });
+  }
+
+  function renderModelRuntime(runtime) {
+    var box = document.getElementById("modelRuntimeRows");
+    var status = document.getElementById("modelRuntimeStatus");
+    var ready = runtime.configured === true;
+    status.className = "pill " + (ready ? "pass" : "idle");
+    status.textContent = ready ? "READY" : "NOT_CONFIGURED";
+    var cells = [
+      ["State", ready ? "真实端点已配置" : "尚未配置", ""],
+      ["Model", runtime.model || "—", "dim"],
+      ["Endpoint", runtime.endpoint || "—", "dim"],
+      ["Auth", runtime.authentication === "bearer" ? "Bearer（密钥在服务端）" : "无密钥（本地端点）", ""],
+      ["Timeout", (runtime.timeout_s || "—") + " s", "dim"]
+    ];
+    box.innerHTML = cells.map(function (cell) {
+      return '<div class="runtime-cell"><div class="k">' + esc(cell[0]) + '</div><div class="v ' +
+        cell[2] + '">' + esc(cell[1]) + "</div></div>";
+    }).join("");
+    if (!ready) {
+      document.getElementById("modelOutput").textContent =
+        "未配置： " + (runtime.reason || "缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME") +
+        "\n\n在服务进程的环境里设置变量后重启；服务端不会生成占位回复。";
+    }
+  }
+
+  function modelRequest(path, body, label) {
+    var token = currentToken();
+    var out = document.getElementById("modelOutput");
+    if (!token) {
+      out.textContent = "需要令牌：请在右上角填入具备 model:invoke 权限的调用方令牌。";
+      return;
+    }
+    out.textContent = label + "中…";
+    api(path, { method: "POST", token: token, body: body }).then(function (res) {
+      if (res.status === 200 && res.body && res.body.result) {
+        var r = res.body.result;
+        out.textContent = r.text + "\n\n— " + (r.model || "") + " · " + (r.elapsed_ms || "?") + " ms · token " +
+          ((r.usage && r.usage.total_tokens) || "—");
+        if (res.body.runtime) { state.modelRuntime = res.body.runtime; renderModelRuntime(state.modelRuntime); }
+        return;
+      }
+      var reason = (res.body && res.body.error) || ("HTTP " + res.status);
+      out.textContent = "调用失败：" + reason;
+      if (res.status === 404) out.textContent = "写入口未配置：服务以只读方式启动。";
+    }).catch(function () {
+      out.textContent = "网络或服务不可达，未收到模型回复。";
+    });
+  }
+
+  var modelProbe = document.getElementById("modelProbe");
+  if (modelProbe) modelProbe.addEventListener("click", function () {
+    modelRequest("/api/v1/model-runtime/probe", {}, "真实连接测试");
+  });
+  var modelRun = document.getElementById("modelRun");
+  if (modelRun) modelRun.addEventListener("click", function () {
+    var prompt = (document.getElementById("modelPrompt").value || "").trim();
+    if (!prompt) { document.getElementById("modelOutput").textContent = "提示词不能为空。"; return; }
+    modelRequest("/api/v1/model-runtime/chat", { prompt: prompt, max_tokens: 512 }, "运行模型");
+  });
+
 
   /* ---------- 审核 ---------- */
   function loadReviews() {
