@@ -1,0 +1,64 @@
+{
+  "pack_id": "p01_dataset",
+  "domain": "geospatial",
+  "version": "0.1",
+  "note": "Dataset intake rules for the 0.1 scenario (land-use classification). Conditions here are applicability filters only; the field being judged is never used as its own precondition, so a missing value fails the rule instead of being skipped.",
+  "rules": [
+    {
+      "rule_id": "R-DS-001",
+      "rule_name": "数据集必须声明坐标参考系",
+      "domain": "geospatial",
+      "task_type": "land_use_classification",
+      "description": "引入遥感影像时必须能从元数据取到坐标参考系；空值不得进入后续作业。",
+      "condition": {},
+      "validator": "crs_present",
+      "severity": "error",
+      "failure_action": "阻断：任务不得进入质量检查与成果输出",
+      "evidence_requirement": "数据集 sidecar 元数据中的 crs 字段值",
+      "version": "0.1",
+      "enabled": true
+    },
+    {
+      "rule_id": "R-DS-002",
+      "rule_name": "数据集文件必须存在且为常规文件",
+      "domain": "geospatial",
+      "task_type": "land_use_classification",
+      "description": "登记的数据集必须落在可读路径上；目录或缺失路径一律不视为有效数据。",
+      "condition": {},
+      "validator": "path_exists",
+      "severity": "error",
+      "failure_action": "阻断：该数据集不得登记为 READY",
+      "evidence_requirement": "数据集绝对路径与文件字节数",
+      "version": "0.1",
+      "enabled": true
+    },
+    {
+      "rule_id": "R-DS-003",
+      "rule_name": "元数据来源必须可追溯",
+      "domain": "geospatial",
+      "task_type": "land_use_classification",
+      "description": "CRS 与范围等元信息必须写出来源；无 sidecar 时只警告，不阻断，但要在报告里留痕。",
+      "condition": {},
+      "validator": "metadata_source",
+      "severity": "warning",
+      "failure_action": "警告：允许继续，但质量报告须记明元数据来源缺失",
+      "evidence_requirement": "数据集登记记录中的 metadata_source 字段",
+      "version": "0.1",
+      "enabled": true
+    },
+    {
+      "rule_id": "R-TASK-001",
+      "rule_name": "任务必须关联已登记项目",
+      "domain": "survey",
+      "task_type": "land_use_classification",
+      "description": "任务不得脱离项目单独存在；项目未在领域注册表登记时不得开工。",
+      "condition": {},
+      "validator": "project_linked",
+      "severity": "error",
+      "failure_action": "阻断：任务不得从 DRAFT 进入 READY",
+      "evidence_requirement": "领域注册表中该 project_id 的登记记录",
+      "version": "0.1",
+      "enabled": true
+    }
+  ]
+}

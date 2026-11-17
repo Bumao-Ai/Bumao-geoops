@@ -1,0 +1,235 @@
+"""Change detection on real rasters (ESRI ASCII grid).
+
+This is a real calculation, not a placeholder: two aligned grids are read,
+cells whose absolute difference reaches the threshold are marked, 4-neighbour
+connectivity groups them into patches, and patches smaller than the declared
+minimum area are dropped before the mask is written. Values come from the
+files; nothing is invented.
+
+The ASCII grid is used because it is plain text the standard library can read
+exactly, so a test can hand-compute the expected cells. Cell area is
+``cellsize ** 2`` in map units, which is square metres only when the grid's CRS
+is projected in metres — the caller owns that check (R-OR-001 / R-CD-002).
+"""
+
+from __future__ import annotations
+
+import os
+import re
+from typing import Any, Dict, List, Optional, Tuple
+
+REQUIRED_HEADER = ("ncols", "nrows", "xllcorner", "yllcorner", "cellsize")
+_NUMBER = re.compile(r"^[-+]?\d+(\.\d+)?([eE][-+]?\d+)?$")
+
+
+class ChangeError(ValueError):
+    """Raised when a grid pair cannot be compared; nothing is written."""
+
+
+def read_ascii_grid(path: str) -> Dict[str, Any]:
+    """Read an ESRI ASCII grid and validate it before any cell is used."""
+    path = str(path or "").strip()
+    if not path:
+        raise ChangeError("grid path must not be empty")
+    if not os.path.exists(path):
+        raise ChangeError("grid not found: %s" % path)
+    if not os.path.isfile(path):
+        raise ChangeError("grid is not a regular file: %s" % path)
+    with open(path, encoding="utf-8-sig") as handle:
+        lines = [line.strip() for line in handle.read().splitlines() if line.strip()]
+    if not lines:
+        raise ChangeError("grid is empty: %s" % path)
+
+    header: Dict[str, float] = {}
+    index = 0
+    while index < len(lines):
+        parts = lines[index].split()
+        if len(parts) != 2 or _NUMBER.match(parts[1]) is None or _NUMBER.match(parts[0]):
+            break
+        key = parts[0].lower()
+        if key in header:
+            raise ChangeError("duplicate header key %r in %s" % (parts[0], path))
+        header[key] = float(parts[1])
+        index += 1
+
+    missing = [key for key in REQUIRED_HEADER if key not in header]
+    if missing:
+        raise ChangeError("grid %s is missing header key(s): %s" % (path, ", ".join(missing)))
+    ncols = header["ncols"]
+    nrows = header["nrows"]
+    if ncols != int(ncols) or nrows != int(nrows) or ncols < 1 or nrows < 1:
+        raise ChangeError("grid %s has an invalid size: %r x %r" % (path, ncols, nrows))
+    if header["cellsize"] <= 0:
+        raise ChangeError("grid %s has a non-positive cellsize" % path)
+
+    values: List[float] = []
+    for line in lines[index:]:
+        for token in line.split():
+            if _NUMBER.match(token) is None:
+                raise ChangeError("grid %s has a non-numeric cell %r" % (path, token))
+            values.append(float(token))
+    expected = int(ncols) * int(nrows)
+    if len(values) != expected:
+        raise ChangeError(
+            "grid %s declares %d cells but carries %d" % (path, expected, len(values))
+        )
+    return {
+        "path": path,
+        "header": header,
+        "ncols": int(ncols),
+        "nrows": int(nrows),
+        "cellsize": header["cellsize"],
+        "values": values,
+    }
+
+
+def _check_alignment(baseline: Dict[str, Any], comparison: Dict[str, Any]) -> None:
+    for key in ("cellsize", "xllcorner", "yllcorner"):
+        if abs(baseline["header"][key] - comparison["header"][key]) > 1e-9:
+            raise ChangeError(
+                "grids are not aligned: %s differs (%r vs %r)"
+                % (key, baseline["header"][key], comparison["header"][key])
+            )
+    if baseline["ncols"] != comparison["ncols"] or baseline["nrows"] != comparison["nrows"]:
+        raise ChangeError(
+            "grids are not aligned: size %dx%d vs %dx%d"
+            % (baseline["ncols"], baseline["nrows"], comparison["ncols"], comparison["nrows"])
+        )
+
+
+def _patches(mask: List[int], ncols: int, nrows: int) -> List[Dict[str, Any]]:
+    """Group changed cells by 4-neighbour connectivity."""
+    visited = [False] * len(mask)
+    found: List[Dict[str, Any]] = []
+    for start, changed in enumerate(mask):
+        if not changed or visited[start]:
+            continue
+        stack = [start]
+        visited[start] = True
+        cells: List[int] = []
+        while stack:
+            cell = stack.pop()
+            cells.append(cell)
+            row, col = divmod(cell, ncols)
+            if col > 0 and mask[cell - 1] and not visited[cell - 1]:
+                visited[cell - 1] = True
+                stack.append(cell - 1)
+            if col + 1 < ncols and mask[cell + 1] and not visited[cell + 1]:
+                visited[cell + 1] = True
+                stack.append(cell + 1)
+            if row > 0 and mask[cell - ncols] and not visited[cell - ncols]:
+                visited[cell - ncols] = True
+                stack.append(cell - ncols)
+            if row + 1 < nrows and mask[cell + ncols] and not visited[cell + ncols]:
+                visited[cell + ncols] = True
+                stack.append(cell + ncols)
+        found.append({"cells": cells, "count": len(cells)})
+    return found
+
+
+def detect_changes(
+    baseline_path: str,
+    comparison_path: str,
+    threshold: float = 1.0,
+    min_area_m2: float = 0.0,
+) -> Dict[str, Any]:
+    """Compare two aligned grids and return a mask plus its statistics."""
+    if threshold < 0:
+        raise ChangeError("threshold must not be negative")
+    if min_area_m2 < 0:
+        raise ChangeError("min_area_m2 must not be negative")
+    baseline = read_ascii_grid(baseline_path)
+    comparison = read_ascii_grid(comparison_path)
+    _check_alignment(baseline, comparison)
+
+    nodata_a = baseline["header"].get("nodata_value")
+    nodata_b = comparison["header"].get("nodata_value")
+    cell_area = baseline["cellsize"] ** 2
+    mask: List[int] = []
+    invalid_mask: List[bool] = []
+    nodata_cells = 0
+    changed_cells = 0
+    for left, right in zip(baseline["values"], comparison["values"]):
+        invalid = (nodata_a is not None and left == nodata_a) or (
+            nodata_b is not None and right == nodata_b
+        )
+        if invalid:
+            nodata_cells += 1
+            mask.append(0)
+            invalid_mask.append(True)
+            continue
+        invalid_mask.append(False)
+        changed = abs(right - left) >= threshold
+        mask.append(1 if changed else 0)
+        if changed:
+            changed_cells += 1
+
+    patches = _patches(mask, baseline["ncols"], baseline["nrows"])
+    for patch in patches:
+        patch["area_m2"] = patch["count"] * cell_area
+    dropped = [patch for patch in patches if patch["area_m2"] < min_area_m2]
+    for patch in dropped:
+        for cell in patch["cells"]:
+            mask[cell] = 0
+    kept = [patch for patch in patches if patch["area_m2"] >= min_area_m2]
+    for number, patch in enumerate(kept, start=1):
+        patch["patch_id"] = number
+
+    kept_cells = sum(patch["count"] for patch in kept)
+    return {
+        "ncols": baseline["ncols"],
+        "nrows": baseline["nrows"],
+        "cellsize": baseline["cellsize"],
+        "cell_area_m2": cell_area,
+        "threshold": threshold,
+        "min_area_m2": min_area_m2,
+        "total_cells": len(mask),
+        "changed_cells": changed_cells,
+        "kept_cells": kept_cells,
+        "dropped_cells": changed_cells - kept_cells,
+        "nodata_cells": nodata_cells,
+        "changed_area_m2": kept_cells * cell_area,
+        "patches": [
+            {"patch_id": patch["patch_id"], "cells": patch["count"], "area_m2": patch["area_m2"]}
+            for patch in kept
+        ],
+        "dropped_patches": len(dropped),
+        "mask": mask,
+        "invalid_mask": invalid_mask,
+        "header": dict(baseline["header"]),
+    }
+
+
+def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -9999) -> str:
+    """Write the mask as an ASCII grid with the source header."""
+    path = str(path or "").strip()
+    if not path:
+        raise ChangeError("output path must not be empty")
+    path = os.path.abspath(path)
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    header = result["header"]
+    lines = [
+        "ncols %d" % result["ncols"],
+        "nrows %d" % result["nrows"],
+        "xllcorner %s" % repr(header["xllcorner"]),
+        "yllcorner %s" % repr(header["yllcorner"]),
+        "cellsize %s" % repr(result["cellsize"]),
+        "NODATA_value %s" % repr(nodata_value),
+    ]
+    mask = result["mask"]
+    invalid = result["invalid_mask"]
+    ncols = result["ncols"]
+    for row in range(result["nrows"]):
+        cells = []
+        for col in range(ncols):
+            index = row * ncols + col
+            cells.append(str(int(nodata_value)) if invalid[index] else str(mask[index]))
+        lines.append(" ".join(cells))
+    text = "\n".join(lines) + "\n"
+    temp_path = path + ".tmp"
+    with open(temp_path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temp_path, path)
+    return path

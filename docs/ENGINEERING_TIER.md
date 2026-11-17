@@ -1,0 +1,81 @@
+# 工程等级：核心工程（core）
+
+本文件是本工程等级的唯一登记处（2026-11-16 用户指示：将本工程升级为核心工程）。
+等级只登记在本仓库，不写入其他工程。
+
+## 一、决定
+
+- 日期：2026-11-16
+- 决定人：用户（本工程负责人）
+- 原等级：未登记（`geoops/meta.json` 仅有 `name / version / zero_rules`）
+- 新等级：核心工程（core）
+- 生效范围：`<repo>` 全仓
+
+## 二、核心工程判定标准（本仓库自定义，全部可核）
+
+1. **内核不复制**：只经 `geoops/core_adapter` 调用 `kernel/bumao_core/`，内核文件零写入。
+2. **状态与执行分离**：任务状态机独立于流程执行；非法变更拒绝，且拒绝不落半条记录。
+3. **失败可恢复**：流程从失败节点恢复，已通过节点带原输出前移，节点身份变化即拒绝。
+4. **规则即数据**：规则包声明式定义；五态判定；校验器缺失或异常绝不判 PASS。
+5. **状态可持久**：快照原子写，恢复前整包校验，坏包整包拒绝、不半恢复。
+6. **变更可追溯**：改前留 `.bak`，单次真实运行写档，git 提交，未做项如实列出。
+7. **结果可复现**：`python -m geoops.smoke` 与 `python -m unittest ...` 必须可重复通过。
+
+## 三、当前证据（2026-11-16 实跑）
+
+| 标准 | 证据 |
+|---|---|
+| 内核不复制 | smoke `core surface complete`、`all host gates pass`；`kernel/bumao_core/` 无改动（git 仅见早先 `.bak_20261109`） |
+| 状态与执行分离 | `geoops/domain/tasks.py`；smoke 2b 段 7 条断言；`test_tasks` 12 条 |
+| 失败可恢复 | `geoops/workflow/executor.py`；smoke 5b/5c 段；`test_workflow` 11 条 |
+| 规则即数据 | `geoops/survey/rules.py` + `packs/p01_dataset.json`；smoke 8 段；`test_rules` 12 条 |
+| 规则接入流程 | `geoops/survey/nodes.py`；smoke 8b 段 4 条；`test_rule_nodes` 7 条 |
+| 状态可持久 | `geoops/store.py`；smoke 9 段 3 条；`test_store` 8 条 |
+| 记录可成文 | `geoops/quality/report.py`；smoke 10 段 2 条；`test_report` 7 条；缺段写 `NOT_RECORDED` |
+| 写入口有权限位 | `geoops/api/security.py` + `geoops/api/app.py`；smoke 7b 段 5 条；`test_api_write` 11 条；拒绝入审计 |
+| 令牌与审计可落盘 | 哈希-only 令牌文件（明文即拒）、过期/撤销/轮换、JSONL 审计 `fsync`、坏行拒绝；smoke 11 段 3 条 + 13 段 3 条；`test_audit` 10 条、`test_tokens` 10 条 |
+| 成果物可登记可复核 | `geoops/artifacts.py`；sha256+size+路径+所属任务+绑定成果，改/删即判失败，未登记成果拒绑；smoke 12 段 8 条；`test_artifacts` 16 条 |
+| 规则可核到字段 | 两包 11 条规则（分类/正射/变化检测），每条给证据字段；地理坐标系拒作成果 CRS；smoke 14 段 4 条；`test_rule_packs` 12 条 |
+| 判定与登记同一跑 | 规则门 → `artifact_register_node`；CRS 不对即停，登记未发生；smoke 15 段 5 条；`test_delivery` 7 条 |
+| 像元级也是真算 | 两期 ASCII 栅格逐格差分 + 4 邻域连通块 + 最小面积过滤，面积按 `cellsize²` 计；smoke 16 段 4 条；`test_change` 13 条 |
+| 看得见且不造假 | `/ui/` 六段控制台（概览/任务/流程/规则/成果/审计），书香纸色 + 深空夜纸；流程页接运行日志（节点判定 + 跳过数 + 恢复来源）；缺接口写「未开放」、缺令牌写「需令牌」；smoke 17 段 4 条；`test_ui` 9 条、`test_journal` 11 条；`docs/ui-preview/` 六张真实截图；桌面快捷方式一键起服务 |
+| 并发纪律已验 | 唯一临时名 + 进程内锁 + 读占用时读写双侧重试；旧/新版本各自拒绝；`test_concurrency` 8 条（连跑 5 次全绿）；全量连跑 5 次全绿 |
+| 变更可追溯 | 提交 `22f3fc4`、`9f80d77`、`43d2c03`、`ef76fab`、`66a86a2`、`8e3d12a`、`4ae7bdc`、`4b6e6e5`、`4790816`、`ac4e9d4`、`785fdb2`、`9a4a187`、`3a611ab`、`7308af0`、`986faf8`、`ed95c9e` 及本轮提交 |
+| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 166 tests, OK` |
+
+## 四、升级为核心工程后，仍未达成的门槛（不粉饰）
+
+1. 持久化是单文件 JSON 快照，不是事务数据库；同进程并发已测，跨进程并发无文件锁、不在保证范围内。
+2. 真实 AI 模型、真实 GIS 工具适配器未接（0.1 验收第 5、7 项未过）。
+3. 令牌已有过期、撤销与轮换；仍无统一身份源，轮换靠人工改文件。
+4. 成果物可登记与哈希复核；变化检测已产出真实计算出的掩膜文件，但正射等成果仍是占位字节，真实生产数据链路未建。
+5. 变化检测是 ASCII 栅格逐格真差分；GeoTIFF 读写、重投影、配准误差与精度评定未做。
+6. 未发布（0.1.0，探索阶段产物；等级≠发布资格）。
+
+## 五、结论
+
+本工程**登记为核心工程**；发布资格仍未达成。上述第 1–4 项未清之前，
+不得以「核心工程已完备」对外表述；每次发布前须重新过第二节清单。
+
+## 六、0.1 十五项验收对照（2026-11-17，逐项如实）
+
+| # | 验收项 | 状态 | 依据 / 缺口 |
+|---|---|---|---|
+| 1 | 建真实项目 | 通过（软件路径） | `ProjectRegistry` 六字段必填、编号唯一；`POST /api/v1/projects`；数据页表单 |
+| 2 | 建真实任务 | 通过（软件路径） | `TaskEngine.create` 要求项目已登记；七态状态机；写操作页与 API |
+| 3 | 导入真实遥感影像 | 部分 | 数据集登记读真实文件算 sha256；GeoTIFF 仅读头，不解码像元；尚无用户提供的真实遥感影像入库 |
+| 4 | 识别必要空间元信息 | 部分 | classic GeoTIFF 读 EPSG/宽高/波段/范围/像元大小；ASCII + sidecar；BigTIFF、投影变换未做 |
+| 5 | 登记并调用真实 AI 模型或算法 | 部分 | 目录登记 + `builtin:change_detection` 真跑逐格差分；没有真实 AI 模型运行时，未调用外部模型 |
+| 6 | 用 Agent 组织执行过程 | 部分 | Agent 记录、依赖校验、可用性继承已做；尚无 Agent 执行器把模型/工具串成一次作业 |
+| 7 | 调用至少一种真实地理空间处理工具 | 未过 | 机器无 GDAL/QGIS/Rasterio；`builtin:ascii_raster_diff` 是仓内算法，不算外部 GIS 工具适配器 |
+| 8 | 执行测绘专业规则 | 通过 | 规则包 11 条、五态结果、闸门节点；异常不判 PASS |
+| 9 | 记录整个 AI 作业过程 | 部分 | 运行日志、审计、任务历史、结构化追溯均有；AI/Agent/工具调用记录尚不完整 |
+| 10 | 对成果自动质量检查 | 部分 | 三层检查已实现：文件/结构、空间元数据、专业抽样；分类精度、几何精度指标仍缺 |
+| 11 | 输出质检报告 | 通过（软件路径） | `QualityService` 原子写 `var/quality/QR-*.json` 并登记 `QualityReport`；审核记录尚未强制引用报告 |
+| 12 | 人工审核 | 通过 | `ReviewEngine` + `POST /api/v1/reviews` + 审核页；通过才 accepted，驳回/返工必须写意见 |
+| 13 | 归档最终成果 | 通过（软件路径） | `DeliverableRegistry` 真文件登记 sha256/大小/版本；accepted 后 `POST /api/v1/deliverables/{id}/archive` 归档并留人/时间 |
+| 14 | 从成果反向追溯 | 部分 | `/api/v1/tasks/{id}/trace` 出结构化链，成果/审核已可入链；需运行与文件环填满才 COMPLETE |
+| 15 | 证明正确调用 Core 不复制内核 | 通过 | vendored kernel 只读导入，CoreAdapter 调真实注册/闸门；smoke 1 段 |
+
+结论：**十五项未全过，0.1 不能宣称正式完成。** 软件层（1/2/4/8/11/12/13/15）已可跑；
+3/5/6/7/10/14 仍缺真实资产、执行器或完整环，缺口已写进 README 与 CHANGELOG。

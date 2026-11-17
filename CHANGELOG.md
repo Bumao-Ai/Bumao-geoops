@@ -2,6 +2,354 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased — 2026-11-17 — 0.1 release surface and book-style console
+
+### Added
+
+- Deliverable registry (`geoops/domain/deliverables.py`): real-file registration
+  with sha256/size, version, task binding; archive is refused until a review
+  marks the deliverable `accepted`.
+- Three-layer quality service (`geoops/quality/service.py`): file/structure,
+  spatial data and professional verification. A missing professional sample is
+  `NOT_RECORDED` and the aggregate is `PARTIAL`; a changed file fails the sha256
+  check. Reports are written atomically to `var/quality/*.json` and registered
+  as `QualityReport`.
+- API: `GET/POST /api/v1/deliverables`, `POST /api/v1/deliverables/<id>/archive`,
+  `GET/POST /api/v1/quality-reports`, `GET /api/v1/settings`. New permissions
+  `deliverable:write` and `quality:write`; every write audited.
+- Console: twelve sections (总览 / 项目 / 任务 / AI 资源 / 数据 / 流程 / 规则 /
+  质量 / 成果 / 审核 / 追溯 / 设置). Project, AI resource, quality, deliverable,
+  review and settings pages all use real endpoints.
+- Book-style visual system v2.0 (`geoops/web/ui.css`): exact HX paper / ink /
+  celadon / cinnabar / Dai blue / ochre / gold tokens, Dai-blue spine, paper
+  cards, gold hairlines, cinnabar live dot, dark warm-paper theme. No pure white,
+  no pure black, no rainbow gradients.
+- Docs: `docs/FRONTEND_BOOKSTYLE_V2.md`; twelve new screenshots under
+  `docs/ui-preview/v2-*.png`.
+
+### Tests
+
+- `206 tests OK`; new `test_quality_deliverable.py` (7) and
+  `test_api_quality.py` (3).
+- Smoke nav assertion updated from nine to twelve sections.
+
+## Unreleased — 2026-11-17 — 0.1 domain layer
+
+### Added
+
+- Project registry: `project_code / name / project_type / area / crs /
+  vertical_datum` are mandatory, `project_code` is globally unique, and a
+  duplicate id or code is refused (`geoops/domain/projects.py`).
+- Dataset registry: registration re-reads the real file, computes sha256 and
+  takes the CRS from a sidecar **or from a classic GeoTIFF header**. Missing
+  file, empty CRS or unreadable header is a refusal, not a blank row.
+  `validate(dataset_id)` re-probes and reports PASS/FAIL/ERROR per check.
+- `geoops/geotiff.py`: narrow header-only GeoTIFF reader (ModelPixelScale,
+  ModelTiepoint, GeoKeyDirectory). Reads EPSG, width, height, bands, bounds and
+  pixel size without GDAL. BigTIFF and pixel decoding are explicitly out of
+  scope.
+- Catalog: models, tools and agents are separate records. `builtin:` adapters
+  must be ones this repository implements; `external:` adapters must point at
+  an existing path; an agent referencing unknown models/tools is refused and
+  inherits the availability of its dependencies.
+- Review gate: `APPROVE` is the only action that marks a deliverable
+  `accepted`; `REJECT`/`RERUN` require an opinion; an already accepted
+  deliverable refuses further review. Records carry reviewer, time, opinion and
+  the deliverable version at review time.
+- Structured trace: `GET /api/v1/tasks/<id>/trace` assembles
+  project → datasets → runs → rule nodes → deliverables → artifacts → reviews.
+  Missing links are listed as `NOT_RECORDED` with a reason and `complete=false`.
+- API write endpoints: `POST /api/v1/projects|datasets|catalog|reviews`, behind
+  `project:write / dataset:write / catalog:write / review:write`; every allow
+  and deny is audited. Read endpoints for projects, datasets, dataset validate,
+  catalog and reviews.
+- Console: nav grows to nine sections with 数据 / 审核 / 追溯 pages: project and
+  dataset registration, dataset re-validation, catalog availability, review
+  submission and a task trace view.
+
+### Tests
+
+- `test_release.py` 18 tests, `test_api_release.py` 8 tests,
+  `test_geotiff.py` 3 tests. Full suite: 196 tests.
+
+## Unreleased — 2026-11-16
+
+### Added
+
+- `geoops/domain/tasks.py`: `TaskEngine` and `SurveyTask`. The task lifecycle
+  (`DRAFT → READY → RUNNING ⇄ PAUSED → COMPLETED`, plus `FAILED` for retry and
+  `CANCELLED` from any non-terminal state) is now a real state machine kept
+  separate from workflow execution. Every transition is appended to the task
+  history with time, reason and actor; the record is mirrored into the domain
+  registry so the HTTP API can serve it.
+- Rejections leave the task unchanged: an edge not listed in `ALLOWED`, a
+  no-op transition, an empty reason on `COMPLETED`/`CANCELLED`, an unknown
+  task id and a duplicate run attach all raise `TaskError` with a readable
+  message instead of being applied.
+- `geoops/api/app.py`: read-only `GET /api/v1/tasks` list, served only when a
+  task engine is supplied. The API cannot transition a task on its own.
+- `geoops/tests/test_tasks.py`: 12 unit tests (project checks, every illegal
+  edge, close-reason requirement, FAILED retry, identical transition, run
+  attach rules, unknown ids, allowed-target reporting).
+- `geoops/smoke.py`: new section `2b. survey task engine` and `4b. task / run
+  linkage`, plus assertions that the API serves a task object by id and lists
+  tasks. The run id attached to a task is the one that actually executed.
+- `geoops/workflow/executor.py`: `resume(nodes, previous)` and
+  `WorkflowEngine`. A failed run can be retried from the node that failed;
+  nodes that already passed are recorded as `REUSED` with their original
+  output, and their outputs are placed in `context["node_outputs"]`. Resume is
+  refused when the previous run did not fail, when the node count or node
+  identity changed, when an earlier node did not end in `PASS`, or when the
+  previous run id is reused. `WorkflowEngine` keeps run history and rejects
+  duplicate run ids. `WorkflowRun` now carries `resumed_from`.
+- `geoops/smoke.py`: sections `5b. workflow resume` and `5c. task follows the
+  retry` — a real failed run (`RUN-SMOKE-002`) is resumed as
+  `RUN-SMOKE-003`, and a task records both runs through `FAILED → RUNNING`.
+- `geoops/tests/test_workflow.py`: 11 unit tests for stop-on-failure,
+  ERROR-as-not-PASS, reuse, every refusal path, duplicate run ids, history and
+  output carry-forward.
+- `geoops/survey/rules.py`: `SurveyRuleEngine` with data-driven rule packs and
+  five result states (`PASS` / `FAIL` / `WARNING` / `SKIPPED` / `ERROR`). An
+  unmet condition is `SKIPPED`, a missing validator or a validator exception is
+  `ERROR` — neither is ever reported as `PASS`. `FAIL` and `ERROR` block.
+  Rule packs are validated fully before loading: missing fields, unknown
+  severity, duplicate ids and ids already loaded are rejected with nothing
+  partially applied.
+- `geoops/survey/packs/p01_dataset.json`: four real dataset-intake rules for
+  `land_use_classification` (CRS declared, file exists, metadata source
+  traceable as a warning, task linked to a registered project). Conditions are
+  applicability filters, so a missing value fails the rule instead of skipping
+  it.
+- `geoops/survey/` package exposing the engine and result types.
+- `geoops/smoke.py`: section `8. survey rules` evaluates the pack against a
+  complete context, the real intake record (no CRS, no sidecar), an
+  unregistered project and a different task type.
+- `geoops/tests/test_rules.py`: 12 unit tests covering pack loading, every
+  rejection path, SKIPPED and ERROR semantics, severity mapping and scoping.
+- `geoops/survey/nodes.py`: `rule_check_node(...)`, the rule engine as an
+  explicit workflow node. Blocking rules (`FAIL` / `ERROR`) fail the node and
+  stop later nodes; an `ERROR` rule keeps node status `ERROR` instead of being
+  flattened to `FAIL`; `WARNING` / `SKIPPED` continue the run but every result
+  is stored in `context["rule_results"][node_id]`. A task type with no
+  applicable rule records `SKIP`, not `PASS`.
+- `geoops/smoke.py`: section `8b. rule gate node` — a blocked deliverable, a
+  fixed context that reaches it, a warning-only pass and a no-rule SKIP.
+- `geoops/tests/test_rule_nodes.py`: 7 unit tests for blocking, warnings,
+  zero-rule skip, validator exception, context builder and skipped conditions.
+- `geoops/store.py`: `SnapshotStore` saves the registry and task engine to one
+  JSON snapshot atomically (`fsync` + `os.replace`) and restores them. The file
+  is validated on empty probe objects before the live state is touched, so a
+  corrupt, duplicate or clashing snapshot is refused whole. `DomainRegistry`
+  and `TaskEngine` gain `restore(...)`, which keeps version, status and
+  history instead of re-registering at version 1.
+- `geoops/smoke.py`: section `9. snapshot persistence` — save, restore into
+  fresh objects, version/run survival and a corrupt file refusal.
+- `geoops/tests/test_store.py`: 8 unit tests (roundtrip, atomic save, missing
+  and corrupt files, wrong format, duplicate ids, live clash, bad task row).
+- Engineering tier registered as **core** in `docs/ENGINEERING_TIER.md`, with
+  the criteria and the gaps that still block release listed in the same file.
+- `geoops/quality/report.py`: `build_report(...)` copies recorded values only
+  (task, runs, rule results, quality report, deliverable, review) and marks any
+  missing section `NOT_RECORDED` with a reason. `render_markdown` renders the
+  same records; `write_report` writes JSON or Markdown atomically and rejects
+  an unknown format or a foreign payload.
+- `geoops/smoke.py`: section `10. execution report` — a real report over the
+  retried task, both runs, the rule results and the failing quality report,
+  written as JSON and Markdown.
+- `geoops/tests/test_report.py`: 7 unit tests (missing task/id, copied records,
+  NOT_RECORDED sections, Markdown content, atomic JSON write, format rejection).
+- `geoops/api/security.py`: `PermissionPolicy` (token → `task:create` /
+  `task:transition` / `audit:read`) and `AuditLog` (allow/deny rows with a
+  sha256 fingerprint instead of the raw token).
+- `geoops/api/app.py`: write endpoints `POST /api/v1/tasks` and
+  `POST /api/v1/tasks/{id}/transitions`, plus `GET /api/v1/audit`. The gate
+  runs before the body is read: 401 for a missing or unknown token, 403 for
+  a missing permission, 413 for a body over 64 KB, 400 for invalid JSON or a
+  refused transition. Writes stay disabled unless a policy is supplied.
+- `geoops/smoke.py`: section `7b. write api with permission gate` — a refused
+  anonymous write, an authorised create, the full transition path over HTTP,
+  a forbidden viewer transition and a guarded audit endpoint.
+- `geoops/tests/test_api_write.py`: 11 unit tests for the gate, the audit trail, body limits, the full HTTP path and a server with writes disabled.
+- `geoops/api/security.py`: grants are now stored as sha256 hashes only.
+  `PermissionPolicy.from_file` loads a `geoops-tokens` file and refuses raw
+  `token` fields and duplicate hashes. `AuditLog(path=...)` appends each row to
+  JSONL with `fsync` and reloads it; a corrupt or incomplete line raises
+  `AuditError` instead of being dropped.
+- `geoops/smoke.py`: section `11. token file and audit file` — a file-granted
+  token, a reloaded audit trail and a corrupt audit line.
+- `geoops/tests/test_audit.py`: token and audit file tests — hash-only grants, every token file rejection, audit persistence, trimming and corrupt files.
+- `geoops/artifacts.py`: `ArtifactStore` — registers a real file with sha256,
+  size, path and owning task; refuses a missing file, directory, symlink, a
+  duplicate id, or a path whose content changed; `verify`/`verify_all` recompute
+  the hash so an edit or deletion is reported, not ignored; index saves
+  atomically and reloads.
+- `geoops/quality/report.py`: new `artifact_files` section (RECORDED or
+  NOT_RECORDED with reason) and a Markdown table naming path, size and hash.
+- `geoops/smoke.py`: section `12. deliverable registry` — real hash and size,
+  idempotent re-registration, verify before and after an edit, index reload, and
+  the report carrying the file.
+- `geoops/tests/test_artifacts.py`: 12 unit tests for every refusal, the
+  idempotent and changed-content paths, tamper and deletion detection, the index
+  round trip, and the report section.
+- `geoops/artifacts.py`: a registration can be bound to a `Deliverable` id.
+  The id is looked up in the domain registry first: no registry, an unknown id
+  or an object of another type is refused, so a file cannot claim an
+  unregistered 成果. `for_deliverable` returns the files of one deliverable.
+- `geoops/smoke.py`: section 12 also binds a second file to `DLV-SMOKE-002`
+  and shows an unregistered id being refused.
+- `geoops/tests/test_artifacts.py`: 4 binding tests added (16 in this module).
+- `geoops/api/security.py`: token entries accept `issued_at` / `expires_at` in
+  strict UTC; an expired token is refused with its own reason instead of being
+  treated as unknown, `expires_at` before `issued_at` and loose timestamps are
+  refused, `revoke` drops a grant and `rotate` replaces one token with another
+  (permissions kept or narrowed). `check` returns the reason the audit row
+  records.
+- `geoops/api/app.py`: an expired token gets 401 `token expired`, a missing
+  permission still gets 403.
+- `geoops/api/app.py` (fix): a refusal decided before reading the body now
+  drains the bounded body before closing. Closing with bytes still queued made
+  the socket send RST, and on Windows the client lost the 401/403/413 it was
+  owed — the API test suite failed intermittently (1 run in 3) until this
+  drain was added; 5 consecutive full runs pass after it.
+- `geoops/smoke.py`: section `13. token expiry and rotation` — an expired token
+  refused with its reason, a rotation that drops the old token, and a rotation
+  that narrows permissions.
+- `geoops/tests/test_tokens.py`: 10 unit tests for expiry, timestamp
+  validation, the file entry with expiry, rotation (full, narrowed, unknown) and
+  revocation.
+- `geoops/survey/packs/p02_products.json`: 7 product rules — four for
+  `ortho_generation` (projected CRS, positive GSD, nodata warning, product file)
+  and three for `change_detection` (two distinct inputs, equal CRSs, change-area
+  warning).
+- `geoops/survey/rules.py`: eight new validators (`crs_projected`,
+  `gsd_recorded`, `nodata_declared`, `deliverable_file`, `two_inputs`,
+  `crs_match`, `change_threshold`, plus the shared file check). Geographic EPSG
+  codes (4326/4490/4258/4269/4610) are refused as a product CRS; a non-EPSG
+  string is refused rather than passed through.
+- `geoops/smoke.py`: section `14. product rules` — the pack scope (4 + 3), a
+  complete ortho context passing, a geographic CRS blocking, and mismatched
+  CRSs blocking change detection. The no-rule demo now uses `map_compilation`,
+  a type that genuinely has no rules.
+- `geoops/tests/test_rule_packs.py`: 12 unit tests (pack shape, type scoping,
+  every ortho failure path, the nodata warning not blocking, both change inputs,
+  a shared file, duplicate ids across packs, a type with no rules).
+- `geoops/delivery/nodes.py`: `artifact_register_node` turns registration into a
+  workflow step. It registers the file named by `context[path_key]`, verifies the
+  hash it just wrote, and fails the node (skipping later nodes) on an empty path,
+  a refused registration or a failed verification. A passing node records the row
+  in `context["artifacts"][node_id]`.
+- `geoops/smoke.py`: section `15. rule gate then registration, one run` — the
+  ortho gate followed by the register node on one clean file, the same pair
+  stopped by a geographic CRS with registration skipped and nothing registered,
+  and the report carrying four PASS rule rows plus the file hash.
+- `geoops/tests/test_delivery.py`: 7 unit tests (hash and size in the detail,
+  the row in the context, missing/empty path, unregistered deliverable, a later
+  node skipped, and two runs of one file staying consistent).
+- `geoops/store.py` (fix): a save used the fixed name `<state>.tmp`, so two
+  threads saving at once fought over one temp file and `os.replace` failed with
+  `WinError 5`. Each save now uses `tempfile.mkstemp` in the target directory and
+  serialises under a lock. `os.replace` is retried (up to ~3 s) while another
+  handle still has the snapshot open, and reports a file that stays locked.
+- `geoops/store.py`: `load` distinguishes an older version ("no migration path
+  is implemented") from a newer one, and refuses a non-integer version, instead
+  of one flat "unsupported version" message.
+- `geoops/artifacts.py` (fix): registration and verification are serialised, and
+  the index save uses a unique temp file with the same replace retry.
+- `geoops/tests/test_concurrency.py`: 8 tests written before the fixes above —
+  8 parallel saves, a reader loop against a writer loop (a writer failure fails
+  the test), no leftover temp files, older/newer version refusal, parallel
+  registration of distinct files and of one file, and parallel audit appends.
+- `geoops/survey/change.py`: real change detection on two ESRI ASCII grids,
+  standard library only. The reader validates every header key it needs
+  (integer size, positive cellsize, cell count equal to `ncols * nrows`,
+  numeric cells, no duplicate keys). `detect_changes` refuses unaligned grids,
+  marks cells whose absolute difference reaches the threshold, skips nodata
+  pairs, groups cells by 4-neighbour connectivity, drops patches below
+  `min_area_m2`, and reports areas from `cellsize ** 2`. `write_change_mask`
+  writes the mask with the source header and keeps nodata as nodata.
+- `geoops/survey/change_node.py`: `change_detect_node` — a refused input fails
+  the node, so no mask is registered for a comparison that did not happen; a
+  passing node reports the observed cells, patches and area and puts the mask
+  path into `context["change_result"]`.
+- `geoops/tests/test_change.py`: 13 unit tests on a hand-countable fixture
+  (5x4 at cellsize 10, one nodata cell, a 2-cell and a 1-cell patch): grid
+  validation refusals, unaligned grids, threshold boundaries, patch
+  connectivity, `min_area` filtering, mask round-trip, and the node's fail and
+  pass paths including registration and verification of the mask.
+- `geoops/smoke.py`: new section `16. change detection end to end` — two real
+  grids pass the change rules, are compared, the mask is written, and the hash
+  of that file is registered; an unaligned pair fails before any mask exists.
+- `geoops/api/app.py` (fix): a POST to an unknown path was answered 404 and the
+  connection closed with the body still queued, so Windows clients sometimes
+  received a reset instead of the 404. The body is now drained first; a
+  regression test repeats the request 20 times.
+- `geoops/store.py` (fix): a reader that opened the snapshot exactly while a
+  save replaced it saw `WinError 5`; `load` now retries the open for a bounded
+  time and reports a file that stays locked, and the concurrency reader test
+  fails on any exception rather than only on `StoreError`.
+
+- `geoops/web/` and `GET /ui/`: the console shell, served from a whitelist inside
+  the API process. Visual language follows the three HX frontends (paper
+  palettes, weight-300 body, glass cards, mono micro-labels, hairline tables,
+  pill badges) with the 书香 palette as the default; six sections 概览 / 任务 /
+  流程 / 规则 / 成果 / 审计, light and dark, six paper colours, A−/A+ zoom.
+- `GET /api/v1/overview` (counts only, no records or paths), `GET /api/v1/rules`
+  (pack metadata read from the pack files) and `GET /api/v1/artifacts`
+  (`audit:read`, returns the registered rows). The console calls these plus the
+  existing task and audit endpoints.
+- The console never invents data: a missing endpoint says 未开放, a missing
+  token says 需令牌 with the required permission, an empty list says 未记录. The
+  only non-endpoint content is the engineering gap list, which mirrors
+  `docs/ENGINEERING_TIER.md`.
+- `python -m geoops.api [--demo] [--tokens FILE] [--audit FILE] [--artifacts FILE]`
+  runs the API and console together; read-only unless `--tokens` is given.
+- `geoops/tests/test_ui.py`: 7 unit tests — page markup with no external
+  requests, CSS/JS content types, path whitelist (a traversal attempt is 404),
+  `node --check` on the console script (skipped if node is absent), overview
+  counts against the live registry, rule packs against the files on disk, and
+  the artifact endpoint's 401 / 200 behaviour.
+- `geoops/smoke.py`: section `17. console shell` — the shell is served with six
+  sections, and its overview numbers equal the smoke's own registry, task and
+  rule counts.
+- Screenshots of the running console are in `docs/ui-preview/` (real captures
+  from the local server, not mockups).
+- `geoops/workflow/journal.py`: `RunJournal` writes each finished run as one
+  JSON line (`fsync` before returning) with its task, project, actor and
+  timestamp. A duplicate `run_id` is refused, and a corrupt or truncated line
+  refuses the whole file instead of dropping rows. `--runs FILE` keeps the
+  journal on disk; without it the journal is in-memory.
+- `GET /api/v1/runs`: the run journal with node verdicts, plus `by_status`
+  counts. `--demo` now runs one real workflow (rule gate on a task type no pack
+  covers, so the node honestly reports SKIP) and journals it, instead of
+  creating empty records only.
+- The 流程 page shows that journal: run id, task, status, node count, skipped,
+  `resumed_from`, timestamp, and one row per node with its verdict and detail.
+  Without a journal the page says 未配置, with no records it says 还没有运行记录.
+- `geoops/tests/test_journal.py`: 11 unit tests — recording, duplicate refusal,
+  failed and skipped nodes, `resumed_from`, status counts, reload, corrupt and
+  duplicated files, a missing directory, limits, and 8 concurrent writers.
+- `geoops/tests/test_ui.py` (extended): the runs endpoint serves the journal and
+  is 404 when no journal is supplied.
+- `geoops/smoke.py` (extended): the console serves the real change run from the
+  journal; a duplicate `run_id` is refused.
+- `启动布猫测绘智序.cmd` plus desktop and repository shortcuts: double-click
+  opens the console, starting the demo server first only when port 8790 is not
+  already listening.
+
+### Verification
+
+- `python -m geoops.smoke` → `SMOKE PASS: 73 assertions`, exit code 0
+  (Python 3.12.4, vendored kernel `v0.2.2` untouched). Output recorded in
+  `docs/SMOKE_OUTPUT.md`.
+- `python -m unittest geoops.tests.test_tasks geoops.tests.test_workflow geoops.tests.test_rules geoops.tests.test_rule_nodes geoops.tests.test_store geoops.tests.test_report geoops.tests.test_api_write geoops.tests.test_audit geoops.tests.test_artifacts geoops.tests.test_tokens geoops.tests.test_rule_packs geoops.tests.test_delivery geoops.tests.test_concurrency geoops.tests.test_change geoops.tests.test_journal geoops.tests.test_ui -v`
+  → 166 tests, `OK`.
+
+Real per-module counts (re-counted, not estimated): `test_tasks` 12,
+`test_workflow` 11, `test_rules` 12, `test_rule_nodes` 7, `test_store` 8,
+`test_report` 7, `test_api_write` 13, `test_audit` 10, `test_artifacts` 16,
+`test_tokens` 10, `test_rule_packs` 12, `test_delivery` 7,
+`test_concurrency` 8, `test_change` 13, `test_journal` 11, `test_ui` 9.
+
 ## v0.1.0-beta.3 — 2026-11-09
 
 ### Changed

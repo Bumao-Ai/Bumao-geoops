@@ -5,8 +5,11 @@ __pycache__/
 # Local runtime and data
 run/
 data/
+var/
 dist/
 *.local
+*.bak*
+*.lnk
 
 # Secrets and environment files
 .env

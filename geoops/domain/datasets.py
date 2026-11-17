@@ -16,6 +16,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from geoops.geotiff import GeoTiffError, probe_geotiff
+
 STATUS_READY = "READY"
 STATUS_INCOMPLETE = "INCOMPLETE"
 STATUS_SKIP = "SKIP"
@@ -32,6 +34,11 @@ class DatasetRecord:
     crs: str = ""
     metadata_source: str = "none"
     reason: str = ""
+    width: Optional[int] = None
+    height: Optional[int] = None
+    bands: Optional[int] = None
+    bounds: Optional[list] = None
+    pixel_size: Optional[list] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -43,6 +50,11 @@ class DatasetRecord:
             "crs": self.crs,
             "metadata_source": self.metadata_source,
             "reason": self.reason,
+            "width": self.width,
+            "height": self.height,
+            "bands": self.bands,
+            "bounds": self.bounds,
+            "pixel_size": self.pixel_size,
         }
 
 
@@ -90,6 +102,18 @@ def register(path: Optional[str]) -> DatasetRecord:
         )
     sidecar, source = _probe_sidecar(absolute)
     crs = str(sidecar.get("crs") or "").strip()
+    extra: Dict[str, Any] = {}
+    reason = "" if crs else "CRS field is empty in sidecar metadata"
+    if not crs and os.path.splitext(absolute)[1].lower() in (".tif", ".tiff"):
+        try:
+            info = probe_geotiff(absolute)
+        except GeoTiffError as exc:
+            reason = "GeoTIFF header unreadable: %s" % exc
+        else:
+            crs = info["crs"]
+            source = "geotiff-header"
+            extra = info
+            reason = ""
     return DatasetRecord(
         dataset_id="DS-" + digest[:12],
         path=absolute,
@@ -98,5 +122,10 @@ def register(path: Optional[str]) -> DatasetRecord:
         sha256=digest,
         crs=crs,
         metadata_source=source,
-        reason="" if crs else "CRS field is empty in sidecar metadata",
+        reason=reason,
+        width=extra.get("width"),
+        height=extra.get("height"),
+        bands=extra.get("bands"),
+        bounds=extra.get("bounds"),
+        pixel_size=extra.get("pixel_size"),
     )

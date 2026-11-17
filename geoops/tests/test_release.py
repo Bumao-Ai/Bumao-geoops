@@ -1,0 +1,209 @@
+"""Tests for the 0.1 domain layer: projects, datasets, catalog, review, trace."""
+
+from __future__ import annotations
+
+import json
+import os
+import tempfile
+import unittest
+
+from geoops.artifacts import ArtifactStore
+from geoops.catalog import Catalog, CatalogError
+from geoops.domain import DomainRegistry, ObjectType, TaskEngine
+from geoops.domain.datasets_store import DatasetError, DatasetRegistry
+from geoops.domain.projects import ProjectError, ProjectRegistry
+from geoops.review import ReviewEngine, ReviewError
+from geoops.trace import build_trace
+from geoops.workflow import Node, NodeResult, NodeStatus, RunJournal, WorkflowEngine
+
+
+def _grid(path: str, rows: str = "1 0\n0 1\n") -> str:
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write("ncols 2\nnrows 2\nxllcorner 0\nyllcorner 0\ncellsize 1\n" + rows)
+    return path
+
+
+class ProjectTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.registry = DomainRegistry()
+        self.projects = ProjectRegistry(self.registry)
+
+    def test_all_required_fields_are_enforced(self) -> None:
+        with self.assertRaises(ProjectError):
+            self.projects.register("PRJ-1", "P-1", "项目", "survey", "", "EPSG:4547", "1985")
+        self.assertEqual(len(self.projects.list()), 0)
+
+    def test_a_valid_project_is_registered(self) -> None:
+        project = self.projects.register(
+            "PRJ-1", "P-1", "项目一", "survey", "哈尔滨", "EPSG:4547", "1985 国家高程基准"
+        )
+        self.assertEqual(project.payload["project_code"], "P-1")
+        self.assertEqual(project.payload["vertical_datum"], "1985 国家高程基准")
+        self.assertEqual(len(self.projects.list()), 1)
+
+    def test_duplicate_project_code_is_refused(self) -> None:
+        self.projects.register("PRJ-1", "P-1", "项目一", "survey", "哈尔滨", "EPSG:4547", "1985")
+        with self.assertRaises(ProjectError):
+            self.projects.register("PRJ-2", "P-1", "项目二", "survey", "哈尔滨", "EPSG:4547", "1985")
+
+
+class DatasetTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.mkdtemp(prefix="geoops-release-")
+        self.registry = DomainRegistry()
+        self.projects = ProjectRegistry(self.registry)
+        self.projects.register("PRJ-1", "P-1", "项目", "survey", "哈尔滨", "EPSG:4547", "1985")
+        self.datasets = DatasetRegistry(self.registry, self.projects)
+        self.path = _grid(os.path.join(self.tempdir, "a.asc"))
+
+    def _write_sidecar(self, crs: str = "EPSG:4547") -> None:
+        with open(self.path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": crs}, handle)
+
+    def test_a_dataset_without_crs_is_refused(self) -> None:
+        with self.assertRaises(DatasetError):
+            self.datasets.register("PRJ-1", self.path)
+        self.assertEqual(len(self.datasets.list()), 0)
+
+    def test_a_dataset_with_crs_is_registered_with_its_hash(self) -> None:
+        self._write_sidecar()
+        dataset = self.datasets.register("PRJ-1", self.path, label="一期")
+        self.assertEqual(dataset.payload["crs"], "EPSG:4547")
+        self.assertEqual(len(dataset.payload["sha256"]), 64)
+        self.assertEqual(len(self.datasets.list("PRJ-1")), 1)
+        self.assertEqual(self.datasets.list("PRJ-OTHER"), [])
+
+    def test_validate_detects_changed_content(self) -> None:
+        self._write_sidecar()
+        dataset = self.datasets.register("PRJ-1", self.path)
+        self.assertEqual(self.datasets.validate(dataset.object_id)["status"], "PASS")
+        _grid(self.path, "2 0\n0 1\n")
+        result = self.datasets.validate(dataset.object_id)
+        self.assertEqual(result["status"], "FAIL")
+        self.assertIn("sha256", [check["name"] for check in result["checks"] if check["status"] == "FAIL"])
+
+    def test_an_unknown_project_is_refused(self) -> None:
+        self._write_sidecar()
+        with self.assertRaises(DatasetError):
+            self.datasets.register("PRJ-NOPE", self.path)
+
+
+class CatalogTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.registry = DomainRegistry()
+        self.catalog = Catalog(self.registry)
+
+    def test_a_builtin_algorithm_is_available(self) -> None:
+        model = self.catalog.register_model(
+            "MDL-1", "像元差分", "1.0", "algorithm", "change_detection", "builtin:change_detection", True
+        )
+        self.assertTrue(model.payload["available"])
+
+    def test_an_unimplemented_builtin_is_marked_unavailable(self) -> None:
+        model = self.catalog.register_model(
+            "MDL-2", "未实现", "1.0", "algorithm", "x", "builtin:not_there", True
+        )
+        self.assertFalse(model.payload["available"])
+        self.assertIn("not implemented", model.payload["reason"])
+
+    def test_a_missing_external_path_is_unavailable(self) -> None:
+        tool = self.catalog.register_tool(
+            "TL-1", "GDAL", "3.8", "gis", "external:D:/nope/gdal.exe", True
+        )
+        self.assertFalse(tool.payload["available"])
+
+    def test_an_agent_needs_registered_dependencies(self) -> None:
+        with self.assertRaises(CatalogError):
+            self.catalog.register_agent("AG-1", "变化检测 Agent", "1.0", "sequential", ["MDL-X"], [])
+
+    def test_an_agent_inherits_dependency_availability(self) -> None:
+        self.catalog.register_model(
+            "MDL-1", "像元差分", "1.0", "algorithm", "change_detection", "builtin:change_detection", True
+        )
+        self.catalog.register_tool(
+            "TL-1", "ASCII 差分", "1.0", "raster", "builtin:ascii_raster_diff", True
+        )
+        agent = self.catalog.register_agent("AG-1", "变化检测 Agent", "1.0", "sequential", ["MDL-1"], ["TL-1"])
+        self.assertTrue(agent.payload["available"])
+
+
+class ReviewAndTraceTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tempdir = tempfile.mkdtemp(prefix="geoops-hit-")
+        self.registry = DomainRegistry()
+        self.projects = ProjectRegistry(self.registry)
+        self.projects.register("PRJ-1", "P-1", "项目", "survey", "哈尔滨", "EPSG:4547", "1985")
+        self.tasks = TaskEngine(self.registry)
+        self.task = self.tasks.create("PRJ-1", "变化检测任务", "change_detection", actor="test")
+        self.tasks.transition(self.task.task_id, "READY", reason="资料齐", actor="test")
+        self.tasks.transition(self.task.task_id, "RUNNING", reason="开工", actor="test")
+        self.datasets = DatasetRegistry(self.registry, self.projects)
+        self.path = _grid(os.path.join(self.tempdir, "a.asc"))
+        with open(self.path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547"}, handle)
+        self.datasets.register("PRJ-1", self.path, task_id=self.task.task_id)
+        self.deliverable = self.registry.register(
+            ObjectType.DELIVERABLE,
+            "DLV-1",
+            {"task_id": self.task.task_id, "name": "变化掩膜"},
+        )
+        self.artifacts = ArtifactStore(root=self.tempdir, registry=self.registry)
+        mask = _grid(os.path.join(self.tempdir, "mask.asc"))
+        self.artifacts.register(mask, task_id=self.task.task_id, kind="change_mask", deliverable_id="DLV-1")
+        self.reviews = ReviewEngine(self.registry)
+        self.journal = RunJournal()
+        engine = WorkflowEngine()
+        run = engine.start(
+            [Node("R1", "规则门", lambda ctx: NodeResult(NodeStatus.PASS, "checked=3"))],
+            {},
+            run_id="RUN-1",
+        )
+        self.journal.record(run, task_id=self.task.task_id, project_id="PRJ-1")
+        self.tasks.attach_run(self.task.task_id, "RUN-1")
+        self.tasks.transition(self.task.task_id, "COMPLETED", reason="完成", actor="test")
+
+    def test_reject_requires_an_opinion(self) -> None:
+        with self.assertRaises(ReviewError):
+            self.reviews.submit("", "", "", "REJECT")
+        with self.assertRaises(ReviewError):
+            self.reviews.submit(self.task.task_id, "DLV-1", "审核员", "REJECT", "")
+        self.assertEqual(len(self.reviews.list()), 0)
+
+    def test_approve_marks_the_deliverable_accepted(self) -> None:
+        record = self.reviews.submit(self.task.task_id, "DLV-1", "审核员", "APPROVE", "符合要求")
+        self.assertEqual(record.payload["decision"], "APPROVE")
+        self.assertTrue(self.reviews.is_finally_accepted("DLV-1"))
+        self.assertEqual(self.registry.get("DLV-1").version, 2)
+
+    def test_an_accepted_deliverable_refuses_a_second_review(self) -> None:
+        self.reviews.submit(self.task.task_id, "DLV-1", "审核员", "APPROVE", "通过")
+        with self.assertRaises(ReviewError):
+            self.reviews.submit(self.task.task_id, "DLV-1", "另一位", "REJECT", "重新做")
+
+    def test_a_reject_leaves_the_deliverable_unaccepted(self) -> None:
+        self.reviews.submit(self.task.task_id, "DLV-1", "审核员", "REJECT", "边界不对")
+        self.assertFalse(self.reviews.is_finally_accepted("DLV-1"))
+
+    def test_trace_is_complete_when_every_link_exists(self) -> None:
+        self.reviews.submit(self.task.task_id, "DLV-1", "审核员", "APPROVE", "通过")
+        trace = build_trace(
+            self.registry, self.task.task_id, journal=self.journal,
+            artifacts=self.artifacts, reviews=self.reviews,
+        )
+        self.assertTrue(trace["complete"], trace["missing"])
+        kinds = {link["kind"] for link in trace["links"]}
+        for expected in ("project→task", "dataset→task", "run→task", "deliverable→task",
+                         "artifact→deliverable", "review→deliverable"):
+            self.assertIn(expected, kinds)
+        self.assertEqual(len(trace["rules"]), 1)
+
+    def test_trace_names_what_is_missing(self) -> None:
+        trace = build_trace(self.registry, self.task.task_id)
+        self.assertFalse(trace["complete"])
+        missing = {entry["name"] for entry in trace["missing"]}
+        self.assertIn("workflow_runs", missing)
+        self.assertIn("review", missing)
+
+
+if __name__ == "__main__":
+    unittest.main()

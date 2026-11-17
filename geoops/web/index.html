@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>布猫 · 测绘智序 — BUMAO GEOOPS</title>
+<link rel="stylesheet" href="/ui/ui.css">
+<script>
+  // 主题与字号在首帧前落地，避免暗色闪白
+  try {
+    var st = JSON.parse(localStorage.getItem("geoops.ui") || "{}");
+    if (st.theme) document.documentElement.dataset.theme = st.theme;
+    if (st.zoom) document.documentElement.style.setProperty("--fs-zoom", st.zoom);
+  } catch (e) {}
+</script>
+</head>
+<body>
+
+<aside class="rail">
+  <div class="brand">
+    <div class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+    <div>
+      <h1>布猫 · 测绘智序</h1>
+      <div class="en">Bumao GeoOps</div>
+    </div>
+    <span class="seal" aria-hidden="true">序</span>
+  </div>
+
+  <nav aria-label="主导航">
+    <a class="nav-item" href="#overview" data-nav="overview"><span class="no">01</span><span class="zh">总览</span><span class="hintn">RUN</span></a>
+    <a class="nav-item" href="#projects" data-nav="projects"><span class="no">02</span><span class="zh">项目</span><span class="hintn">PRJ</span></a>
+    <a class="nav-item" href="#tasks" data-nav="tasks"><span class="no">03</span><span class="zh">任务</span><span class="hintn">TSK</span></a>
+    <a class="nav-item" href="#resources" data-nav="resources"><span class="no">04</span><span class="zh">AI 资源</span><span class="hintn">CAT</span></a>
+    <a class="nav-item" href="#data" data-nav="data"><span class="no">05</span><span class="zh">数据</span><span class="hintn">DS</span></a>
+    <a class="nav-item" href="#runs" data-nav="runs"><span class="no">06</span><span class="zh">流程</span><span class="hintn">WF</span></a>
+    <a class="nav-item" href="#rules" data-nav="rules"><span class="no">07</span><span class="zh">规则</span><span class="hintn">RULE</span></a>
+    <a class="nav-item" href="#quality" data-nav="quality"><span class="no">08</span><span class="zh">质量</span><span class="hintn">QA</span></a>
+    <a class="nav-item" href="#artifacts" data-nav="artifacts"><span class="no">09</span><span class="zh">成果</span><span class="hintn">DLV</span></a>
+    <a class="nav-item" href="#reviews" data-nav="reviews"><span class="no">10</span><span class="zh">审核</span><span class="hintn">REV</span></a>
+    <a class="nav-item" href="#trace" data-nav="trace"><span class="no">11</span><span class="zh">追溯</span><span class="hintn">TRC</span></a>
+    <a class="nav-item" href="#settings" data-nav="settings"><span class="no">12</span><span class="zh">设置</span><span class="hintn">SYS</span></a>
+  </nav>
+
+  <div class="rail-foot">
+    <div class="tiercard">
+      <div class="k">Engineering tier</div>
+      <div class="v"><b>核心</b><span>CORE</span></div>
+      <ul>
+        <li id="railTierNote">登记于 docs/ENGINEERING_TIER.md</li>
+        <li id="railGaps">缺口按验收表逐项清理</li>
+      </ul>
+    </div>
+    <div class="legal">local only · no push</div>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="shell">
+
+    <div class="topbar">
+      <div class="toplabel"><span class="cn" id="topCurrent">总览</span><span class="en">Bumao GeoOps</span></div>
+      <span class="badge core"><span class="dot"></span>Core</span>
+      <span class="badge"><span class="dot"></span><span id="badgeVersion">v0.1.0</span></span>
+      <span class="badge"><span class="dot"></span><span id="badgeKernel">kernel —</span></span>
+      <span class="badge" id="badgeLink"><span class="dot"></span><span id="badgeLinkText">连接中</span></span>
+
+      <span class="spacer"></span>
+
+      <div class="ctrl" title="写入口与审计读取需要令牌；令牌只存在本页 sessionStorage">
+        <label for="token">Token</label>
+        <input id="token" type="password" placeholder="输入访问令牌" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="ctrl" title="字号">
+        <button class="iconbtn" data-zoom="-1" aria-label="缩小字号">A−</button>
+        <button class="iconbtn" data-zoom="1" aria-label="放大字号">A+</button>
+      </div>
+      <button class="iconbtn" id="themeBtn" aria-label="切换明暗" title="深空 / 纸面">◐</button>
+    </div>
+
+    <!-- 01 总览 -->
+    <section class="section on" id="overview">
+      <div class="masthead">
+        <div class="kicker">Survey governance · release 0.1</div>
+        <h2>测绘<em>智序</em></h2>
+        <p class="lead">规则先行、判定留痕、成果可核。只展示接口真实返回的内容：没有记录就写「未记录」，没有接口就写「未开放」。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">序</div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi celadon"><div class="k">Objects</div><div class="n" id="kpiObjects">—</div><div class="m">域对象</div><div class="bar"></div></div>
+        <div class="kpi cinnabar"><div class="k">Tasks</div><div class="n" id="kpiTasks">—</div><div class="m">测绘任务</div><div class="bar"></div></div>
+        <div class="kpi dai"><div class="k">Rules</div><div class="n" id="kpiRules">—</div><div class="m">已载规则</div><div class="bar"></div></div>
+        <div class="kpi gold"><div class="k">Artifacts</div><div class="n" id="kpiArtifacts">—</div><div class="m" id="kpiArtifactsNote">登记成果</div><div class="bar"></div></div>
+      </div>
+
+      <div class="grid2" style="margin-top:18px">
+        <div class="stack">
+          <div class="card">
+            <h3>Run principle <span class="zh">运行原则</span><span class="right"><span class="pill pass">REAL DATA</span></span></h3>
+            <div class="idcard">
+              <div class="row"><span class="k">Gate</span><span class="v">规则门在前 · 登记在后</span></div>
+              <div class="row"><span class="k">Quality</span><span class="v">文件 / 空间 / 专业三层</span></div>
+              <div class="row"><span class="k">Review</span><span class="v">人工签认才置 accepted</span></div>
+              <div class="row"><span class="k">Trace</span><span class="v">缺环写 NOT_RECORDED</span></div>
+            </div>
+            <div class="note">任何一层没有证据，结果只能是 PARTIAL 或 FAIL；不用推断补链，不用占位冒充真实。</div>
+          </div>
+          <div class="card">
+            <h3>Module map <span class="zh">十二模块</span></h3>
+            <div class="idcard">
+              <div class="row"><span class="k">I · 治理</span><span class="v">总览 · 项目 · 任务</span></div>
+              <div class="row"><span class="k">II · 作业</span><span class="v">AI 资源 · 数据 · 流程 · 规则</span></div>
+              <div class="row"><span class="k">III · 验收</span><span class="v">质量 · 成果 · 审核</span></div>
+              <div class="row"><span class="k">IV · 证据</span><span class="v">追溯 · 设置</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack">
+          <div class="card">
+            <h3>Engineering <span class="zh">工程身份</span></h3>
+            <div class="idcard">
+              <div class="row"><span class="k">Tier</span><span class="v">核心工程 · CORE</span></div>
+              <div class="row"><span class="k">Version</span><span class="v mono" id="idVersion">0.1.0</span></div>
+              <div class="row"><span class="k">Kernel</span><span class="v mono" id="idKernel">v0.2.2 · read-only</span></div>
+              <div class="row"><span class="k">Storage</span><span class="v mono">snapshot · single file</span></div>
+              <div class="row"><span class="k">Publish</span><span class="v" style="color:var(--cinnabar)">未发布</span></div>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Gaps <span class="zh">未清门槛</span></h3>
+            <ul class="gap-list">
+              <li><span class="n">1</span>真实 AI 模型与外部 GIS 适配器待接</li>
+              <li><span class="n">2</span>真实遥感影像与专业抽样待用户提供</li>
+              <li><span class="n">3</span>Agent 自动执行器仍只做目录登记</li>
+              <li><span class="n">4</span>跨进程文件锁未做</li>
+              <li><span class="n">5</span>统一身份源未接，轮换靠人工</li>
+              <li><span class="n">6</span>未发布：等级 ≠ 发布资格</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 02 项目 -->
+    <section class="section" id="projects">
+      <div class="masthead">
+        <div class="kicker">Project registry · six required fields</div>
+        <h2>项目<em>登记</em></h2>
+        <p class="lead">项目编号、名称、类型、区域、坐标参考、高程基准六项必填；编号唯一，缺一项即拒绝。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">项</div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Projects <span class="zh">项目册</span><span class="right"><span class="pill idle" id="projectsCount">—</span></span></h3>
+          <div class="toolbar">
+            <span class="spacer"></span>
+            <button class="btn ghost" id="projectReload">刷新</button>
+          </div>
+          <div id="projectRows"></div>
+          <div class="note">项目是任务、数据集、成果追溯的根。登记后不可用同编号重复建项。</div>
+        </div>
+        <div class="card">
+          <h3>Register project <span class="zh">登记项目</span></h3>
+          <form class="wform" id="projectForm" autocomplete="off">
+            <div class="wgrid">
+              <label class="field"><span>项目 id</span><input name="project_id" placeholder="PRJ-xxxx" required></label>
+              <label class="field"><span>项目编号</span><input name="project_code" placeholder="内部唯一编号" required></label>
+              <label class="field"><span>项目名称</span><input name="name" placeholder="项目全称" required></label>
+              <label class="field"><span>项目类型</span><input name="project_type" placeholder="survey / mapping" required></label>
+              <label class="field"><span>区域</span><input name="area" placeholder="行政区或测区" required></label>
+              <label class="field"><span>坐标参考</span><input name="crs" placeholder="EPSG:4547" required></label>
+              <label class="field"><span>高程基准</span><input name="vertical_datum" placeholder="1985 国家高程基准" required></label>
+            </div>
+            <div class="wrow">
+              <button class="btn" type="submit">登记项目</button>
+              <span class="wmsg" id="projectMsg"></span>
+            </div>
+            <div class="note">需要 <code>project:write</code>。缺字段或编号重复时服务端原文拒绝，不落半条记录。</div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- 03 任务 -->
+    <section class="section" id="tasks">
+      <div class="masthead">
+        <div class="kicker">Task engine · state machine</div>
+        <h2>任务<em>台账</em></h2>
+        <p class="lead">七态状态机：非法迁移被拒且不落半条记录；完成与取消必须写理由。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">务</div>
+      </div>
+
+      <div class="card">
+        <h3>Survey tasks <span class="zh">测绘任务</span><span class="right"><span class="pill idle" id="tasksCount">—</span></span></h3>
+        <div class="toolbar">
+          <div class="seg" id="taskSeg" role="group" aria-label="按状态筛选">
+            <button data-status="" aria-pressed="true">全部</button>
+            <button data-status="DRAFT" aria-pressed="false">草稿</button>
+            <button data-status="READY" aria-pressed="false">就绪</button>
+            <button data-status="RUNNING" aria-pressed="false">运行</button>
+            <button data-status="COMPLETED" aria-pressed="false">完成</button>
+            <button data-status="FAILED" aria-pressed="false">失败</button>
+          </div>
+          <div class="search"><input id="taskSearch" placeholder="按 id / 名称 / 项目筛选" aria-label="筛选任务"></div>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="taskReload">刷新</button>
+        </div>
+        <div id="taskTable"></div>
+      </div>
+
+      <div class="card" id="taskWrite">
+        <h3>Write actions <span class="zh">写操作</span><span class="right"><span class="pill idle" id="writePill">需令牌</span></span></h3>
+        <div class="wgrid">
+          <form class="wform" id="createForm">
+            <div class="wt">新建任务 <span>POST /api/v1/tasks</span></div>
+            <label class="field"><span>项目 id</span><input id="newProject" placeholder="PRJ-CONSOLE-001" autocomplete="off"></label>
+            <label class="field"><span>任务名称</span><input id="newName" placeholder="变化检测 2026-11" autocomplete="off"></label>
+            <label class="field"><span>任务类型</span><input id="newType" placeholder="change_detection" autocomplete="off"></label>
+            <div class="wrow"><button class="btn" id="createSubmit" type="submit">创建</button><span class="wmsg" id="createMsg"></span></div>
+            <div class="note">需要 <code>task:create</code>。服务端在读 body 之前校验令牌；没有权限就写不进去。</div>
+          </form>
+          <form class="wform" id="transitionForm">
+            <div class="wt">迁移状态 <span>POST /api/v1/tasks/&lt;id&gt;/transitions</span></div>
+            <label class="field"><span>任务 id</span><input id="moveTask" placeholder="从下表点「迁移」带入" autocomplete="off"></label>
+            <label class="field"><span>目标状态</span><select id="moveTarget"><option value="">先填任务</option></select></label>
+            <label class="field"><span>理由</span><input id="moveReason" placeholder="完成 / 取消必须写理由" autocomplete="off"></label>
+            <div class="wrow"><button class="btn" id="moveSubmit" type="submit">迁移</button><span class="wmsg" id="moveMsg"></span></div>
+            <div class="note">需要 <code>task:transition</code>。目标状态只列该任务当前允许迁移的项，非法边会被服务端拒绝。</div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- 04 AI 资源 -->
+    <section class="section" id="resources">
+      <div class="masthead">
+        <div class="kicker">Model / tool / agent · honest availability</div>
+        <h2>AI <em>资源</em></h2>
+        <p class="lead">模型、工具、Agent 分开登记。builtin 必须是真实实现，external 路径不存在即标不可用；Agent 引用未知依赖直接拒绝。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">器</div>
+      </div>
+
+      <div class="card">
+        <h3>Resource catalog <span class="zh">资源目录</span><span class="right"><span class="pill idle" id="catalogCount">—</span></span></h3>
+        <div class="toolbar">
+          <span class="spacer"></span>
+          <button class="btn ghost" id="catalogReload">刷新</button>
+        </div>
+        <div class="catalog3" id="catalogRows"></div>
+        <div class="note">可用性不是标签：builtin 适配器必须是本仓真实实现，external 必须指向存在的路径；不可用会带原因。Agent 引用未登记的模型或工具会被拒绝。</div>
+      </div>
+
+      <div class="card">
+        <h3>Register resource <span class="zh">登记资源</span></h3>
+        <form class="wform" id="catalogForm" autocomplete="off">
+          <div class="wgrid">
+            <label class="field"><span>资源 id</span><input name="resource_id" placeholder="MOD-xxx / TOL-xxx / AGT-xxx" required></label>
+            <label class="field"><span>类型</span><select name="kind"><option value="Model">模型 Model</option><option value="Tool">工具 Tool</option><option value="Agent">Agent</option></select></label>
+            <label class="field"><span>名称</span><input name="name" placeholder="资源显示名称" required></label>
+            <label class="field"><span>版本</span><input name="version" placeholder="1" value="1"></label>
+            <label class="field"><span>适配器 / 路径</span><input name="adapter" placeholder="builtin:... 或 external:绝对路径" required></label>
+            <label class="field"><span>模型类型 / 工具类别</span>
+              <select name="subkind">
+                <option value="algorithm">模型 · algorithm</option>
+                <option value="ai-model">模型 · ai-model</option>
+                <option value="gis">工具 · gis</option>
+                <option value="raster">工具 · raster</option>
+                <option value="vector">工具 · vector</option>
+                <option value="conversion">工具 · conversion</option>
+              </select>
+            </label>
+            <label class="field"><span>能力 / 类别</span><input name="capability" placeholder="change_detection / raster / orchestrator"></label>
+          </div>
+          <label class="field"><span>Agent 依赖（模型 id 与工具 id，逗号分隔）</span><input name="depends_on" placeholder="MOD-xxx, TOL-xxx"></label>
+          <div class="wrow">
+            <button class="btn" type="submit">登记资源</button>
+            <span class="wmsg" id="catalogMsg"></span>
+          </div>
+          <div class="note">需要 <code>catalog:write</code>。外部路径必须已存在且可读；不可用的资源仍会入册，但会写明原因，不会伪装可用。</div>
+        </form>
+      </div>
+    </section>
+
+    <!-- 05 数据 -->
+    <section class="section" id="data">
+      <div class="masthead">
+        <div class="kicker">Geospatial data · hash and CRS on read</div>
+        <h2>数据<em>接入</em></h2>
+        <p class="lead">数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 classic GeoTIFF 头；复核重探测，文件内容变化即 FAIL。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">据</div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Datasets <span class="zh">数据集</span><span class="right"><span class="pill idle" id="datasetsCount">—</span></span></h3>
+          <div class="toolbar">
+            <span class="spacer"></span>
+            <button class="btn ghost" id="datasetReload">刷新</button>
+          </div>
+          <div id="datasetRows"></div>
+        </div>
+        <div class="card">
+          <h3>Register dataset <span class="zh">登记数据集</span></h3>
+          <form class="wform" id="datasetForm" autocomplete="off">
+            <div class="wgrid">
+              <label class="field"><span>项目 id</span><input name="project_id" placeholder="已登记项目" required></label>
+              <label class="field"><span>任务 id（可选）</span><input name="task_id" placeholder="绑定到任务后进入追溯链"></label>
+            </div>
+            <label class="field"><span>文件绝对路径</span><input name="path" placeholder="<path>\grid.asc" required></label>
+            <label class="field"><span>标签</span><input name="label" placeholder="例如 一期影像"></label>
+            <div class="wrow">
+              <button class="btn" type="submit">读取并登记</button>
+              <span class="wmsg" id="datasetMsg"></span>
+            </div>
+            <div class="note">同名 sidecar <code>&lt;file&gt;.json</code> 需写 <code>{"crs":"EPSG:4547"}</code>；无 CRS 或文件不存在会被拒绝。BigTIFF 与像元解码明确不支持。</div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- 06 流程 -->
+    <section class="section" id="runs">
+      <div class="masthead">
+        <div class="kicker">Workflow · gate → compare → register</div>
+        <h2>流程<em>运行</em></h2>
+        <p class="lead">一次运行里规则门在前、登记在后：判定不过，成果不会被登记。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">流</div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Run history <span class="zh">运行历史</span><span class="right"><span class="pill idle" id="runsCount">—</span></span></h3>
+          <div class="toolbar"><button class="btn ghost" id="runReload">刷新</button></div>
+          <div id="runTable"></div>
+          <div class="note">运行完成才写一行日志（<code>fsync</code> 后才返回）；重复 run_id 拒绝，坏行整份拒载。</div>
+        </div>
+        <div class="card">
+          <h3>Chain <span class="zh">登记链路</span></h3>
+          <ul class="tl">
+            <li><span class="t">GATE</span><span class="e"><b>规则门</b> · CRS / 格距 / 两期一致性</span></li>
+            <li><span class="t">COMPUTE</span><span class="e"><b>变化检测</b> · 逐格差分 + 4 邻域斑块 + 最小面积</span></li>
+            <li><span class="t">WRITE</span><span class="e"><b>掩膜写出</b> · 源头信息保留，nodata 仍为 nodata</span></li>
+            <li><span class="t">REGISTER</span><span class="e"><b>成果登记</b> · 真文件、真 sha256、绑已登记成果</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 07 规则 -->
+    <section class="section" id="rules">
+      <div class="masthead">
+        <div class="kicker">Rule packs · declarative</div>
+        <h2>规则<em>包</em></h2>
+        <p class="lead">规则是数据不是代码：校验器缺失或异常判 ERROR，条件不满足判 SKIPPED，两者都不升格为 PASS。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">规</div>
+      </div>
+
+      <div class="card">
+        <h3>Loaded packs <span class="zh">已载规则包</span><span class="right"><span class="pill idle" id="rulesCount">—</span></span></h3>
+        <div id="packList"></div>
+        <div class="note">规则包整包校验后装载：缺字段、severity 非法、id 重复、与已载冲突都会整包拒绝，不半装。</div>
+      </div>
+
+      <div id="ruleGroups"></div>
+    </section>
+
+    <!-- 08 质量 -->
+    <section class="section" id="quality">
+      <div class="masthead">
+        <div class="kicker">Quality assurance · three layers</div>
+        <h2>质量<em>检查</em></h2>
+        <p class="lead">文件与结构、空间数据、专业成果验证三层。第三层没有人工抽样与书面依据，只能是 NOT_RECORDED，汇总结果只能是 PARTIAL。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">质</div>
+      </div>
+
+      <div class="quality-grid">
+        <div class="card">
+          <h3>Run check <span class="zh">发起质检</span></h3>
+          <form class="wform" id="qualityForm" autocomplete="off">
+            <div class="wgrid">
+              <label class="field"><span>检查对象</span>
+                <select id="qualityTargetType" name="target_type">
+                  <option value="dataset">数据集 Dataset</option>
+                  <option value="deliverable">成果 Deliverable</option>
+                </select>
+              </label>
+              <label class="field"><span>对象 id</span><input id="qualityTargetId" name="target_id" placeholder="DS-xxxx 或 DLV-xxxx" required></label>
+              <label class="field"><span>任务 id（可空）</span><input id="qualityTaskId" name="task_id" placeholder="绑定追溯链"></label>
+              <label class="field"><span>操作人</span><input id="qualityActor" name="actor" placeholder="姓名或工号"></label>
+            </div>
+            <label class="field inline"><input id="qualitySample" name="professional_sample" type="checkbox"><span>已完成人工抽样 / 专业核验</span></label>
+            <label class="field"><span>专业抽样依据（勾选后必填）</span><textarea id="qualitySampleNote" name="sample_note" placeholder="抽样位置、样本编号、核验结论"></textarea></label>
+            <div class="wrow">
+              <button class="btn" id="qualityRun" type="submit">执行三层质检</button>
+              <span class="wmsg" id="qualityMsg"></span>
+            </div>
+            <div class="note">需要 <code>quality:write</code>。质检报告会写入 <code>var/quality</code> 并以 QualityReport 入域，不是只在前端算一遍。</div>
+          </form>
+        </div>
+
+        <div class="card">
+          <h3>Latest result <span class="zh">本次判定</span></h3>
+          <div id="qualityResult"><div class="empty"><div class="glyph">待</div><div><h4>尚未执行</h4><p>选择数据集或成果后执行三层质检；结果、逐项证据与报告路径会出现在这里。</p></div></div></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Quality reports <span class="zh">质检报告</span><span class="right"><span class="pill idle" id="qualityCount">—</span><button class="btn ghost sm" id="qualityReload">刷新</button></span></h3>
+        <div id="qualityReportRows"></div>
+      </div>
+    </section>
+
+    <!-- 09 成果 -->
+    <section class="section" id="artifacts">
+      <div class="masthead">
+        <div class="kicker">Deliverables · versions and archive</div>
+        <h2>成果<em>簿</em></h2>
+        <p class="lead">成果登记读真实文件：哈希、大小、路径当场记录；人工审核通过后才 accepted，之后才允许归档。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">果</div>
+      </div>
+
+      <div class="card">
+        <h3>Registered deliverables <span class="zh">已登记成果</span><span class="right"><span class="pill idle" id="deliverableCount">—</span><button class="btn ghost sm" id="deliverableReload">刷新</button></span></h3>
+        <div id="deliverableRows"></div>
+        <div class="note">「归档」只在 accepted 后开放。归档不会改动文件，只把成果状态与归档人、时间写入域对象。</div>
+      </div>
+
+      <div class="card">
+        <h3>Register deliverable <span class="zh">登记成果</span></h3>
+        <form class="wform" id="deliverableForm" autocomplete="off">
+          <div class="wgrid">
+            <label class="field"><span>任务 id</span><input id="deliverableTask" name="task_id" placeholder="TSK-xxxx" required></label>
+            <label class="field"><span>成果名称</span><input id="deliverableName" name="name" placeholder="变化检测成果 v1" required></label>
+            <label class="field"><span>成果类型</span><input id="deliverableKind" name="kind" placeholder="change_mask / report / ortho"></label>
+            <label class="field"><span>版本</span><input id="deliverableVersion" name="version" placeholder="1" value="1"></label>
+          </div>
+          <label class="field"><span>文件绝对路径</span><input id="deliverablePath" name="path" placeholder="<path>\change_mask.asc" required></label>
+          <label class="field"><span>备注</span><input id="deliverableNotes" name="notes" placeholder="范围、来源、限制"></label>
+          <div class="wrow">
+            <button class="btn" type="submit">登记成果</button>
+            <span class="wmsg" id="deliverableMsg"></span>
+          </div>
+          <div class="note">需要 <code>deliverable:write</code>。路径必须存在且为普通文件；符号链接与目录一律拒绝。</div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h3>Registered files <span class="zh">文件簿</span><span class="right"><span class="pill idle" id="artifactsCount">—</span></span></h3>
+        <div class="toolbar">
+          <div class="search"><input id="artifactSearch" placeholder="按成果 id / 文件名 / 任务筛选" aria-label="筛选成果"></div>
+          <span class="spacer"></span>
+          <button class="btn ghost" id="artifactReload">刷新</button>
+        </div>
+        <div id="artifactTable"></div>
+      </div>
+    </section>
+
+    <!-- 10 审核 -->
+    <section class="section" id="reviews">
+      <div class="masthead">
+        <div class="kicker">Human review · final acceptance</div>
+        <h2>审核<em>签认</em></h2>
+        <p class="lead">成果只有经人工通过才置为 accepted；驳回或返工必须写意见，已签认的成果拒绝二次审核。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">审</div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Review records <span class="zh">审核记录</span><span class="right"><span class="pill idle" id="reviewsCount">—</span></span></h3>
+          <div class="toolbar">
+            <span class="spacer"></span>
+            <button class="btn ghost" id="reviewReload">刷新</button>
+          </div>
+          <div id="reviewRows"></div>
+        </div>
+        <div class="card">
+          <h3>Submit review <span class="zh">提交审核</span></h3>
+          <form class="wform" id="reviewForm" autocomplete="off">
+            <div class="wgrid">
+              <label class="field"><span>任务 id</span><input name="task_id" placeholder="TSK-xxxx" required></label>
+              <label class="field"><span>成果 id</span><input name="deliverable_id" placeholder="DLV-xxxx" required></label>
+              <label class="field"><span>审核人</span><input name="reviewer" placeholder="姓名或工号" required></label>
+              <label class="field"><span>结论</span>
+                <select name="decision">
+                  <option value="APPROVE">通过</option>
+                  <option value="REJECT">驳回</option>
+                  <option value="RERUN">返工</option>
+                </select>
+              </label>
+            </div>
+            <label class="field"><span>意见（驳回 / 返工必填）</span><input name="opinion" placeholder="具体问题与依据"></label>
+            <div class="wrow">
+              <button class="btn" type="submit">写入审核记录</button>
+              <span class="wmsg" id="reviewMsg"></span>
+            </div>
+            <div class="note">需要 review:write。记录写入同时改成果状态；通过即最终验收，驳回或返工不签认。</div>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- 11 追溯 -->
+    <section class="section" id="trace">
+      <div class="masthead">
+        <div class="kicker">Trace · task to sources and signature</div>
+        <h2>反向<em>追溯</em></h2>
+        <p class="lead">从任务串回项目、数据集、运行、规则、成果、文件与审核；缺失的一环写 NOT_RECORDED，不拿推断补链。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">溯</div>
+      </div>
+
+      <div class="card">
+        <h3>Build trace <span class="zh">生成追溯链</span><span class="right"><span class="pill idle" id="auditPill">需令牌</span></span></h3>
+        <div class="toolbar">
+          <div class="search"><input id="traceTaskId" placeholder="输入任务 id，例如 TSK-xxxx" aria-label="任务 id"></div>
+          <button class="btn" id="traceLoad">生成</button>
+          <span class="wmsg" id="traceMsg"></span>
+        </div>
+        <div id="traceBox"><div class="empty"><div class="glyph">待</div><div><h4>还没有生成追溯链</h4><p>输入已登记任务 id，系统按项目→数据集→运行→规则→成果→文件→审核逐环取证。</p></div></div></div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Audit rows <span class="zh">审计记录</span><span class="right"><span class="pill idle" id="auditCount">—</span></span></h3>
+          <div class="toolbar">
+            <div class="search"><input id="auditSearch" placeholder="按路径 / 原由 / 令牌前缀筛选" aria-label="筛选审计"></div>
+            <span class="spacer"></span>
+            <button class="btn ghost" id="auditReload">刷新</button>
+          </div>
+          <div id="auditTable"></div>
+        </div>
+        <div class="card">
+          <h3>Recent audit <span class="zh">最近审计</span></h3>
+          <div id="auditMini"><div class="empty"><div class="glyph">未</div><div><h4>尚未读取</h4><p>审计接口需要 <code>audit:read</code> 权限的令牌。在右上角填入令牌后，这里会显示真实记录。</p></div></div></div>
+          <div class="note">鉴权发生在读取请求体之前；拒绝也留痕，令牌只记哈希前八位。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 12 设置 -->
+    <section class="section" id="settings">
+      <div class="masthead">
+        <div class="kicker">System · roles and permission matrix</div>
+        <h2>系统<em>设置</em></h2>
+        <p class="lead">这里展示服务端真实权限矩阵与调用方令牌授权，不在前端伪造角色。没有令牌就只能读公开接口。</p>
+        <div class="rule-line"></div>
+        <div class="seal" aria-hidden="true">设</div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <h3>Caller <span class="zh">调用方</span><span class="right"><span class="pill idle" id="callerPill">读取中</span></span></h3>
+          <div class="idcard" id="settingsIdentity"></div>
+          <div class="note">令牌只存本页 <code>sessionStorage</code>，不会写入磁盘。权限由服务端 <code>api/security.py</code> 的 PERMISSIONS 与授权文件决定。</div>
+        </div>
+        <div class="card">
+          <h3>Storage <span class="zh">存储与策略</span></h3>
+          <div class="idcard" id="settingsStorage"></div>
+          <div class="note">域对象、运行日志、成果簿与质检报告的真实配置状态在这里展示；未配置就写「未配置」。</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Role matrix <span class="zh">角色与权限</span></h3>
+        <div id="settingsRoles"></div>
+      </div>
+
+      <div class="card">
+        <h3>Permission keys <span class="zh">权限键</span></h3>
+        <div id="settingsPerms"></div>
+        <div class="note">权限键是写操作的边界。GET 公开接口不要求令牌；审计读取与所有写入口都要求对应权限。</div>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <span class="markline">BUMAO GEOOPS</span><span>·</span><span>RELEASE 0.1</span><span>·</span>
+      <span>CORE TIER REGISTERED</span><span>·</span><span>LOCAL ONLY · NO PUSH</span>
+    </footer>
+  </div>
+</main>
+
+<script src="/ui/ui.js"></script>
+</body>
+</html>
