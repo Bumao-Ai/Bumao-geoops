@@ -159,6 +159,8 @@ class WorkflowService:
                         prompt_key=spec.get("prompt_key") or "prompt",
                         system=spec.get("system") or "",
                         max_tokens=spec.get("max_tokens") or 512,
+                        max_steps=int(spec.get("max_steps") or 8),
+                        rules=self.rules,
                     )
                 )
             elif node_type in ("model_chat", "model_call"):
@@ -187,15 +189,16 @@ class WorkflowService:
         """Apply declared input aliases and retry/failure policy to the node."""
         retry = max(0, int(spec.get("retry") or 0))
         failure_action = str(spec.get("failure_action") or "stop").strip().lower()
+        policy = {
+            "retry": retry,
+            "failure_action": failure_action,
+            "preconditions": list(spec.get("preconditions") or []),
+            "success_condition": str(spec.get("success_condition") or ""),
+            "outputs": dict(spec.get("outputs") or {}),
+        }
         inputs = spec.get("inputs") or {}
         if not inputs:
-            return Node(
-                node.node_id,
-                node.name,
-                node.action,
-                retry=retry,
-                failure_action=failure_action,
-            )
+            return Node(node.node_id, node.name, node.action, **policy)
         original = node.action
 
         def action(context: Dict[str, Any]) -> Any:
@@ -204,13 +207,7 @@ class WorkflowService:
                     context[target] = context[source]
             return original(context)
 
-        return Node(
-            node.node_id,
-            node.name,
-            action,
-            retry=retry,
-            failure_action=failure_action,
-        )
+        return Node(node.node_id, node.name, action, **policy)
 
     def _previous_run(self, run_id: str) -> WorkflowRun:
         previous = self.engine.get(run_id)

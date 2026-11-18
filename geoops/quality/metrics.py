@@ -1,8 +1,8 @@
 """Pixel-level accuracy for two aligned masks.
 
-This module deliberately does not pretend to read GeoTIFF. It reads ESRI ASCII
-grids (the same fixture format used by the local demo) and reports a real
-confusion matrix. A synthetic reference is allowed for testing, but the
+Reads ESRI ASCII grids or classic GeoTIFF masks (first band) and reports a real
+confusion matrix. A GeoTIFF without pixel scale/tiepoint is refused because its
+cells cannot be aligned. A synthetic reference is allowed for testing, but the
 returned object carries ``synthetic_reference`` only when the caller says so;
 the arithmetic itself is never fabricated.
 """
@@ -74,6 +74,28 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
     }
 
 
+def read_mask_grid(path: str) -> Dict[str, Any]:
+    """Read an ASCII or GeoTIFF mask; GeoTIFF must carry georeferencing."""
+    suffix = os.path.splitext(str(path or ""))[1].lower()
+    if suffix in (".tif", ".tiff"):
+        from geoops.survey.change import ChangeError, read_raster_grid
+
+        try:
+            grid = read_raster_grid(path)
+        except ChangeError as exc:
+            raise MetricsError("cannot read GeoTIFF mask %s: %s" % (path, exc)) from exc
+        nodata = grid["header"].get("nodata_value")
+        return {
+            "path": os.path.abspath(path),
+            "ncols": grid["ncols"],
+            "nrows": grid["nrows"],
+            "cellsize": grid["cellsize"],
+            "nodata": float(nodata) if nodata is not None else -9999.0,
+            "values": grid["values"],
+        }
+    return read_ascii_grid(path)
+
+
 def compare_masks(
     reference_path: str,
     predicted_path: str,
@@ -85,8 +107,8 @@ def compare_masks(
     A cell is positive when its value is greater than ``threshold`` and is not
     NODATA. Cells where either grid is NODATA are excluded and counted.
     """
-    reference = read_ascii_grid(reference_path)
-    predicted = read_ascii_grid(predicted_path)
+    reference = read_mask_grid(reference_path)
+    predicted = read_mask_grid(predicted_path)
     if reference["ncols"] != predicted["ncols"] or reference["nrows"] != predicted["nrows"]:
         raise MetricsError(
             "grid dimensions differ: %dx%d vs %dx%d"

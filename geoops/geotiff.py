@@ -12,12 +12,22 @@ registry on a machine where no geospatial library is installed.
 from __future__ import annotations
 
 import struct
+import zlib
 from typing import Any, Dict, List, Optional
 
 TAG_WIDTH = 256
 TAG_HEIGHT = 257
 TAG_BITS = 258
+TAG_COMPRESSION = 259
+TAG_PHOTOMETRIC = 262
+TAG_STRIP_OFFSETS = 273
 TAG_SAMPLES = 277
+TAG_ROWS_PER_STRIP = 278
+TAG_STRIP_BYTE_COUNTS = 279
+TAG_PLANAR_CONFIG = 284
+TAG_PREDICTOR = 317
+TAG_SAMPLE_FORMAT = 339
+TAG_GDAL_NODATA = 42113
 TAG_PIXEL_SCALE = 33550
 TAG_TIEPOINT = 33922
 TAG_GEOKEYS = 34735
@@ -63,7 +73,7 @@ def _read_field(data: bytes, endian: str, typ: int, count: int, raw: bytes) -> A
     raise GeoTiffError("unsupported TIFF field type %d" % typ)
 
 
-def probe_geotiff(path: str) -> Dict[str, Any]:
+def _read_entries(path: str):
     with open(path, "rb") as handle:
         head = handle.read(8)
         if len(head) < 8:
@@ -79,9 +89,14 @@ def probe_geotiff(path: str) -> Dict[str, Any]:
         ifd_offset = _unpack(endian + "I", head[4:8])[0]
         handle.seek(0)
         raw_file = handle.read()
-        entries = {}
-        for tag, typ, n, raw in _iter_entries(raw_file, endian, ifd_offset):
-            entries[tag] = _read_field(raw_file, endian, typ, n, raw)
+    entries = {}
+    for tag, typ, n, raw in _iter_entries(raw_file, endian, ifd_offset):
+        entries[tag] = _read_field(raw_file, endian, typ, n, raw)
+    return endian, raw_file, entries
+
+
+def probe_geotiff(path: str) -> Dict[str, Any]:
+    endian, raw_file, entries = _read_entries(path)
 
     width = _first(entries.get(TAG_WIDTH))
     height = _first(entries.get(TAG_HEIGHT))
@@ -126,6 +141,123 @@ def probe_geotiff(path: str) -> Dict[str, Any]:
         "crs": crs,
         "bounds": bounds,
         "pixel_size": pixel_size,
+    }
+
+
+def read_geotiff_pixels(path: str) -> Dict[str, Any]:
+    """Decode classic TIFF strips for uncompressed/Deflate and chunky bands.
+
+    LZW, tiled layouts and separate planar bands are refused explicitly. No
+    value is guessed: a missing strip or a short decode is an error.
+    """
+    endian, raw_file, entries = _read_entries(path)
+    width = _first(entries.get(TAG_WIDTH))
+    height = _first(entries.get(TAG_HEIGHT))
+    samples = _first(entries.get(TAG_SAMPLES)) or 1
+    bit_values = entries.get(TAG_BITS) or []
+    bits = int(bit_values[0]) if bit_values else 8
+    compression = _first(entries.get(TAG_COMPRESSION)) or 1
+    planar = _first(entries.get(TAG_PLANAR_CONFIG)) or 1
+    predictor = _first(entries.get(TAG_PREDICTOR)) or 1
+    sample_format = _first(entries.get(TAG_SAMPLE_FORMAT)) or 1
+    if not width or not height:
+        raise GeoTiffError("TIFF has no image width/height")
+    if bits not in (8, 16, 32):
+        raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
+    if compression not in (1, 8, 32946):
+        raise GeoTiffError(
+            "unsupported TIFF compression %s; uncompressed or Deflate only" % compression
+        )
+    if planar != 1:
+        raise GeoTiffError("separate planar TIFF bands are not supported")
+    if predictor not in (1, 2):
+        raise GeoTiffError("unsupported TIFF predictor: %s" % predictor)
+    if sample_format not in (1, 2, 3):
+        raise GeoTiffError("unsupported SampleFormat: %s" % sample_format)
+    if 322 in entries or 323 in entries or 324 in entries or 325 in entries:
+        raise GeoTiffError("tiled TIFF is not supported; use strips")
+    offsets = entries.get(TAG_STRIP_OFFSETS)
+    byte_counts = entries.get(TAG_STRIP_BYTE_COUNTS)
+    if not isinstance(offsets, list) or not offsets:
+        raise GeoTiffError("TIFF has no StripOffsets")
+    if not isinstance(byte_counts, list) or len(byte_counts) != len(offsets):
+        raise GeoTiffError("TIFF StripByteCounts do not match StripOffsets")
+
+    bytes_per_sample = bits // 8
+    total = int(width) * int(height) * int(samples)
+    values: List[float] = []
+    for offset, count in zip(offsets, byte_counts):
+        if offset < 0 or count <= 0 or offset + count > len(raw_file):
+            raise GeoTiffError("TIFF strip points outside the file")
+        raw = raw_file[int(offset):int(offset) + int(count)]
+        if compression in (8, 32946):
+            try:
+                raw = zlib.decompress(raw)
+            except zlib.error as exc:
+                raise GeoTiffError("Deflate strip is corrupt: %s" % exc) from exc
+        expected_bytes = len(raw) // bytes_per_sample
+        if expected_bytes <= 0:
+            raise GeoTiffError("empty TIFF strip")
+        if bits == 8:
+            fmt = ("%db" if sample_format == 2 else "%dB") % expected_bytes
+            if sample_format == 3:
+                raise GeoTiffError("8-bit float samples are invalid")
+        elif bits == 16:
+            fmt = "%d%s" % (expected_bytes, "h" if sample_format == 2 else "H")
+            if sample_format == 3:
+                raise GeoTiffError("16-bit float samples are not supported")
+        else:
+            fmt = "%d%s" % (expected_bytes, {1: "I", 2: "i", 3: "f"}[sample_format])
+        try:
+            strip_values = list(struct.unpack(endian + fmt, raw))
+        except struct.error as exc:
+            raise GeoTiffError("TIFF strip is truncated: %s" % exc) from exc
+        values.extend(float(value) for value in strip_values)
+
+    if predictor == 2:
+        # TIFF horizontal differencing is per row; reverse it before use.
+        row_values = int(width) * int(samples)
+        if row_values and len(values) % row_values == 0:
+            for start in range(0, len(values), row_values):
+                for index in range(start + samples, start + row_values):
+                    values[index] = values[index] + values[index - samples]
+
+    if len(values) < total:
+        raise GeoTiffError(
+            "TIFF decoded %d samples, expected %d" % (len(values), total)
+        )
+    values = values[:total]
+
+    scale = entries.get(TAG_PIXEL_SCALE) or []
+    tie = entries.get(TAG_TIEPOINT) or []
+    nodata = None
+    raw_nodata = entries.get(TAG_GDAL_NODATA)
+    if isinstance(raw_nodata, str) and raw_nodata.strip().strip("\x00"):
+        try:
+            nodata = float(raw_nodata.strip().strip("\x00"))
+        except ValueError:
+            nodata = None
+    pixel_size = None
+    bounds = None
+    if len(scale) >= 2 and len(tie) >= 6:
+        sx, sy = float(scale[0]), float(scale[1])
+        i, j, _k, x, y, _z = [float(value) for value in tie[:6]]
+        left = x - i * sx
+        top = y + j * sy
+        bounds = [left, top - height * sy, left + width * sx, top]
+        pixel_size = [sx, sy]
+
+    return {
+        "driver": "GTiff",
+        "width": int(width),
+        "height": int(height),
+        "bands": int(samples),
+        "bits_per_sample": bits,
+        "compression": int(compression),
+        "values": values,
+        "nodata": nodata,
+        "pixel_size": pixel_size,
+        "bounds": bounds,
     }
 
 

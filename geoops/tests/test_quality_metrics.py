@@ -6,7 +6,8 @@ import os
 import tempfile
 import unittest
 
-from geoops.quality.metrics import MetricsError, compare_masks, read_ascii_grid
+from geoops.quality.metrics import MetricsError, compare_masks, read_ascii_grid, read_mask_grid
+from geoops.tests.test_geotiff_pixels import _tiff
 
 
 def _grid(path: str, values: str, nodata: str = "-9999") -> None:
@@ -64,6 +65,12 @@ class MetricsTests(unittest.TestCase):
             handle.write("ncols 2\nnrows 2\ncellsize 10\n0 0\n0\n")
         with self.assertRaises(MetricsError):
             read_ascii_grid(broken)
+
+    def test_geotiff_mask_without_georeferencing_is_refused(self) -> None:
+        tiff = os.path.join(self.tmp.name, "mask.tif")
+        _tiff(tiff, [1, 0, 0, 1])
+        with self.assertRaises(MetricsError):
+            read_mask_grid(tiff)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ the old record.
 
 from __future__ import annotations
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from enum import Enum
@@ -42,6 +43,9 @@ class Node:
     action: Callable[[Dict[str, Any]], Any]
     retry: int = 0
     failure_action: str = "stop"
+    preconditions: List[str] = field(default_factory=list)
+    success_condition: str = ""
+    outputs: Dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -92,6 +96,86 @@ def _normalize(result: Any) -> NodeResult:
     return NodeResult(NodeStatus.PASS if result else NodeStatus.FAIL, "")
 
 
+def _lookup(context: Dict[str, Any], path: str) -> Any:
+    """Resolve a dotted context path without evaluating arbitrary code."""
+    parts = [part for part in str(path or "").strip().split(".") if part]
+    if parts and parts[0] == "context":
+        parts = parts[1:]
+    if not parts:
+        return None
+    value: Any = context
+    for part in parts:
+        if isinstance(value, dict) and part in value:
+            value = value[part]
+        else:
+            return None
+    return value
+
+
+def _truthy(value: Any) -> bool:
+    return value is not None and value != "" and value is not False
+
+
+def _check_preconditions(node: Node, context: Dict[str, Any]) -> Optional[str]:
+    for path in node.preconditions:
+        if not _truthy(_lookup(context, path)):
+            return "precondition not met: %s" % path
+    return None
+
+
+def _apply_outputs(node: Node, output: Any, context: Dict[str, Any]) -> Optional[str]:
+    if not node.outputs:
+        return None
+    if not isinstance(output, dict):
+        return "node outputs mapping requires a dict output, got %s" % type(output).__name__
+    for alias, source in node.outputs.items():
+        if source not in output:
+            return "declared output %r is missing from node output" % source
+        context[alias] = output[source]
+    return None
+
+
+_CONDITION = re.compile(r"^(.+?)\s*(==|!=|>=|<=|>|<)\s*(.*)$")
+
+
+def _check_success(node: Node, result: NodeResult, context: Dict[str, Any]) -> Optional[str]:
+    condition = str(node.success_condition or "").strip()
+    if not condition:
+        return None
+    if condition.upper() == "PASS":
+        return None if result.status is NodeStatus.PASS else "success condition requires PASS"
+    matched = _CONDITION.match(condition)
+    if matched is None:
+        return "unsupported success_condition: %s" % condition
+    path, operator, expected = matched.group(1), matched.group(2), matched.group(3).strip()
+    if path.strip() == "status":
+        actual: Any = result.status.value
+    else:
+        actual = _lookup(context, path.strip())
+        if actual is None and isinstance(result.output, dict):
+            actual = result.output.get(path.strip())
+    if actual is None:
+        return "success condition field not found: %s" % path.strip()
+    left, right = actual, expected
+    try:
+        left_number, right_number = float(actual), float(expected)
+    except (TypeError, ValueError):
+        left_number = right_number = None
+    if left_number is not None and right_number is not None:
+        left, right = left_number, right_number
+    else:
+        left, right = str(actual), str(expected)
+    checks = {
+        "==": lambda: left == right,
+        "!=": lambda: left != right,
+        ">": lambda: left > right,
+        ">=": lambda: left >= right,
+        "<": lambda: left < right,
+        "<=": lambda: left <= right,
+    }
+    return None if checks[operator]() else "success condition failed: %s" % condition
+
+
 def _execute(
     nodes: List[Node],
     context: Dict[str, Any],
@@ -111,12 +195,24 @@ def _execute(
         attempts = 0
         while True:
             attempts += 1
-            try:
-                result = _normalize(node.action(context))
-            except Exception as exc:
-                result = NodeResult(
-                    NodeStatus.ERROR, "%s: %s" % (type(exc).__name__, exc)
-                )
+            precondition_error = _check_preconditions(node, context)
+            if precondition_error:
+                result = NodeResult(NodeStatus.FAIL, precondition_error)
+            else:
+                try:
+                    result = _normalize(node.action(context))
+                except Exception as exc:
+                    result = NodeResult(
+                        NodeStatus.ERROR, "%s: %s" % (type(exc).__name__, exc)
+                    )
+            if result.status is NodeStatus.PASS:
+                output_error = _apply_outputs(node, result.output, context)
+                if output_error:
+                    result = NodeResult(NodeStatus.ERROR, output_error)
+                else:
+                    condition_error = _check_success(node, result, context)
+                    if condition_error:
+                        result = NodeResult(NodeStatus.FAIL, condition_error)
             if (
                 result.status in (NodeStatus.FAIL, NodeStatus.ERROR)
                 and attempts <= max(0, int(node.retry))
@@ -216,6 +312,12 @@ def resume(
                 "cannot reuse node %s in state %s" % (prior.node_id, prior.status.value)
             )
         outputs[prior.node_id] = prior.output
+        output_error = _apply_outputs(nodes[index], prior.output, ctx)
+        if output_error:
+            raise ValueError(
+                "cannot restore outputs for reused node %s: %s"
+                % (prior.node_id, output_error)
+            )
         records.append(
             NodeRun(
                 prior.node_id,

@@ -9,9 +9,23 @@ All notable changes to this project are documented in this file.
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,
   per-node `attempts`, execute and resume APIs.
+- `geoops/ai/agent_executor.py`: Agent JSON plan loop, declared-tool whitelist,
+  real builtin tool execution, per-step `tool_calls` and bounded steps; no
+  scripted fallback.
 - Real nodes: `data_input` / `data_check`, `review`, builtin ASCII
-  `gis_tool_call`, `agent_execute` language layer, `change_detection`,
+  `gis_tool_call`, `agent_execute`, `change_detection`,
   `artifact_register`, `output`.
+- `geoops/workflow/external_tools.py`: explicit `external:<id>` tools from
+  `var/external-tools.json` (or `GEOOPS_EXTERNAL_TOOLS`), argument templates,
+  no-shell subprocess execution, and non-zero exit as an error.
+- Node policies: declared `outputs` aliases, dotted `preconditions`, and
+  `success_condition` (`PASS`, `status == …`, or a dotted-path comparison) are
+  executed; missing preconditions and failed conditions stop the node.
+- `geoops/geotiff.py`: classic TIFF strip pixel decoding for uncompressed and
+  Deflate images, 8/16/32-bit chunky bands; LZW, tiled and separate-planar
+  layouts are explicit errors.
+- `geoops/survey/change.py`: change detection accepts ASCII or classic GeoTIFF
+  rasters through one raster reader; the written mask remains ASCII.
 - `geoops/quality/metrics.py`: ASCII mask confusion matrix with TP/FP/FN/TN,
   pixel accuracy, precision, recall, F1 and IoU; NODATA excluded; mismatched
   geometry refused.
@@ -26,7 +40,7 @@ All notable changes to this project are documented in this file.
 
 ### Tests
 
-- `240 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
+- `260 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
   `complete=True`, `missing=0`; it is explicitly marked synthetic, not a
   real acceptance.
 
@@ -442,3 +456,5 @@ Real per-module counts (re-counted, not estimated): `test_tasks` 12,
 | v0.1.0-beta.1 | 2026-11-08 | v0.2.0 (`f315041`) | Bootstrap scaffold, first runnable beta |
 | v0.1.0-beta.2 | 2026-11-09 | v0.2.0 (`f315041`) | Second beta of the 0.1 series |
 | v0.1.0-beta.3 | 2026-11-09 | v0.2.2 (`06d78fb`) | Vendored kernel synced to v0.2.2, full 25-file tree |
+
+

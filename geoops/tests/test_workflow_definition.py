@@ -147,6 +147,53 @@ class NodeDataTests(unittest.TestCase):
         self.assertEqual(result.output["agent_id"], "AGT-1")
         self.assertEqual(result.output["text"], "ok")
 
+    def test_agent_executor_runs_a_declared_builtin_tool(self):
+        directory = tempfile.mkdtemp(prefix="geoops-agent-tool-")
+        path = os.path.join(directory, "grid.asc")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("ncols 2\nnrows 2\nxllcorner 0\nyllcorner 0\ncellsize 10\nNODATA_value -9999\n")
+            handle.write("1 2\n3 -9999\n")
+        registry = DomainRegistry()
+        tool = registry.register(
+            ObjectType.TOOL,
+            "TOOL-PROFILE",
+            {"tool_id": "TOOL-PROFILE", "name": "ASCII profile", "version": "1.0",
+             "category": "raster", "adapter": "builtin:ascii_grid_profile", "available": True},
+        )
+        agent = registry.register(
+            ObjectType.AGENT,
+            "AGT-TOOL",
+            {"name": "带工具的 Agent", "version": "1.0", "strategy": "react",
+             "model_ids": [], "tool_ids": ["TOOL-PROFILE"], "available": True},
+        )
+
+        class Catalog:
+            def get(self, kind, object_id):
+                return {"TOOL-PROFILE": tool, "AGT-TOOL": agent}.get(object_id)
+
+        class Runtime:
+            def __init__(self):
+                self.calls = 0
+
+            def invoke(self, prompt, system="", max_tokens=512, temperature=None):
+                self.calls += 1
+                if self.calls == 1:
+                    text = json.dumps({"tool": "TOOL-PROFILE", "args": {"path": path}})
+                else:
+                    text = json.dumps({"final": "profile complete"})
+                return {"text": text, "model": "test-model", "usage": {}, "elapsed_ms": 1}
+
+        from geoops.ai.agent_node import agent_execute_node
+        result = agent_execute_node(
+            "A1", "Agent", Runtime(), Catalog(), agent_id="AGT-TOOL", prompt="profile it"
+        ).action({})
+        self.assertEqual(result.status, NodeStatus.PASS)
+        self.assertEqual(result.output["final"], "profile complete")
+        self.assertEqual(len(result.output["tool_calls"]), 1)
+        self.assertEqual(result.output["tool_calls"][0]["tool_id"], "TOOL-PROFILE")
+        self.assertEqual(result.output["tool_calls"][0]["result"]["mean"], 2.0)
+
+
     def test_builtin_ascii_tool_computes_real_stats(self):
         directory = tempfile.mkdtemp(prefix="geoops-gis-node-")
         path = os.path.join(directory, "grid.asc")
@@ -261,7 +308,7 @@ class ExecutionTests(unittest.TestCase):
                 "node_id": "C1", "name": "差分", "type": "change_detection",
                 "baseline_key": "b", "comparison_key": "c", "output_key": "o",
                 "inputs": {"b": "baseline_path", "c": "comparison_path", "o": "change_output_path"},
-                "success_condition": "mask written", "failure_action": "stop",
+                "success_condition": "status == PASS", "failure_action": "stop",
             }],
         )
         result = self.service.execute(

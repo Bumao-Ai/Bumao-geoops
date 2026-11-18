@@ -83,6 +83,44 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
     }
 
 
+def read_raster_grid(path: str) -> Dict[str, Any]:
+    """Read an ASCII grid or a classic GeoTIFF (first band for multiband)."""
+    suffix = os.path.splitext(str(path or ""))[1].lower()
+    if suffix in (".tif", ".tiff"):
+        from geoops.geotiff import GeoTiffError, read_geotiff_pixels
+
+        try:
+            image = read_geotiff_pixels(path)
+        except GeoTiffError as exc:
+            raise ChangeError("GeoTIFF pixel read failed: %s" % exc) from exc
+        pixel_size = image.get("pixel_size")
+        bounds = image.get("bounds")
+        if not pixel_size or not bounds:
+            raise ChangeError(
+                "GeoTIFF %s has no pixel scale/tiepoint; cannot align it" % path
+            )
+        bands = int(image.get("bands") or 1)
+        values = image["values"][0::bands]
+        return {
+            "path": path,
+            "header": {
+                "ncols": image["width"],
+                "nrows": image["height"],
+                "xllcorner": bounds[0],
+                "yllcorner": bounds[1],
+                "cellsize": pixel_size[0],
+                "nodata_value": image.get("nodata"),
+            },
+            "ncols": int(image["width"]),
+            "nrows": int(image["height"]),
+            "cellsize": float(pixel_size[0]),
+            "values": values,
+            "source_format": "geotiff",
+            "bands": bands,
+        }
+    return read_ascii_grid(path)
+
+
 def _check_alignment(baseline: Dict[str, Any], comparison: Dict[str, Any]) -> None:
     for key in ("cellsize", "xllcorner", "yllcorner"):
         if abs(baseline["header"][key] - comparison["header"][key]) > 1e-9:
@@ -138,8 +176,8 @@ def detect_changes(
         raise ChangeError("threshold must not be negative")
     if min_area_m2 < 0:
         raise ChangeError("min_area_m2 must not be negative")
-    baseline = read_ascii_grid(baseline_path)
-    comparison = read_ascii_grid(comparison_path)
+    baseline = read_raster_grid(baseline_path)
+    comparison = read_raster_grid(comparison_path)
     _check_alignment(baseline, comparison)
 
     nodata_a = baseline["header"].get("nodata_value")

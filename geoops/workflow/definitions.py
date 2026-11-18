@@ -125,6 +125,8 @@ def validate_definition(
                 item["model_id"] = str(raw["model_id"]).strip()
             if raw.get("agent_id") is not None:
                 item["agent_id"] = str(raw["agent_id"]).strip()
+            if raw.get("max_steps") is not None:
+                item["max_steps"] = int(_number(raw["max_steps"], "node[%d].max_steps" % index, 1))
         elif node_type in ("data_input", "data_check"):
             item["dataset_key"] = _text(raw.get("dataset_key") or "dataset_id", "node[%d].dataset_key" % index)
             if raw.get("dataset_id") is not None:
