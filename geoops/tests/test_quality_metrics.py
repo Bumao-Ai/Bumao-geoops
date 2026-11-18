@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 from geoops.quality.metrics import MetricsError, compare_masks, read_ascii_grid, read_mask_grid
-from geoops.tests.test_geotiff_pixels import _tiff
+from geoops.tests.test_geotiff_pixels import _georeferenced_tiff, _tiff
 
 
 def _grid(path: str, values: str, nodata: str = "-9999") -> None:
@@ -71,6 +71,17 @@ class MetricsTests(unittest.TestCase):
         _tiff(tiff, [1, 0, 0, 1])
         with self.assertRaises(MetricsError):
             read_mask_grid(tiff)
+
+    def test_georeferenced_geotiff_masks_compute_accuracy(self) -> None:
+        reference = os.path.join(self.tmp.name, "ref.tif")
+        predicted = os.path.join(self.tmp.name, "pred.tif")
+        _georeferenced_tiff(reference, [1, 1, 0, 0])
+        _georeferenced_tiff(predicted, [1, 0, 0, 1])
+        result = compare_masks(reference, predicted)
+        self.assertEqual(result["cells"]["tp"], 1)
+        self.assertEqual(result["cells"]["fp"], 1)
+        self.assertEqual(result["cells"]["fn"], 1)
+        self.assertEqual(result["cells"]["tn"], 1)
 
 
 if __name__ == "__main__":
