@@ -18,6 +18,7 @@
   - `GET /api/v1/quality-checks` 与 `/quality-reports` 同义。
   - `POST /api/v1/tasks/<id>/start|pause|resume|cancel` 作为状态机薄别名。
   - `GET /api/v1/deliverables/<id>/trace` 从成果反查任务/运行/审核。
+  - `POST /api/v1/deliverables/<id>/artifacts` 把真实文件 sha256 绑定到成果，写入 artifact 索引。
 - 权限新增 `workflow:write` / `workflow:execute`（共 12 项），角色矩阵同步。
 - 审核记录可关联 `quality_report_id`；报告必须针对同一成果，否则拒绝；`APPROVE` 只接受状态为 `PASS` 的质量报告。
 - 节点策略：`retry` 真实重试失败/异常节点，`NodeRun.attempts` 记录次数；`failure_action=continue` 允许下游继续，但 run 仍保持失败。`success_condition` / `outputs` / `preconditions` 仍只做定义记录，未自动判定。
@@ -29,7 +30,7 @@
 
 ```text
 python -m unittest discover -s geoops\tests -t .
-Ran 238 tests in 23.0s
+Ran 239 tests in 23.8s
 OK
 
 python -m geoops.smoke

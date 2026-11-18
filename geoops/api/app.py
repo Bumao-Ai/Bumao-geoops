@@ -39,6 +39,7 @@ Write endpoints (only when a permission policy is supplied):
     POST /api/v1/quality-reports   (quality:write; also /quality-checks alias)
     POST /api/v1/reviews           (review:write)
     POST /api/v1/deliverables/<id>/archive (deliverable:write, accepted only)
+    POST /api/v1/deliverables/<id>/artifacts (deliverable:write; real file hash bound to the deliverable)
     POST /api/v1/model-runtime/probe (model:invoke; real provider call)
     POST /api/v1/model-runtime/chat  (model:invoke; real prompt, real reply)
     POST /api/v1/workflows           (workflow:write)
@@ -61,6 +62,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Dict, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
+from geoops.artifacts import ArtifactError
 from geoops.api.security import PERMISSIONS, AuditLog, PermissionPolicy
 from geoops.ai import ModelRuntime, ModelRuntimeError
 from geoops.catalog import Catalog, CatalogError
@@ -84,6 +86,7 @@ TASK_ACTION_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/(start|pause|resume|cance
 TRACE_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/trace$")
 DATASET_VALIDATE_PATH = re.compile(r"^/api/v1/datasets/([^/]+)/validate$")
 DELIVERABLE_ARCHIVE_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/archive$")
+DELIVERABLE_ARTIFACT_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/artifacts$")
 DELIVERABLE_TRACE_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/trace$")
 WORKFLOW_EXECUTE_PATH = re.compile(r"^/api/v1/workflows/([^/]+)/execute$")
 WORKFLOW_ITEM_PATH = re.compile(r"^/api/v1/workflows/([^/]+)$")
@@ -797,6 +800,37 @@ def create_server(
                     return
                 audit_log.record("POST", path, self._token(), "allow", "deliverable archived", 200)
                 self._json(200, {"deliverable": deliverable.to_dict()})
+                return
+
+            match = DELIVERABLE_ARTIFACT_PATH.match(path)
+            if match:
+                if not self._authorize("deliverable:write", path):
+                    return
+                if artifacts is None:
+                    self._deny(400, "artifact store is not configured", path)
+                    return
+                deliverable_id = unquote(match.group(1))
+                deliverable = deliverable_registry.get(deliverable_id)
+                if deliverable is None:
+                    self._deny(404, "unknown deliverable_id: %s" % deliverable_id, path)
+                    return
+                payload = self._read_json()
+                if payload is None:
+                    return
+                try:
+                    artifact = artifacts.register(
+                        path=str(payload.get("path") or ""),
+                        task_id=str(payload.get("task_id") or deliverable.payload.get("task_id") or ""),
+                        kind=str(payload.get("kind") or deliverable.payload.get("kind") or "unknown"),
+                        label=str(payload.get("label") or ""),
+                        deliverable_id=deliverable_id,
+                    )
+                    artifacts.verify(artifact["artifact_id"])
+                except (ArtifactError, ValueError, OSError) as exc:
+                    self._deny(400, str(exc), path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "artifact bound to deliverable", 201)
+                self._json(201, {"artifact": artifact, "deliverable": deliverable.to_dict()})
                 return
 
             if path == "/api/v1/reviews":

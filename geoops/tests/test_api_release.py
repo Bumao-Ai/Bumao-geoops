@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 
 from geoops.api import AuditLog, PermissionPolicy, create_server
+from geoops.artifacts import ArtifactStore
 from geoops.domain import DomainRegistry, ObjectType, TaskEngine
 from geoops.domain.projects import ProjectRegistry
 
@@ -25,9 +26,15 @@ class ReleaseApiTests(unittest.TestCase):
         self.tasks = TaskEngine(self.registry)
         self.task = self.tasks.create("PRJ-API-1", "接口任务", "change_detection", actor="test")
         self.registry.register(ObjectType.DELIVERABLE, "DLV-API-1", {"task_id": self.task.task_id})
+        self.artifacts = ArtifactStore(
+            root=self.tempdir,
+            index_path=os.path.join(self.tempdir, "artifacts.json"),
+            registry=self.registry,
+        )
         self.policy = PermissionPolicy(
             {
-                "admin": ["project:write", "dataset:write", "catalog:write", "review:write", "audit:read"],
+                "admin": ["project:write", "dataset:write", "catalog:write", "review:write",
+                          "deliverable:write", "audit:read"],
                 "reader": ["audit:read"],
             }
         )
@@ -37,6 +44,7 @@ class ReleaseApiTests(unittest.TestCase):
             tasks=self.tasks,
             policy=self.policy,
             audit=self.audit,
+            artifacts=self.artifacts,
             extra={"version": "0.1.0"},
         )
         self.port = self.server.server_address[1]
@@ -126,6 +134,23 @@ class ReleaseApiTests(unittest.TestCase):
         status, listing = self.call("GET", "/api/v1/catalog")
         self.assertEqual(status, 200)
         self.assertEqual(len(listing["models"]), 1)
+
+    def test_artifact_binding_requires_permission_and_a_real_file(self) -> None:
+        path = os.path.join(self.tempdir, "bound.asc")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("ncols 2\nnrows 1\n0 1\n")
+        status, _ = self.call(
+            "POST", "/api/v1/deliverables/DLV-API-1/artifacts",
+            {"path": path, "kind": "mask"}, token="reader",
+        )
+        self.assertEqual(status, 403)
+        status, payload = self.call(
+            "POST", "/api/v1/deliverables/DLV-API-1/artifacts",
+            {"path": path, "kind": "mask", "label": "SYNTHETIC API artifact"}, token="admin",
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(payload["artifact"]["deliverable_id"], "DLV-API-1")
+        self.assertEqual(len(payload["artifact"]["sha256"]), 64)
 
     def test_review_approves_and_marks_the_deliverable(self) -> None:
         status, payload = self.call(
