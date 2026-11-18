@@ -68,10 +68,10 @@ The no-data mode is the default. It registers transient domain objects, calls th
 Run the unit tests:
 
 ```bash
-python -m unittest geoops.tests.test_tasks geoops.tests.test_workflow geoops.tests.test_rules geoops.tests.test_rule_nodes geoops.tests.test_store geoops.tests.test_report geoops.tests.test_api_write geoops.tests.test_audit geoops.tests.test_artifacts geoops.tests.test_tokens geoops.tests.test_rule_packs geoops.tests.test_delivery geoops.tests.test_concurrency geoops.tests.test_change geoops.tests.test_journal geoops.tests.test_ui geoops.tests.test_release geoops.tests.test_api_release geoops.tests.test_geotiff geoops.tests.test_quality_deliverable geoops.tests.test_api_quality geoops.tests.test_model_runtime -v
+python -m unittest discover -s geoops\tests -t .
 ```
 
-213 tests, standard library only. The smoke run makes 73 assertions.
+264 tests, standard library only. The smoke run makes 73 assertions.
 
 ## Version boundary
 
