@@ -139,6 +139,27 @@ def validate_definition(
             item["path_key"] = _text(raw.get("path_key") or "raster_path", "node[%d].path_key" % index)
             if raw.get("tool_id") is not None:
                 item["tool_id"] = str(raw["tool_id"]).strip()
+        for key in ("inputs", "outputs"):
+            value = raw.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, dict) or not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in value.items()
+            ):
+                raise WorkflowDefinitionError("node[%d].%s must map strings to strings" % (index, key))
+            item[key] = dict(value)
+        for key in ("executor", "success_condition", "failure_action"):
+            if raw.get(key) is not None:
+                item[key] = str(raw[key]).strip()
+        if item.get("failure_action") and item["failure_action"] not in ("stop", "continue", "retry"):
+            raise WorkflowDefinitionError("node[%d].failure_action must be stop, continue or retry" % index)
+        if raw.get("retry") is not None:
+            item["retry"] = int(_number(raw["retry"], "node[%d].retry" % index, 0))
+        if raw.get("preconditions") is not None:
+            value = raw["preconditions"]
+            if not isinstance(value, list) or not all(isinstance(row, str) for row in value):
+                raise WorkflowDefinitionError("node[%d].preconditions must be a list of strings" % index)
+            item["preconditions"] = list(value)
         normalized.append(item)
     return {
         "workflow_id": workflow_id,

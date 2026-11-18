@@ -254,6 +254,23 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertEqual(result["run"]["node_runs"][0]["status"], "FAIL")
 
+    def test_declared_input_aliases_feed_downstream_node(self):
+        self.defs.create(
+            "WF-ALIAS", "别名流程", "change_detection",
+            [{
+                "node_id": "C1", "name": "差分", "type": "change_detection",
+                "baseline_key": "b", "comparison_key": "c", "output_key": "o",
+                "inputs": {"b": "baseline_path", "c": "comparison_path", "o": "change_output_path"},
+                "success_condition": "mask written", "failure_action": "stop",
+            }],
+        )
+        result = self.service.execute(
+            "WF-ALIAS",
+            {"baseline_path": self.baseline, "comparison_path": self.comparison, "change_output_path": self.output},
+        )
+        self.assertEqual(result["status"], "PASS")
+        self.assertTrue(os.path.exists(self.output))
+
 
 class WorkflowApiTests(unittest.TestCase):
     def setUp(self):

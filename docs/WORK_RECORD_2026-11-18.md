@@ -25,7 +25,7 @@
 
 ```text
 python -m unittest discover -s geoops\tests -t .
-Ran 227 tests in 23.5s
+Ran 228 tests in 23.6s
 OK
 
 python -m geoops.smoke

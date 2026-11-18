@@ -179,7 +179,24 @@ class WorkflowService:
                 )
             else:
                 raise WorkflowError("unknown node type: %s" % node_type)
+            nodes[-1] = self._decorate_node(nodes[-1], spec)
         return nodes
+
+    @staticmethod
+    def _decorate_node(node: Node, spec: Dict[str, Any]) -> Node:
+        """Apply declared input aliases before the real node action."""
+        inputs = spec.get("inputs") or {}
+        if not inputs:
+            return node
+        original = node.action
+
+        def action(context: Dict[str, Any]) -> Any:
+            for target, source in inputs.items():
+                if source in context:
+                    context[target] = context[source]
+            return original(context)
+
+        return Node(node.node_id, node.name, action)
 
     def _previous_run(self, run_id: str) -> WorkflowRun:
         previous = self.engine.get(run_id)
