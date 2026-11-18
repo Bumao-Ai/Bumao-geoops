@@ -40,6 +40,8 @@ class Node:
     node_id: str
     name: str
     action: Callable[[Dict[str, Any]], Any]
+    retry: int = 0
+    failure_action: str = "stop"
 
 
 @dataclass
@@ -49,6 +51,7 @@ class NodeRun:
     status: NodeStatus
     detail: str
     output: Any = None
+    attempts: int = 1
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -57,6 +60,7 @@ class NodeRun:
             "status": self.status.value,
             "detail": self.detail,
             "output": self.output,
+            "attempts": self.attempts,
         }
 
 
@@ -100,32 +104,44 @@ def _execute(
     for node in nodes[start:]:
         if stopped:
             records.append(
-                NodeRun(node.node_id, node.name, NodeStatus.SKIPPED, "upstream node failed")
+                NodeRun(node.node_id, node.name, NodeStatus.SKIPPED, "upstream node failed", attempts=0)
             )
             continue
-        try:
-            result = _normalize(node.action(context))
-        except Exception as exc:
-            records.append(
-                NodeRun(
-                    node.node_id,
-                    node.name,
-                    NodeStatus.ERROR,
-                    "%s: %s" % (type(exc).__name__, exc),
+        result: NodeResult
+        attempts = 0
+        while True:
+            attempts += 1
+            try:
+                result = _normalize(node.action(context))
+            except Exception as exc:
+                result = NodeResult(
+                    NodeStatus.ERROR, "%s: %s" % (type(exc).__name__, exc)
                 )
-            )
-            status = NodeStatus.ERROR
-            stopped = True
-            continue
+            if (
+                result.status in (NodeStatus.FAIL, NodeStatus.ERROR)
+                and attempts <= max(0, int(node.retry))
+            ):
+                continue
+            break
 
-        records.append(NodeRun(node.node_id, node.name, result.status, result.detail, result.output))
+        records.append(
+            NodeRun(
+                node.node_id,
+                node.name,
+                result.status,
+                result.detail,
+                result.output,
+                attempts=attempts,
+            )
+        )
         # Every node's real output is addressable by downstream nodes. A node
         # can read context["node_outputs"][<node_id>] instead of relying on a
         # side effect or a shared mutable prompt.
         context.setdefault("node_outputs", {})[node.node_id] = result.output
         if result.status in (NodeStatus.FAIL, NodeStatus.ERROR):
             status = result.status
-            stopped = True
+            if str(node.failure_action or "stop").strip().lower() != "continue":
+                stopped = True
     return status
 
 

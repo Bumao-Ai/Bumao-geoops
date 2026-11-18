@@ -70,11 +70,11 @@
 | 7 | 调用至少一种真实地理空间处理工具 | 通过（内置工具） | `gis_tool_call` 真实调用 `builtin:ascii_grid_profile`（读 ASCII 栅格、校验像元、算有效格数/最值/均值）；GDAL/QGIS/Rasterio 适配器未接，其他 tool_id 明确 `ERROR` |
 | 8 | 执行测绘专业规则 | 通过 | 规则包 11 条、五态结果、闸门节点；异常不判 PASS |
 | 9 | 记录整个 AI 作业过程 | 部分 | 工作流定义、节点输出、运行日志、审计、任务历史、结构化追溯均有；Agent 工具调用记录仍不完整 |
-| 10 | 对成果自动质量检查 | 部分 | 三层检查已实现：文件/结构、空间元数据、专业抽样；分类精度、几何精度指标仍缺 |
+| 10 | 对成果自动质量检查 | 部分 | 三层检查已实现；新增 ASCII 掩膜混淆矩阵（TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU），已用合成掩膜验证；真实影像样本、GeoTIFF 像元与分类/几何精度仍缺 |
 | 11 | 输出质检报告 | 通过（软件路径） | `QualityService` 原子写 `var/quality/QR-*.json` 并登记 `QualityReport`；审核记录尚未强制引用报告 |
 | 12 | 人工审核 | 通过 | `ReviewEngine` + `POST /api/v1/reviews` + 审核页；通过才 accepted，驳回/返工必须写意见；`review` 流程节点只查真实 APPROVE，不自动批准 |
 | 13 | 归档最终成果 | 通过（软件路径） | `DeliverableRegistry` 真文件登记 sha256/大小/版本；accepted 后 `POST /api/v1/deliverables/{id}/archive` 归档并留人/时间 |
-| 14 | 从成果反向追溯 | 部分 | `/api/v1/tasks/{id}/trace` 与 `/api/v1/deliverables/{id}/trace` 出结构化链；仍需运行与文件环填满才 COMPLETE |
+| 14 | 从成果反向追溯 | 部分 | `/api/v1/tasks/{id}/trace` 与 `/api/v1/deliverables/{id}/trace` 出结构化链；已用合成数据集、成果文件、artifacts、审核记录跑出 `complete=True`，真实数据环仍需填满 |
 | 15 | 证明正确调用 Core 不复制内核 | 通过 | vendored kernel 只读导入，CoreAdapter 调真实注册/闸门；smoke 1 段 |
 
 结论：**十五项未全过，0.1 不能宣称正式完成。** 软件层（1/2/4/7/8/11/12/13/15）已可跑；

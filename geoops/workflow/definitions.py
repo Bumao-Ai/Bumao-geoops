@@ -151,8 +151,8 @@ def validate_definition(
         for key in ("executor", "success_condition", "failure_action"):
             if raw.get(key) is not None:
                 item[key] = str(raw[key]).strip()
-        if item.get("failure_action") and item["failure_action"] not in ("stop", "continue", "retry"):
-            raise WorkflowDefinitionError("node[%d].failure_action must be stop, continue or retry" % index)
+        if item.get("failure_action") and item["failure_action"] not in ("stop", "continue"):
+            raise WorkflowDefinitionError("node[%d].failure_action must be stop or continue" % index)
         if raw.get("retry") is not None:
             item["retry"] = int(_number(raw["retry"], "node[%d].retry" % index, 0))
         if raw.get("preconditions") is not None:

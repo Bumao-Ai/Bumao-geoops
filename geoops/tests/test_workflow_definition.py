@@ -271,6 +271,20 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual(result["status"], "PASS")
         self.assertTrue(os.path.exists(self.output))
 
+    def test_declared_retry_is_applied_by_the_service(self):
+        self.defs.create(
+            "WF-RETRY", "重试流程", "change_detection",
+            [{
+                "node_id": "G1", "name": "未实现工具", "type": "gis_tool_call",
+                "tool_id": "builtin:not-implemented", "retry": 2,
+                "failure_action": "stop",
+            }],
+        )
+        result = self.service.execute("WF-RETRY", {})
+        self.assertEqual(result["status"], "ERROR")
+        self.assertEqual(result["run"]["node_runs"][0]["attempts"], 3)
+        self.assertEqual(result["run"]["node_runs"][0]["status"], "ERROR")
+
 
 class WorkflowApiTests(unittest.TestCase):
     def setUp(self):

@@ -58,7 +58,8 @@
 ```
 
 - `task_id` 可选；填写时任务必须是 `RUNNING`，运行结束会 `attach_run` 并写 journal。
-- `outputs`、`executor`、`preconditions`、`success_condition`、`failure_action`、`retry` 当前作为定义记录保留并校验字段形状；执行器只落实 `inputs` 别名映射和节点真实动作，尚未把 `success_condition` / `retry` 变成自动判定。不要把它们当成已执行的策略。
+- `inputs` 会在执行前由执行器真实映射；`retry` 会真实重试失败/异常节点（最多重试次数），节点记录 `attempts`；`failure_action=continue` 会让下游继续运行，但本次 run 仍保持失败状态，不会被改写成通过。
+- `outputs`、`executor`、`preconditions`、`success_condition` 当前作为定义记录保留并校验字段形状；执行器尚不自动判定这些声明，不能把它们当成已执行策略。
 - 运行成功或失败都会记录 `RunJournal`；失败不会自动重跑。
 - `POST /api/v1/workflow-runs/<run_id>/resume` 用同一份定义、新 `run_id` 从失败节点恢复；节点数量或身份变化会拒绝，避免用旧记录跑新图。
 

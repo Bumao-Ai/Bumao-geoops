@@ -19,13 +19,16 @@
   - `POST /api/v1/tasks/<id>/start|pause|resume|cancel` 作为状态机薄别名。
   - `GET /api/v1/deliverables/<id>/trace` 从成果反查任务/运行/审核。
 - 权限新增 `workflow:write` / `workflow:execute`（共 12 项），角色矩阵同步。
-- 审核记录可关联 `quality_report_id`；报告必须针对同一成果，否则拒绝。
+- 审核记录可关联 `quality_report_id`；报告必须针对同一成果，否则拒绝；`APPROVE` 只接受状态为 `PASS` 的质量报告。
+- 节点策略：`retry` 真实重试失败/异常节点，`NodeRun.attempts` 记录次数；`failure_action=continue` 允许下游继续，但 run 仍保持失败。`success_condition` / `outputs` / `preconditions` 仍只做定义记录，未自动判定。
+- 质量精度：新增 `geoops/quality/metrics.py`，读对齐的 ASCII 栅格，算 TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU；NODATA 单元排除；尺寸/像元不一致拒绝。
+- 质检 API 接受 `reference_path`、`predicted_path`、`synthetic_reference`，报告写入 `accuracy`，并加 `professional.accuracy` 检查。
 
 ## 验证
 
 ```text
 python -m unittest discover -s geoops\tests -t .
-Ran 228 tests in 23.6s
+Ran 238 tests in 23.0s
 OK
 
 python -m geoops.smoke
@@ -40,12 +43,21 @@ SMOKE PASS: 73 assertions
 - `POST /api/v1/tasks/TSK-8278a9f9d2/start` 把任务推进到 `RUNNING`；随后 `WF-GATE-001` 执行 `PASS`，任务 `workflow_run_ids` 真实追加 `RUN-c8ecd59348a4`。
 - 登记真实文件成果 `DLV-60cba22060`；`GET /api/v1/deliverables/DLV-60cba22060/trace` 返回结构化链，并如实列出 `datasets` / `artifacts` / `review` 三项 `NOT_RECORDED`。
 
+合成数据验证（8796，全部标注 `SYNTHETIC`，不是真实遥感成果）：
+
+- 任务 `TSK-8a394e2f32` 由 `start` 推进到 `RUNNING`；数据集 `DS-f4ca020bf593` 绑定该任务。
+- `WF-TRACE-CHANGE` 用 `var/demo/baseline.asc` / `comparison.asc` 真算变化，因 `min_area_m2=150` 丢弃 2 个 100 m² 小斑块，输出全零 `trace_mask.asc`，run `PASS`；未伪造 changed 面积。
+- 复制真实输出为 `trace_artifact.asc`，登记成果 `DLV-75cf0f3416`；`WF-TRACE-ART` 真算 sha256 并绑定 artifact `ART-f32f823c627c`。
+- 质量报告 `QR-40378db122`：对 `change_mask.asc`（合成参考）与 `trace_artifact.asc` 算得 `tp=0, fp=0, fn=2, tn=4`、`pixel_accuracy=0.667`、`recall=0`、`IoU=0`，报告 `PARTIAL`（缺真实空间绑定/真实抽样）。
+- 审核 `RV-9959bb50bc` 为 `REJECT`，意见明确标注合成与全零掩膜；没有把合成数据伪装成验收通过。
+- `GET /api/v1/deliverables/DLV-75cf0f3416/trace` 返回 `complete=True`、`missing=0`、`links=8`、`artifacts=1`、`datasets=1`、`reviews=1`；证明追溯链结构可闭合，但不能替代真实数据验收。
+
 ## 仍未完成（不粉饰）
 
 - 没有用户真实遥感影像；GeoTIFF 仅读头，不解码像元。
 - 模型运行时存在但当前 `NOT_CONFIGURED`；没有真实模型端点。
 - Agent 仅语言层，不执行其声明的 GIS 工具；GDAL/QGIS/Rasterio 适配器未接。
-- 分类精度/几何精度、完整追溯环、统一身份源、发布环境未完成。
+- 真实分类精度/几何精度与真实完整追溯环仍缺；合成 ASCII 掩膜混淆矩阵、合成追溯闭环已跑通，不能替代真实验收。
 - 0.1 十五项未全过；软件路径 1/2/4/7/8/11/12/13/15 可跑，3/5/6/9/10/14 仍部分。
 
 ## 代码位置
@@ -53,6 +65,9 @@ SMOKE PASS: 73 assertions
 - `geoops/workflow/definitions.py`：定义校验与持久化。
 - `geoops/workflow/service.py`：定义 → 节点 → 执行 / 恢复 → journal。
 - `geoops/workflow/data_nodes.py`：数据集与审核节点。
+- `geoops/workflow/executor.py`：节点重试、失败继续策略与 `attempts` 记录。
+- `geoops/quality/metrics.py`：ASCII 掩膜混淆矩阵与精度指标。
+- `geoops/tests/test_quality_metrics.py`：精度指标测试。
 - `geoops/workflow/gis_nodes.py`：内置 ASCII 栅格工具。
 - `geoops/ai/agent_node.py`：Agent 语言层节点。
 - `geoops/api/app.py`：API 路由与权限。

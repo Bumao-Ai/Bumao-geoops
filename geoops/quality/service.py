@@ -214,11 +214,15 @@ class QualityService:
         professional_sample: bool = False,
         sample_note: str = "",
         actor: str = "",
+        reference_path: str = "",
+        predicted_path: str = "",
+        synthetic_reference: bool = False,
     ) -> DomainObject:
         target_type = str(target_type or "").strip().lower()
         target_id = str(target_id or "").strip()
         if not target_id:
             raise QualityError("target_id is required")
+        accuracy = None
         if target_type == "dataset":
             checks, target = self._dataset_checks(target_id)
             task_id = str(task_id or "").strip()
@@ -229,6 +233,31 @@ class QualityService:
                 task_id = str(deliverable.payload.get("task_id") or "") if deliverable else ""
         else:
             raise QualityError("target_type must be dataset or deliverable")
+
+        if reference_path:
+            if target_type != "deliverable":
+                raise QualityError("accuracy comparison requires target_type=deliverable")
+            deliverable = self.registry.get(target_id)
+            predicted_path = str(predicted_path or (deliverable.payload.get("path") if deliverable else "")).strip()
+            try:
+                from geoops.quality.metrics import MetricsError, compare_masks
+
+                accuracy = compare_masks(
+                    reference_path,
+                    predicted_path,
+                    synthetic_reference=synthetic_reference,
+                )
+                checks.append(
+                    _check(
+                        "professional.accuracy",
+                        "PASS",
+                        json.dumps(accuracy["metrics"], ensure_ascii=False),
+                        "professional",
+                    )
+                )
+            except (MetricsError, ValueError) as exc:
+                checks.append(_check("professional.accuracy", "ERROR", str(exc), "professional"))
+                accuracy = {"status": "ERROR", "error": str(exc)}
 
         if professional_sample:
             note = str(sample_note or "").strip()
@@ -271,6 +300,7 @@ class QualityService:
             "status": status,
             "layers": layers,
             "checks": checks,
+            "accuracy": accuracy,
             "generated_at": _now(),
             "program": PROGRAM,
             "actor": str(actor or "").strip(),

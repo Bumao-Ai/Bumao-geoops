@@ -39,7 +39,9 @@ class QualityDeliverableTests(unittest.TestCase):
 
         self.deliverable_path = os.path.join(self.tempdir, "mask.asc")
         with open(self.deliverable_path, "w", encoding="utf-8") as handle:
-            handle.write("ncols 2\nnrows 1\n0 1\n")
+            handle.write(
+                "ncols 2\nnrows 1\nxllcorner 0\nyllcorner 0\ncellsize 1\nNODATA_value -9999\n1 0\n"
+            )
         self.deliverable = self.deliverables.register(
             self.task.task_id, "变化掩膜", self.deliverable_path, kind="change_mask"
         )
@@ -98,6 +100,44 @@ class QualityDeliverableTests(unittest.TestCase):
         with self.assertRaises(QualityError):
             self.quality.evaluate(
                 "dataset", self.dataset.object_id, professional_sample=True, sample_note=""
+            )
+
+    def test_accuracy_report_records_a_real_confusion_matrix(self) -> None:
+        report = self.quality.evaluate(
+            "deliverable",
+            self.deliverable.object_id,
+            task_id=self.task.task_id,
+            professional_sample=True,
+            sample_note="合成掩膜逐格核对",
+            reference_path=self.dataset_path,
+            predicted_path=self.deliverable_path,
+            synthetic_reference=True,
+        )
+        accuracy = report.payload["accuracy"]
+        self.assertTrue(accuracy["synthetic_reference"])
+        self.assertEqual(accuracy["cells"]["tp"], 1)
+        self.assertEqual(accuracy["cells"]["tn"], 1)
+        self.assertEqual(accuracy["metrics"]["pixel_accuracy"], 1.0)
+        checks = {row["name"]: row["status"] for row in report.payload["checks"]}
+        self.assertEqual(checks["professional.accuracy"], "PASS")
+
+    def test_approving_review_requires_a_pass_quality_report(self) -> None:
+        report = self.quality.evaluate(
+            "deliverable",
+            self.deliverable.object_id,
+            task_id=self.task.task_id,
+            professional_sample=True,
+            sample_note="抽查",
+        )
+        self.assertNotEqual(report.payload["status"], "PASS")
+        with self.assertRaises(Exception):
+            ReviewEngine(self.registry).submit(
+                self.task.task_id,
+                self.deliverable.object_id,
+                "reviewer",
+                "APPROVE",
+                "通过",
+                quality_report_id=report.object_id,
             )
 
 

@@ -69,6 +69,11 @@ class ReviewEngine:
                     "quality report %s does not inspect deliverable %s"
                     % (quality_report_id, deliverable_id)
                 )
+            if decision == "APPROVE" and report.payload.get("status") != "PASS":
+                raise ReviewError(
+                    "cannot approve %s with quality report %s in state %s"
+                    % (deliverable_id, quality_report_id, report.payload.get("status"))
+                )
         review_id = str(review_id or "RV-%s" % uuid.uuid4().hex[:10]).strip()
         if self.registry.get(review_id) is not None:
             raise ReviewError("duplicate review_id: %s" % review_id)

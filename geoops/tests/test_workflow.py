@@ -130,9 +130,51 @@ class WorkflowTests(unittest.TestCase):
         self.assertIs(engine.get("RUN-T-016"), second)
         self.assertEqual(second.resumed_from, first.run_id)
 
+    def test_retry_reexecutes_a_failing_node_then_succeeds(self) -> None:
+        calls = {"n": 0}
+
+        def flaky(context):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                return NodeResult(NodeStatus.FAIL, "not yet")
+            return NodeResult(NodeStatus.PASS, "third time")
+
+        result = run(
+            [Node("N1", "flaky", flaky, retry=2), Node("N2", "after", _ok())],
+            run_id="RUN-T-RETRY",
+        )
+        self.assertIs(result.status, NodeStatus.PASS)
+        self.assertEqual(result.node_runs[0].status, NodeStatus.PASS)
+        self.assertEqual(result.node_runs[0].attempts, 3)
+        self.assertEqual(result.node_runs[1].status, NodeStatus.PASS)
+
+    def test_retry_exhaustion_still_fails(self) -> None:
+        def always_fail(context):
+            return NodeResult(NodeStatus.FAIL, "still failing")
+
+        result = run(
+            [Node("N1", "always", always_fail, retry=2), Node("N2", "after", _ok())],
+            run_id="RUN-T-RETRY-FAIL",
+        )
+        self.assertIs(result.status, NodeStatus.FAIL)
+        self.assertEqual(result.node_runs[0].attempts, 3)
+        self.assertEqual(result.node_runs[1].status, NodeStatus.SKIPPED)
+
+    def test_failure_action_continue_runs_downstream_but_keeps_run_failed(self) -> None:
+        result = run(
+            [
+                Node("N1", "optional", _fail(), failure_action="continue"),
+                Node("N2", "after", _ok()),
+            ],
+            run_id="RUN-T-CONTINUE",
+        )
+        self.assertIs(result.status, NodeStatus.FAIL)
+        self.assertEqual(result.node_runs[0].status, NodeStatus.FAIL)
+        self.assertEqual(result.node_runs[1].status, NodeStatus.PASS)
+        self.assertEqual(result.skipped, 0)
+
     def test_resume_carries_prior_output_into_context(self) -> None:
         engine = WorkflowEngine()
-
         def produce(context):
             context["value"] = 42
             return NodeResult(NodeStatus.PASS, "produced", {"value": 42})

@@ -184,10 +184,18 @@ class WorkflowService:
 
     @staticmethod
     def _decorate_node(node: Node, spec: Dict[str, Any]) -> Node:
-        """Apply declared input aliases before the real node action."""
+        """Apply declared input aliases and retry/failure policy to the node."""
+        retry = max(0, int(spec.get("retry") or 0))
+        failure_action = str(spec.get("failure_action") or "stop").strip().lower()
         inputs = spec.get("inputs") or {}
         if not inputs:
-            return node
+            return Node(
+                node.node_id,
+                node.name,
+                node.action,
+                retry=retry,
+                failure_action=failure_action,
+            )
         original = node.action
 
         def action(context: Dict[str, Any]) -> Any:
@@ -196,7 +204,13 @@ class WorkflowService:
                     context[target] = context[source]
             return original(context)
 
-        return Node(node.node_id, node.name, action)
+        return Node(
+            node.node_id,
+            node.name,
+            action,
+            retry=retry,
+            failure_action=failure_action,
+        )
 
     def _previous_run(self, run_id: str) -> WorkflowRun:
         previous = self.engine.get(run_id)
@@ -219,6 +233,7 @@ class WorkflowService:
                                 status=NodeStatus(node.get("status")),
                                 detail=str(node.get("detail") or ""),
                                 output=node.get("output"),
+                                attempts=int(node.get("attempts") or 0),
                             )
                             for node in (row.get("node_runs") or [])
                         ],

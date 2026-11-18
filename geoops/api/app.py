@@ -765,6 +765,9 @@ def create_server(
                         professional_sample=bool(payload.get("professional_sample")),
                         sample_note=str(payload.get("sample_note") or ""),
                         actor=str(payload.get("actor") or ""),
+                        reference_path=str(payload.get("reference_path") or ""),
+                        predicted_path=str(payload.get("predicted_path") or ""),
+                        synthetic_reference=bool(payload.get("synthetic_reference")),
                     )
                 except (QualityError, ValueError) as exc:
                     self._deny(400, str(exc), path)
