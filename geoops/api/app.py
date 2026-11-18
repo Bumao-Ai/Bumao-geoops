@@ -182,6 +182,9 @@ def create_server(
         engine=WorkflowEngine(),
         journal=runs,
         tasks=tasks,
+        datasets=dataset_registry,
+        reviews=review_engine,
+        catalog=catalog_registry,
     )
 
     class Handler(BaseHTTPRequestHandler):
