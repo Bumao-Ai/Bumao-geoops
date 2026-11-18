@@ -58,6 +58,10 @@ class ReviewEngine:
             raise ReviewError("unknown deliverable_id: %s" % deliverable_id)
         if deliverable.status == "accepted":
             raise ReviewError("deliverable is already finally accepted: %s" % deliverable_id)
+        if decision == "APPROVE" and bool(deliverable.payload.get("synthetic")):
+            raise ReviewError(
+                "synthetic deliverable %s cannot be finally accepted" % deliverable_id
+            )
         quality_report_id = str(quality_report_id or "").strip()
         if quality_report_id:
             report = self.registry.get(quality_report_id)

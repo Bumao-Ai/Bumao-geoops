@@ -43,7 +43,7 @@ class QualityDeliverableTests(unittest.TestCase):
                 "ncols 2\nnrows 1\nxllcorner 0\nyllcorner 0\ncellsize 1\nNODATA_value -9999\n1 0\n"
             )
         self.deliverable = self.deliverables.register(
-            self.task.task_id, "变化掩膜", self.deliverable_path, kind="change_mask", synthetic=True
+            self.task.task_id, "变化掩膜", self.deliverable_path, kind="change_mask"
         )
 
     def test_deliverable_reads_a_real_file_and_records_hash(self) -> None:
@@ -121,6 +121,18 @@ class QualityDeliverableTests(unittest.TestCase):
         self.assertEqual(accuracy["metrics"]["pixel_accuracy"], 1.0)
         checks = {row["name"]: row["status"] for row in report.payload["checks"]}
         self.assertEqual(checks["professional.accuracy"], "PASS")
+
+    def test_synthetic_deliverable_cannot_be_finally_approved(self) -> None:
+        path = os.path.join(self.tempdir, "synthetic.asc")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write("ncols 2\nnrows 1\n0 1\n")
+        synthetic = self.deliverables.register(
+            self.task.task_id, "合成掩膜", path, kind="change_mask", synthetic=True
+        )
+        with self.assertRaises(Exception):
+            ReviewEngine(self.registry).submit(
+                self.task.task_id, synthetic.object_id, "reviewer", "APPROVE", "通过"
+            )
 
     def test_approving_review_requires_a_pass_quality_report(self) -> None:
         report = self.quality.evaluate(

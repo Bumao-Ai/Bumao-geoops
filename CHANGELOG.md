@@ -26,7 +26,7 @@ All notable changes to this project are documented in this file.
 
 ### Tests
 
-- `239 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
+- `240 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
   `complete=True`, `missing=0`; it is explicitly marked synthetic, not a
   real acceptance.
 
