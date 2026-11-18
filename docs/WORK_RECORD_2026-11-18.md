@@ -37,6 +37,8 @@ SMOKE PASS: 73 assertions
 - `POST /api/v1/workflows/WF-CHANGE-001/execute`：规则门 3 条全 PASS，逐格差分写掩膜，成果登记 sha256，run 状态 `PASS`。
 - 数据集登记 `DS-f4ca020bf593`；`WF-RESUME-API` 首跑在差分节点 `FAIL`，`POST /api/v1/workflow-runs/RUN-3f7a32b13758/resume` 后首节点 `REUSED`、差分 `PASS`、面积 200.00 m²。
 - `GET /api/v1/workflow-runs`、`GET /api/v1/artifacts` 返回真实数量；`/quality-checks` 可用。
+- `POST /api/v1/tasks/TSK-8278a9f9d2/start` 把任务推进到 `RUNNING`；随后 `WF-GATE-001` 执行 `PASS`，任务 `workflow_run_ids` 真实追加 `RUN-c8ecd59348a4`。
+- 登记真实文件成果 `DLV-60cba22060`；`GET /api/v1/deliverables/DLV-60cba22060/trace` 返回结构化链，并如实列出 `datasets` / `artifacts` / `review` 三项 `NOT_RECORDED`。
 
 ## 仍未完成（不粉饰）
 
