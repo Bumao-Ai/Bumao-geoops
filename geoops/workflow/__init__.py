@@ -10,6 +10,12 @@ from geoops.workflow.executor import (
     run,
 )
 from geoops.workflow.journal import JournalError, RunJournal
+from geoops.workflow.definitions import (
+    WorkflowDefinitionError,
+    WorkflowDefinitionRegistry,
+    validate_definition,
+)
+from geoops.workflow.service import WorkflowError, WorkflowService
 
 __all__ = [
     "JournalError",
@@ -17,8 +23,13 @@ __all__ = [
     "NodeResult",
     "NodeStatus",
     "RunJournal",
+    "WorkflowDefinitionError",
+    "WorkflowDefinitionRegistry",
     "WorkflowEngine",
+    "WorkflowError",
     "WorkflowRun",
+    "WorkflowService",
     "resume",
     "run",
+    "validate_definition",
 ]

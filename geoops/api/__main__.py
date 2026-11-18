@@ -33,8 +33,15 @@ from geoops.domain import DeliverableRegistry, DomainRegistry, TaskEngine
 from geoops.domain.datasets_store import DatasetRegistry
 from geoops.domain.projects import ProjectRegistry
 from geoops.quality.service import QualityService
+from geoops.review import ReviewEngine
 from geoops.survey import SurveyRuleEngine, rule_check_node
-from geoops.workflow import Node, RunJournal, WorkflowEngine
+from geoops.workflow import (
+    Node,
+    RunJournal,
+    WorkflowDefinitionRegistry,
+    WorkflowEngine,
+    WorkflowService,
+)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -50,7 +57,7 @@ def _load_rules() -> SurveyRuleEngine:
 
 
 def _seed(registry: DomainRegistry, tasks: TaskEngine, rules: SurveyRuleEngine,
-          journal: RunJournal) -> None:
+          journal: RunJournal, workflows: WorkflowDefinitionRegistry) -> None:
     """Create real records through the domain API, then run one real workflow.
 
     No numbers are fabricated: the tasks below are registered by the same calls
@@ -66,6 +73,26 @@ def _seed(registry: DomainRegistry, tasks: TaskEngine, rules: SurveyRuleEngine,
         "EPSG:4547",
         "1985 国家高程基准",
     )
+    if workflows.get("WF-GATE-001") is None:
+        workflows.create(
+            "WF-GATE-001",
+            "图件编制规则门",
+            "map_compilation",
+            [{"node_id": "R1", "name": "规则门（图件编制）", "type": "rule_check", "task_type": "map_compilation"}],
+            description="只执行规则门；法规模板未覆盖的规则会记 SKIPPED。",
+        )
+    if workflows.get("WF-CHANGE-001") is None:
+        workflows.create(
+            "WF-CHANGE-001",
+            "变化检测标准流程",
+            "change_detection",
+            [
+                {"node_id": "R1", "name": "规则门（变化检测）", "type": "rule_check", "task_type": "change_detection"},
+                {"node_id": "C2", "name": "逐格变化检测", "type": "change_detection", "threshold": 1.0, "min_area_m2": 150},
+                {"node_id": "A3", "name": "登记变化掩膜", "type": "artifact_register", "path_key": "deliverable_path", "kind": "change_mask"},
+            ],
+            description="规则门 → 两期逐格差分 → 成果文件登记；路径由执行上下文提供。",
+        )
     first = tasks.create("PRJ-CONSOLE-001", "变化检测演示任务", "change_detection", actor="console")
     tasks.transition(first.task_id, "READY", reason="两期栅格已就位", actor="console")
     tasks.create("PRJ-CONSOLE-001", "正射成果演示任务", "ortho_generation", actor="console")
@@ -110,6 +137,7 @@ def main(argv=None) -> int:
         datasets,
         report_dir=os.path.join(PROJECT_ROOT, "var", "quality"),
     )
+    reviews = ReviewEngine(registry)
     rules = _load_rules()
     model_runtime = ModelRuntime.from_env()
     policy = None
@@ -120,8 +148,24 @@ def main(argv=None) -> int:
     if args.artifacts:
         artifacts = ArtifactStore(root=os.getcwd(), index_path=args.artifacts, registry=registry)
     journal = RunJournal(args.runs or None)
+    workflows = WorkflowDefinitionRegistry(
+        registry,
+        path=os.path.join(PROJECT_ROOT, "var", "workflows.json"),
+    )
+    workflow_service = WorkflowService(
+        workflows,
+        rules,
+        model_runtime,
+        artifacts,
+        engine=WorkflowEngine(),
+        journal=journal,
+        tasks=tasks,
+        datasets=datasets,
+        reviews=reviews,
+        catalog=catalog,
+    )
     if args.demo:
-        _seed(registry, tasks, rules, journal)
+        _seed(registry, tasks, rules, journal, workflows)
 
 
     server = create_server(
@@ -138,7 +182,10 @@ def main(argv=None) -> int:
         catalog=catalog,
         deliverables=deliverables,
         quality=quality,
+        reviews=reviews,
         model_runtime=model_runtime,
+        workflows=workflows,
+        workflow_service=workflow_service,
         host=args.host,
         port=args.port,
     )

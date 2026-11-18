@@ -29,6 +29,8 @@ PERMISSIONS = (
     "quality:write",
     "review:write",
     "model:invoke",
+    "workflow:write",
+    "workflow:execute",
     "audit:read",
 )
 TOKEN_FORMAT = "geoops-tokens"

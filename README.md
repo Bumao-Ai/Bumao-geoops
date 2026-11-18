@@ -32,7 +32,7 @@ The kernel is vendored at `kernel/bumao_core/`: synced from Bumao Core `v0.2.2` 
 - **Not included today:** a bundled model endpoint (the runtime is real, but you must point it at your own compatible endpoint), an external GIS tool (GDAL/QGIS/Rasterio are not installed), map views, a login page, publishing, and workflow-definition CRUD in the console (run history and real execution are present; definitions are still file/API-level). The GeoTIFF reader is header-only and classic-TIFF-only; it does not decode pixels.
 - Real remote-sensing imagery and model endpoints are not bundled. You supply them.
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current layers, [docs/MODEL_RUNTIME.md](docs/MODEL_RUNTIME.md) for model connection, [docs/USER_INPUT_CHECKLIST.md](docs/USER_INPUT_CHECKLIST.md) for the assets only you can supply, and [docs/ui-preview/](docs/ui-preview/) for screenshots of the console as it actually renders.
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current layers, [docs/MODEL_RUNTIME.md](docs/MODEL_RUNTIME.md) for model connection, [docs/WORKFLOW_ENGINE.md](docs/WORKFLOW_ENGINE.md) for definition execution and resume, [docs/USER_INPUT_CHECKLIST.md](docs/USER_INPUT_CHECKLIST.md) for the assets only you can supply, and [docs/ui-preview/](docs/ui-preview/) for screenshots of the console as it actually renders.
 
 - Engineering tier: core. The decision, its criteria and the gaps that remain are recorded in [docs/ENGINEERING_TIER.md](docs/ENGINEERING_TIER.md). Tier is not release readiness.
 

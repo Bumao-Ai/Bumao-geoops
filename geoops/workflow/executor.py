@@ -56,6 +56,7 @@ class NodeRun:
             "name": self.name,
             "status": self.status.value,
             "detail": self.detail,
+            "output": self.output,
         }
 
 
@@ -118,6 +119,10 @@ def _execute(
             continue
 
         records.append(NodeRun(node.node_id, node.name, result.status, result.detail, result.output))
+        # Every node's real output is addressable by downstream nodes. A node
+        # can read context["node_outputs"][<node_id>] instead of relying on a
+        # side effect or a shared mutable prompt.
+        context.setdefault("node_outputs", {})[node.node_id] = result.output
         if result.status in (NodeStatus.FAIL, NodeStatus.ERROR):
             status = result.status
             stopped = True

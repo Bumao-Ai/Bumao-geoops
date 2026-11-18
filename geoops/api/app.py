@@ -12,14 +12,16 @@ Read endpoints:
     GET /api/v1/datasets/<id>/validate
     GET /api/v1/catalog            models, agents and tools
     GET /api/v1/deliverables       registered deliverables (optional ?task_id=)
-    GET /api/v1/quality-reports    quality reports (optional ?task_id=)
+    GET /api/v1/quality-reports   quality reports (also /quality-checks alias)
     GET /api/v1/settings           roles, permission matrix and caller grants
     GET /api/v1/model-runtime      whether a real model endpoint is configured
+    GET /api/v1/workflows          stored workflow definitions
     GET /api/v1/deliverables       registered deliverables (optional ?task_id=)
     GET /api/v1/quality-reports    quality reports (optional ?task_id= / ?target_id=)
     GET /api/v1/settings           permission matrix, storage and kernel identity
     GET /api/v1/reviews            review records (optional ?task_id=)
     GET /api/v1/tasks/<id>/trace   structured trace from task to sources
+    GET /api/v1/deliverables/<id>/trace  structured trace from deliverable back to task
     GET /api/v1/rules              rule pack metadata, from the pack files
     GET /api/v1/artifacts          (token with audit:read; when a store is supplied)
     GET /api/v1/audit              (when a permission policy is supplied)
@@ -29,15 +31,20 @@ Write endpoints (only when a permission policy is supplied):
 
     POST /api/v1/tasks
     POST /api/v1/tasks/<task_id>/transitions
+    POST /api/v1/tasks/<task_id>/start|pause|resume|cancel  (thin aliases)
     POST /api/v1/projects          (project:write)
     POST /api/v1/datasets          (dataset:write)
     POST /api/v1/catalog           (catalog:write)
     POST /api/v1/deliverables      (deliverable:write)
-    POST /api/v1/quality-reports   (quality:write)
+    POST /api/v1/quality-reports   (quality:write; also /quality-checks alias)
     POST /api/v1/reviews           (review:write)
     POST /api/v1/deliverables/<id>/archive (deliverable:write, accepted only)
     POST /api/v1/model-runtime/probe (model:invoke; real provider call)
     POST /api/v1/model-runtime/chat  (model:invoke; real prompt, real reply)
+    POST /api/v1/workflows           (workflow:write)
+    POST /api/v1/workflows/<id>      (workflow:write; update definition)
+    POST /api/v1/workflows/<id>/execute (workflow:execute; real run + journal)
+    POST /api/v1/workflow-runs/<run_id>/resume (workflow:execute; resume failed run)
 
 Writes are refused before the body is read when the caller is not authorised:
 an unknown or missing token returns 401, a token without the required
@@ -62,13 +69,26 @@ from geoops.domain.deliverables import DeliverableError, DeliverableRegistry
 from geoops.domain.projects import ProjectError, ProjectRegistry
 from geoops.quality.service import QualityError, QualityService
 from geoops.review import ReviewEngine, ReviewError
-from geoops.trace import build_trace
+from geoops.trace import build_deliverable_trace, build_trace
+from geoops.workflow import (
+    WorkflowDefinitionError,
+    WorkflowDefinitionRegistry,
+    WorkflowEngine,
+    WorkflowError,
+    WorkflowService,
+)
 
 MAX_BODY_BYTES = 64 * 1024
 TRANSITION_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/transitions$")
+TASK_ACTION_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/(start|pause|resume|cancel)$")
 TRACE_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/trace$")
 DATASET_VALIDATE_PATH = re.compile(r"^/api/v1/datasets/([^/]+)/validate$")
 DELIVERABLE_ARCHIVE_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/archive$")
+DELIVERABLE_TRACE_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/trace$")
+WORKFLOW_EXECUTE_PATH = re.compile(r"^/api/v1/workflows/([^/]+)/execute$")
+WORKFLOW_ITEM_PATH = re.compile(r"^/api/v1/workflows/([^/]+)$")
+WORKFLOW_RUN_RESUME_PATH = re.compile(r"^/api/v1/workflow-runs/([^/]+)/resume$")
+WORKFLOW_RUN_ITEM_PATH = re.compile(r"^/api/v1/workflow-runs/([^/]+)$")
 
 WEB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
 PACK_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "survey", "packs")
@@ -132,6 +152,8 @@ def create_server(
     quality: Optional[Any] = None,
     reviews: Optional[Any] = None,
     model_runtime: Optional[ModelRuntime] = None,
+    workflows: Optional[Any] = None,
+    workflow_service: Optional[Any] = None,
     host: str = "127.0.0.1",
     port: int = 0,
 ) -> ThreadingHTTPServer:
@@ -151,6 +173,16 @@ def create_server(
     )
     review_engine = reviews if reviews is not None else ReviewEngine(registry)
     runtime = model_runtime if model_runtime is not None else ModelRuntime.from_env()
+    workflow_defs = workflows if workflows is not None else WorkflowDefinitionRegistry(registry)
+    workflow_runner = workflow_service if workflow_service is not None else WorkflowService(
+        workflow_defs,
+        rules,
+        runtime,
+        artifacts,
+        engine=WorkflowEngine(),
+        journal=runs,
+        tasks=tasks,
+    )
 
     class Handler(BaseHTTPRequestHandler):
         # -- read ---------------------------------------------------------
@@ -199,6 +231,7 @@ def create_server(
                         "datasets": len(dataset_registry.list()),
                         "deliverables": len(deliverable_registry.list()),
                         "quality_reports": len(quality_service.list()),
+                        "workflows": len(workflow_defs.list()),
                         "reviews": len(review_engine.list()),
                         "rules": {"packs": len(packs), "rules": rule_count},
                         "artifacts": {
@@ -223,7 +256,7 @@ def create_server(
                     },
                 )
                 return
-            if path == "/api/v1/runs":
+            if path in ("/api/v1/runs", "/api/v1/workflow-runs"):
                 if runs is None:
                     self._json(404, {"error": "run journal not configured"})
                     return
@@ -236,6 +269,18 @@ def create_server(
                         "runs": rows,
                     },
                 )
+                return
+            match = WORKFLOW_RUN_ITEM_PATH.match(path)
+            if match:
+                if runs is None:
+                    self._json(404, {"error": "run journal not configured"})
+                    return
+                run_id = unquote(match.group(1))
+                row = next((item for item in runs.rows() if item.get("run_id") == run_id), None)
+                if row is None:
+                    self._json(404, {"error": "unknown run_id", "run_id": run_id})
+                else:
+                    self._json(200, {"run": row})
                 return
             if path == "/api/v1/projects":
                 rows = [row.to_dict() for row in project_registry.list()]
@@ -271,13 +316,30 @@ def create_server(
                 rows = [row.to_dict() for row in deliverable_registry.list(task_id)]
                 self._json(200, {"count": len(rows), "deliverables": rows})
                 return
-            if path == "/api/v1/quality-reports":
+            if path in ("/api/v1/quality-reports", "/api/v1/quality-checks"):
                 task_id = parse_qs(urlparse(self.path).query).get("task_id", [""])[0]
                 rows = [row.to_dict() for row in quality_service.list(task_id)]
                 self._json(200, {"count": len(rows), "reports": rows})
                 return
             if path == "/api/v1/model-runtime":
                 self._json(200, {"runtime": runtime.status()})
+                return
+            if path == "/api/v1/workflows":
+                rows = [obj.to_dict() for obj in workflow_defs.list()]
+                self._json(200, {"count": len(rows), "workflows": rows})
+                return
+            match = WORKFLOW_ITEM_PATH.match(path)
+            if match:
+                workflow_id = unquote(match.group(1))
+                obj = workflow_defs.get(workflow_id)
+                if obj is None:
+                    self._json(404, {"error": "unknown workflow_id", "workflow_id": workflow_id})
+                else:
+                    self._json(200, {"workflow": obj.to_dict()})
+                return
+            match = WORKFLOW_EXECUTE_PATH.match(path)
+            if match:
+                self._json(405, {"error": "execute is POST-only"})
                 return
             if path == "/api/v1/settings":
                 token_perms = policy.permissions(self._token()) if policy is not None else []
@@ -286,10 +348,14 @@ def create_server(
                     {
                         "context": extra_data,
                         "model_runtime": runtime.status(),
+                        "workflows": {
+                            "count": len(workflow_defs.list()),
+                            "storage": "file" if workflow_defs.path else "memory",
+                        },
                         "roles": [
                             {"role": "系统管理员", "permissions": list(PERMISSIONS)},
-                            {"role": "项目负责人", "permissions": ["project:write", "task:create", "task:transition", "dataset:write", "catalog:write", "deliverable:write", "quality:write", "review:write", "model:invoke", "audit:read"]},
-                            {"role": "作业人员", "permissions": ["task:create", "task:transition", "dataset:write", "deliverable:write", "quality:write", "model:invoke"]},
+                            {"role": "项目负责人", "permissions": ["project:write", "task:create", "task:transition", "dataset:write", "catalog:write", "deliverable:write", "quality:write", "review:write", "model:invoke", "workflow:write", "workflow:execute", "audit:read"]},
+                            {"role": "作业人员", "permissions": ["task:create", "task:transition", "dataset:write", "deliverable:write", "quality:write", "model:invoke", "workflow:execute"]},
                             {"role": "审核人员", "permissions": ["review:write", "quality:write", "audit:read"]},
                             {"role": "只读", "permissions": []},
                         ],
@@ -322,6 +388,18 @@ def create_server(
                 try:
                     trace = build_trace(
                         registry, task_id, journal=runs, artifacts=artifacts, reviews=review_engine
+                    )
+                except ValueError as exc:
+                    self._json(404, {"error": str(exc)})
+                    return
+                self._json(200, trace)
+                return
+            match = DELIVERABLE_TRACE_PATH.match(path)
+            if match:
+                deliverable_id = unquote(match.group(1))
+                try:
+                    trace = build_deliverable_trace(
+                        registry, deliverable_id, journal=runs, artifacts=artifacts, reviews=review_engine
                     )
                 except ValueError as exc:
                     self._json(404, {"error": str(exc)})
@@ -416,6 +494,120 @@ def create_server(
                     return
                 audit_log.record("POST", path, self._token(), "allow", "model invocation", 200)
                 self._json(200, {"result": result, "runtime": runtime.status()})
+                return
+
+            if path == "/api/v1/workflows":
+                if not self._authorize("workflow:write", path):
+                    return
+                payload = self._read_json()
+                if payload is None:
+                    return
+                try:
+                    obj = workflow_defs.create(
+                        workflow_id=str(payload.get("workflow_id") or payload.get("id") or ""),
+                        name=str(payload.get("name") or ""),
+                        task_type=str(payload.get("task_type") or ""),
+                        nodes=payload.get("nodes"),
+                        description=str(payload.get("description") or ""),
+                    )
+                except (WorkflowDefinitionError, ValueError, TypeError) as exc:
+                    self._deny(400, str(exc), path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "workflow definition created", 201)
+                self._json(201, {"workflow": obj.to_dict()})
+                return
+
+            match = WORKFLOW_ITEM_PATH.match(path)
+            if match:
+                if not self._authorize("workflow:write", path):
+                    return
+                workflow_id = unquote(match.group(1))
+                payload = self._read_json()
+                if payload is None:
+                    return
+                try:
+                    obj = workflow_defs.update(
+                        workflow_id=workflow_id,
+                        name=payload.get("name"),
+                        task_type=payload.get("task_type"),
+                        nodes=payload.get("nodes"),
+                        description=payload.get("description"),
+                    )
+                except WorkflowDefinitionError as exc:
+                    status = 404 if "unknown workflow_id" in str(exc) else 400
+                    self._deny(status, str(exc), path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "workflow definition updated", 200)
+                self._json(200, {"workflow": obj.to_dict()})
+                return
+
+            match = WORKFLOW_EXECUTE_PATH.match(path)
+            if match:
+                if not self._authorize("workflow:execute", path):
+                    return
+                workflow_id = unquote(match.group(1))
+                payload = self._read_json()
+                if payload is None:
+                    return
+                context = payload.get("context")
+                if context is None:
+                    context = {}
+                if not isinstance(context, dict):
+                    self._deny(400, "context must be an object", path)
+                    return
+                try:
+                    result = workflow_runner.execute(
+                        workflow_id=workflow_id,
+                        context=context,
+                        task_id=str(payload.get("task_id") or ""),
+                        project_id=str(payload.get("project_id") or ""),
+                        actor=str(payload.get("actor") or ""),
+                        run_id=str(payload.get("run_id") or "") or None,
+                    )
+                except WorkflowError as exc:
+                    text = str(exc)
+                    status = 404 if ("unknown workflow_id" in text or "unknown task_id" in text) else 409 if "must be RUNNING" in text else 400
+                    self._deny(status, text, path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "workflow executed", 200)
+                self._json(200, result)
+                return
+
+            match = WORKFLOW_RUN_RESUME_PATH.match(path)
+            if match:
+                if not self._authorize("workflow:execute", path):
+                    return
+                previous_run_id = unquote(match.group(1))
+                payload = self._read_json()
+                if payload is None:
+                    return
+                workflow_id = str(payload.get("workflow_id") or "").strip()
+                if not workflow_id:
+                    self._deny(400, "workflow_id is required", path)
+                    return
+                context = payload.get("context")
+                if context is None:
+                    context = {}
+                if not isinstance(context, dict):
+                    self._deny(400, "context must be an object", path)
+                    return
+                try:
+                    result = workflow_runner.resume(
+                        workflow_id=workflow_id,
+                        previous_run_id=previous_run_id,
+                        context=context,
+                        task_id=str(payload.get("task_id") or ""),
+                        project_id=str(payload.get("project_id") or ""),
+                        actor=str(payload.get("actor") or ""),
+                        run_id=str(payload.get("run_id") or "") or None,
+                    )
+                except WorkflowError as exc:
+                    text = str(exc)
+                    status = 404 if ("unknown workflow_id" in text or "unknown run_id" in text or "unknown task_id" in text) else 409 if "must be RUNNING" in text else 400
+                    self._deny(status, text, path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "workflow resumed", 200)
+                self._json(200, result)
                 return
 
             if path == "/api/v1/tasks":
@@ -556,7 +748,7 @@ def create_server(
                 self._json(201, {"deliverable": deliverable.to_dict()})
                 return
 
-            if path == "/api/v1/quality-reports":
+            if path in ("/api/v1/quality-reports", "/api/v1/quality-checks"):
                 if not self._authorize("quality:write", path):
                     return
                 payload = self._read_json()
@@ -612,12 +804,37 @@ def create_server(
                         reviewer=str(payload.get("reviewer") or ""),
                         decision=str(payload.get("decision") or ""),
                         opinion=str(payload.get("opinion") or ""),
+                        quality_report_id=str(payload.get("quality_report_id") or ""),
                     )
                 except (ReviewError, ValueError) as exc:
                     self._deny(400, str(exc), path)
                     return
                 audit_log.record("POST", path, self._token(), "allow", "review recorded", 201)
                 self._json(201, {"review": review.to_dict()})
+                return
+
+            match = TASK_ACTION_PATH.match(path)
+            if match:
+                if not self._authorize("task:transition", path):
+                    return
+                task_id = unquote(match.group(1))
+                action = match.group(2)
+                payload = self._read_json()
+                if payload is None:
+                    return
+                target = {"start": "RUNNING", "pause": "PAUSED", "resume": "RUNNING", "cancel": "CANCELLED"}[action]
+                try:
+                    task = tasks.transition(
+                        task_id,
+                        target,
+                        reason=str(payload.get("reason") or ""),
+                        actor=str(payload.get("actor") or ""),
+                    )
+                except ValueError as exc:
+                    self._deny(400, str(exc), path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "task action %s" % action, 200)
+                self._json(200, {"task": task.to_dict()})
                 return
 
             match = TRANSITION_PATH.match(path)

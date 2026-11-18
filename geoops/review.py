@@ -38,6 +38,7 @@ class ReviewEngine:
         decision: str,
         opinion: str = "",
         review_id: str = "",
+        quality_report_id: str = "",
     ) -> DomainObject:
         reviewer = str(reviewer or "").strip()
         task_id = str(task_id or "").strip()
@@ -57,6 +58,17 @@ class ReviewEngine:
             raise ReviewError("unknown deliverable_id: %s" % deliverable_id)
         if deliverable.status == "accepted":
             raise ReviewError("deliverable is already finally accepted: %s" % deliverable_id)
+        quality_report_id = str(quality_report_id or "").strip()
+        if quality_report_id:
+            report = self.registry.get(quality_report_id)
+            if report is None or report.object_type is not ObjectType.QUALITY_REPORT:
+                raise ReviewError("unknown quality_report_id: %s" % quality_report_id)
+            target = report.payload.get("target") or {}
+            if report.payload.get("target_type") != "deliverable" or target.get("deliverable_id") != deliverable_id:
+                raise ReviewError(
+                    "quality report %s does not inspect deliverable %s"
+                    % (quality_report_id, deliverable_id)
+                )
         review_id = str(review_id or "RV-%s" % uuid.uuid4().hex[:10]).strip()
         if self.registry.get(review_id) is not None:
             raise ReviewError("duplicate review_id: %s" % review_id)
@@ -67,6 +79,7 @@ class ReviewEngine:
             "reviewer": reviewer,
             "decision": decision,
             "opinion": str(opinion or "").strip(),
+            "quality_report_id": quality_report_id or None,
             "reviewed_at": _now(),
             "deliverable_version_at_review": deliverable.version,
         }

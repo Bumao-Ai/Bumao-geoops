@@ -121,3 +121,29 @@ def build_trace(
         "missing": missing,
         "complete": not missing,
     }
+
+
+def build_deliverable_trace(
+    registry: DomainRegistry,
+    deliverable_id: str,
+    journal: Optional[Any] = None,
+    artifacts: Optional[Any] = None,
+    reviews: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Trace a deliverable back through its task, runs, reviews and sources."""
+    deliverable = registry.get(deliverable_id)
+    if deliverable is None or deliverable.object_type is not ObjectType.DELIVERABLE:
+        raise ValueError("unknown deliverable_id: %s" % deliverable_id)
+    task_id = str(deliverable.payload.get("task_id") or "")
+    if not task_id:
+        return {
+            "deliverable_id": deliverable_id,
+            "deliverable": deliverable.to_dict(),
+            "task_id": "",
+            "missing": [{"name": "task", "status": "NOT_RECORDED", "reason": "deliverable has no task_id"}],
+            "complete": False,
+        }
+    trace = build_trace(registry, task_id, journal=journal, artifacts=artifacts, reviews=reviews)
+    trace["deliverable_id"] = deliverable_id
+    trace["deliverable"] = deliverable.to_dict()
+    return trace
