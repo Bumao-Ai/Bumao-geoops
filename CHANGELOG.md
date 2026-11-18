@@ -2,6 +2,34 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased — 2026-11-18 — workflow execution, accuracy metrics and trace binding
+
+### Added
+
+- Workflow definition registry: typed nodes, atomic `var/workflows.json`,
+  declared `inputs` alias mapping, `retry`, `failure_action=continue`,
+  per-node `attempts`, execute and resume APIs.
+- Real nodes: `data_input` / `data_check`, `review`, builtin ASCII
+  `gis_tool_call`, `agent_execute` language layer, `change_detection`,
+  `artifact_register`, `output`.
+- `geoops/quality/metrics.py`: ASCII mask confusion matrix with TP/FP/FN/TN,
+  pixel accuracy, precision, recall, F1 and IoU; NODATA excluded; mismatched
+  geometry refused.
+- Quality API accepts `reference_path`, `predicted_path`, `synthetic_reference`
+  and writes an `accuracy` object into the report.
+- `APPROVE` review is refused unless its linked quality report is `PASS`.
+- Synthetic provenance: datasets and deliverables carry `synthetic`, and the
+  quality report inherits it.
+- API: `POST /api/v1/deliverables/<id>/artifacts` binds a real file hash to an
+  existing deliverable; artifact→deliverable trace links become fillable.
+- Docs: `docs/WORKFLOW_ENGINE.md`, `docs/WORK_RECORD_2026-11-18.md`.
+
+### Tests
+
+- `239 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
+  `complete=True`, `missing=0`; it is explicitly marked synthetic, not a
+  real acceptance.
+
 ## Unreleased — 2026-11-17 — real OpenAI-compatible model runtime
 
 ### Added
