@@ -75,4 +75,4 @@ SMOKE PASS: 73 assertions
 - `geoops/api/app.py`：API 路由与权限。
 - `docs/WORKFLOW_ENGINE.md`：使用说明和边界。
 
-本地提交：`78727fc`（工作流定义/节点/执行/恢复）、`f72b906` 与 `314cbee`（验证记录）、`6889ad4`（默认服务接线）、`3195a3d`（提交引用更新）、`aadfbed`（节点元数据与 inputs 映射）、`1a8c547`（重试/失败策略、精度指标、审核闸门）。远程未 push。
+本地提交：`78727fc`、`f72b906`、`314cbee`、`6889ad4`、`3195a3d`、`aadfbed`、`1a8c547`（重试/失败策略、精度指标、审核闸门）、`c833163`（合成数据来源标记）、`66ff316`（成果 artifact 绑定 API）。远程未 push。
