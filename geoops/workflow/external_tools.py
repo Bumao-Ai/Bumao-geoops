@@ -24,9 +24,10 @@ class ExternalToolError(ValueError):
 
 
 def _default_path() -> str:
-    return os.environ.get("GEOOPS_EXTERNAL_TOOLS") or os.path.join(
-        os.getcwd(), "var", "external-tools.json"
-    )
+    if os.environ.get("GEOOPS_EXTERNAL_TOOLS"):
+        return os.environ["GEOOPS_EXTERNAL_TOOLS"]
+    project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(project_root, "var", "external-tools.json")
 
 
 @dataclass

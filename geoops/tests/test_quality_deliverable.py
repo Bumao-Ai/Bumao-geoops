@@ -87,6 +87,11 @@ class QualityDeliverableTests(unittest.TestCase):
             written = json.load(handle)
         self.assertEqual(written["report_id"], report.object_id)
         self.assertEqual(written["status"], report.payload["status"])
+        self.assertIn("basis", written)
+        self.assertIn("method", written)
+        self.assertEqual(written["data"]["target_id"], self.dataset.object_id)
+        self.assertEqual(written["evidence"]["target_id"], self.dataset.object_id)
+        self.assertEqual(written["evidence"]["target_sha256"], self.dataset.payload["sha256"])
 
     def test_archive_requires_acceptance(self) -> None:
         with self.assertRaises(Exception):

@@ -95,9 +95,24 @@ class CatalogTests(unittest.TestCase):
 
     def test_a_builtin_algorithm_is_available(self) -> None:
         model = self.catalog.register_model(
-            "MDL-1", "像元差分", "1.0", "algorithm", "change_detection", "builtin:change_detection", True
+            "MDL-1", "像元差分", "1.0", "algorithm", "change_detection",
+            "builtin:change_detection", True,
+            provider="builtin", endpoint="builtin://change",
+            model_name="ascii-raster-diff", api_key_env="", timeout_s=30,
         )
         self.assertTrue(model.payload["available"])
+        self.assertEqual(model.payload["endpoint"], "builtin://change")
+        self.assertEqual(model.payload["model_name"], "ascii-raster-diff")
+
+    def test_tool_records_its_interface_fields(self) -> None:
+        tool = self.catalog.register_tool(
+            "TL-2", "ASCII 差分", "1.0", "raster", "builtin:ascii_raster_diff", True,
+            input_format="ESRI ASCII grid", output_format="ASCII mask",
+            invocation="builtin", permission="workflow:execute", timeout_s=30,
+        )
+        self.assertEqual(tool.payload["status"], "READY")
+        self.assertEqual(tool.payload["permission"], "workflow:execute")
+        self.assertEqual(tool.payload["input_format"], "ESRI ASCII grid")
 
     def test_an_unimplemented_builtin_is_marked_unavailable(self) -> None:
         model = self.catalog.register_model(

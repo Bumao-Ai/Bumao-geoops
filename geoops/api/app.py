@@ -701,6 +701,12 @@ def create_server(
                             capability=str(payload.get("capability") or ""),
                             adapter=str(payload.get("adapter") or ""),
                             available=bool(payload.get("available")),
+                            provider=str(payload.get("provider") or ""),
+                            endpoint=str(payload.get("endpoint") or ""),
+                            model_name=str(payload.get("model_name") or ""),
+                            api_key_env=str(payload.get("api_key_env") or ""),
+                            timeout_s=payload.get("timeout_s"),
+                            description=str(payload.get("description") or ""),
                         )
                     elif kind == "Tool":
                         obj = catalog_registry.register_tool(
@@ -712,6 +718,12 @@ def create_server(
                             available=bool(payload.get("available")),
                             timeout_s=payload.get("timeout_s"),
                             error_handling=str(payload.get("error_handling") or ""),
+                            input_format=str(payload.get("input_format") or ""),
+                            output_format=str(payload.get("output_format") or ""),
+                            invocation=str(payload.get("invocation") or ""),
+                            execution_path=str(payload.get("execution_path") or ""),
+                            permission=str(payload.get("permission") or ""),
+                            status=str(payload.get("status") or ""),
                         )
                     elif kind == "Agent":
                         obj = catalog_registry.register_agent(
@@ -722,6 +734,7 @@ def create_server(
                             model_ids=[str(x) for x in (payload.get("model_ids") or [])],
                             tool_ids=[str(x) for x in (payload.get("tool_ids") or [])],
                             description=str(payload.get("description") or ""),
+                            max_steps=payload.get("max_steps"),
                         )
                     else:
                         raise CatalogError("kind must be Model, Tool or Agent")

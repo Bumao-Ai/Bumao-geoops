@@ -45,6 +45,12 @@ class Catalog:
         capability: str,
         adapter: str,
         available: bool = False,
+        provider: str = "",
+        endpoint: str = "",
+        model_name: str = "",
+        api_key_env: str = "",
+        timeout_s: Optional[int] = None,
+        description: str = "",
     ) -> DomainObject:
         _required(
             {"model_id": model_id, "name": name, "version": version,
@@ -63,6 +69,12 @@ class Catalog:
             "adapter": adapter,
             "available": available,
             "reason": reason,
+            "provider": provider,
+            "endpoint": endpoint,
+            "model_name": model_name,
+            "api_key_env": api_key_env,
+            "timeout_s": timeout_s,
+            "description": description,
         }
         return self._register(ObjectType.MODEL, model_id, payload)
 
@@ -77,6 +89,12 @@ class Catalog:
         available: bool = False,
         timeout_s: Optional[int] = None,
         error_handling: str = "",
+        input_format: str = "",
+        output_format: str = "",
+        invocation: str = "",
+        execution_path: str = "",
+        permission: str = "",
+        status: str = "",
     ) -> DomainObject:
         _required(
             {"tool_id": tool_id, "name": name, "version": version,
@@ -96,6 +114,12 @@ class Catalog:
             "reason": reason,
             "timeout_s": timeout_s,
             "error_handling": error_handling,
+            "input_format": input_format,
+            "output_format": output_format,
+            "invocation": invocation,
+            "execution_path": execution_path,
+            "permission": permission,
+            "status": status or ("READY" if available else "UNAVAILABLE"),
         }
         return self._register(ObjectType.TOOL, tool_id, payload)
 
@@ -109,6 +133,7 @@ class Catalog:
         model_ids: List[str],
         tool_ids: List[str],
         description: str = "",
+        max_steps: Optional[int] = None,
     ) -> DomainObject:
         _required(
             {"agent_id": agent_id, "name": name, "version": version, "strategy": strategy},
@@ -131,6 +156,8 @@ class Catalog:
             "model_ids": list(model_ids),
             "tool_ids": list(tool_ids),
             "description": description,
+            "max_steps": max_steps,
+            "max_steps": max_steps,
             "available": not unavailable,
             "reason": "" if not unavailable else "unavailable dependencies: %s" % ", ".join(unavailable),
         }

@@ -24,13 +24,14 @@
 - 节点策略：`retry` 真实重试失败/异常节点，`NodeRun.attempts` 记录次数；`failure_action=continue` 允许下游继续，但 run 仍保持失败。`preconditions` 按点路径检查，缺失即 `FAIL`；`outputs` 把节点输出字段映射为上下文别名；`success_condition` 支持 `PASS`、`status` 比较和点路径比较，不满足即 `FAIL`。
 - 质量精度：新增 `geoops/quality/metrics.py`，读对齐的 ASCII 栅格，算 TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU；NODATA 单元排除；尺寸/像元不一致拒绝。
 - 质检 API 接受 `reference_path`、`predicted_path`、`synthetic_reference`，报告写入 `accuracy`，并加 `professional.accuracy` 检查。
+- 质检报告写入 `basis`、`method`、`data`（目标/参考/预测路径）与 `evidence`（目标 id、路径、sha256、检查数、是否算精度），不只给一个 status。
 - 合成数据来源标记：数据集与成果登记支持 `synthetic`，质检报告继承该标记；合成数据不会被当成真实资产。
 
 ## 验证
 
 ```text
 python -m unittest discover -s geoops\tests -t .
-Ran 260 tests in 26.7s
+Ran 261 tests in 25.7s
 OK
 
 python -m geoops.smoke
@@ -79,5 +80,6 @@ SMOKE PASS: 73 assertions
 - `docs/WORKFLOW_ENGINE.md`：使用说明和边界。
 
 本地提交：`78727fc`、`f72b906`、`314cbee`、`6889ad4`、`3195a3d`、`aadfbed`、`1a8c547`（重试/失败策略、精度指标、审核闸门）、`c833163`（合成数据来源标记）、`66ff316`（成果 artifact 绑定 API）、`cb2cf6f`（拒绝合成成果最终验收）。远程未 push。
+
 
 

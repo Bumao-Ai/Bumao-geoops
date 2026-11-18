@@ -304,6 +304,26 @@ class QualityService:
             "layers": layers,
             "checks": checks,
             "accuracy": accuracy,
+            "basis": "GeoOps three-layer quality service: file/structure, spatial metadata, professional verification",
+            "method": "sha256 and size check; CRS/bounds check; human sample and written note; mask confusion matrix when reference and predicted paths are supplied",
+            "data": {
+                "target_type": target_type,
+                "target": target,
+                "target_id": target_id,
+                "reference_path": str(reference_path or ""),
+                "predicted_path": str(predicted_path or ""),
+            },
+            "evidence": {
+                "target_id": target_id,
+                "target_path": str(target_object.payload.get("path") or "")
+                if target_object is not None
+                else "",
+                "target_sha256": str(target_object.payload.get("sha256") or "")
+                if target_object is not None
+                else "",
+                "check_count": len(checks),
+                "accuracy_computed": accuracy is not None,
+            },
             "generated_at": _now(),
             "program": PROGRAM,
             "actor": str(actor or "").strip(),

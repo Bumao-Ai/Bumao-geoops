@@ -31,6 +31,8 @@ All notable changes to this project are documented in this file.
   geometry refused.
 - Quality API accepts `reference_path`, `predicted_path`, `synthetic_reference`
   and writes an `accuracy` object into the report.
+- Quality reports now carry `basis`, `method`, `data` and `evidence` alongside
+  the status and layer checks.
 - `APPROVE` review is refused unless its linked quality report is `PASS`.
 - Synthetic provenance: datasets and deliverables carry `synthetic`, and the
   quality report inherits it.
@@ -40,7 +42,7 @@ All notable changes to this project are documented in this file.
 
 ### Tests
 
-- `260 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
+- `261 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
   `complete=True`, `missing=0`; it is explicitly marked synthetic, not a
   real acceptance.
 
@@ -456,5 +458,6 @@ Real per-module counts (re-counted, not estimated): `test_tasks` 12,
 | v0.1.0-beta.1 | 2026-11-08 | v0.2.0 (`f315041`) | Bootstrap scaffold, first runnable beta |
 | v0.1.0-beta.2 | 2026-11-09 | v0.2.0 (`f315041`) | Second beta of the 0.1 series |
 | v0.1.0-beta.3 | 2026-11-09 | v0.2.2 (`06d78fb`) | Vendored kernel synced to v0.2.2, full 25-file tree |
+
 
 
