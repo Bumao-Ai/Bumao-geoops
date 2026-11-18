@@ -34,7 +34,7 @@ class QualityDeliverableTests(unittest.TestCase):
         with open(self.dataset_path + ".json", "w", encoding="utf-8") as handle:
             json.dump({"crs": "EPSG:4547"}, handle)
         self.dataset = self.datasets.register(
-            "PRJ-QA-1", self.dataset_path, label="一期", task_id=self.task.task_id
+            "PRJ-QA-1", self.dataset_path, label="一期", task_id=self.task.task_id, synthetic=True
         )
 
         self.deliverable_path = os.path.join(self.tempdir, "mask.asc")
@@ -43,7 +43,7 @@ class QualityDeliverableTests(unittest.TestCase):
                 "ncols 2\nnrows 1\nxllcorner 0\nyllcorner 0\ncellsize 1\nNODATA_value -9999\n1 0\n"
             )
         self.deliverable = self.deliverables.register(
-            self.task.task_id, "变化掩膜", self.deliverable_path, kind="change_mask"
+            self.task.task_id, "变化掩膜", self.deliverable_path, kind="change_mask", synthetic=True
         )
 
     def test_deliverable_reads_a_real_file_and_records_hash(self) -> None:
@@ -55,6 +55,7 @@ class QualityDeliverableTests(unittest.TestCase):
         report = self.quality.evaluate("dataset", self.dataset.object_id, task_id=self.task.task_id)
         payload = report.payload
         self.assertEqual(payload["status"], "PARTIAL")
+        self.assertTrue(payload["synthetic"])
         self.assertEqual(payload["layers"]["professional"]["status"], "PARTIAL")
         self.assertEqual(payload["layers"]["file"]["status"], "PASS")
 

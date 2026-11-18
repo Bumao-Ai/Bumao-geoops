@@ -283,6 +283,8 @@ class QualityService:
 
         status = self._verdict(checks)
         report_id = "QR-%s" % uuid.uuid4().hex[:10]
+        target_object = self.registry.get(target_id)
+        synthetic = bool(target_object.payload.get("synthetic")) if target_object else False
         layers = {}
         for layer in ("file", "spatial", "professional"):
             rows = [row for row in checks if row["layer"] == layer]
@@ -297,6 +299,7 @@ class QualityService:
             "target_type": target_type,
             "target": target,
             "task_id": task_id or None,
+            "synthetic": synthetic,
             "status": status,
             "layers": layers,
             "checks": checks,

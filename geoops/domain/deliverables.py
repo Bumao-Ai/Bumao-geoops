@@ -50,6 +50,7 @@ class DeliverableRegistry:
         notes: str = "",
         deliverable_id: str = "",
         version: int = 1,
+        synthetic: bool = False,
     ) -> DomainObject:
         task_id = str(task_id or "").strip()
         name = str(name or "").strip()
@@ -88,6 +89,7 @@ class DeliverableRegistry:
             "deliverable_id": deliverable_id,
             "task_id": task_id,
             "project_id": task_payload.get("project_id"),
+            "synthetic": bool(synthetic),
             "name": name,
             "kind": str(kind or "").strip(),
             "path": absolute.replace("\\", "/"),

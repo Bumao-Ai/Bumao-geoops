@@ -672,6 +672,7 @@ def create_server(
                         path=str(payload.get("path") or ""),
                         label=str(payload.get("label") or ""),
                         task_id=str(payload.get("task_id") or ""),
+                        synthetic=bool(payload.get("synthetic")),
                     )
                 except (DatasetError, ValueError) as exc:
                     self._deny(400, str(exc), path)
@@ -743,6 +744,7 @@ def create_server(
                         notes=str(payload.get("notes") or ""),
                         deliverable_id=str(payload.get("deliverable_id") or ""),
                         version=payload.get("version") or 1,
+                        synthetic=bool(payload.get("synthetic")),
                     )
                 except (DeliverableError, ValueError, TypeError) as exc:
                     self._deny(400, str(exc), path)

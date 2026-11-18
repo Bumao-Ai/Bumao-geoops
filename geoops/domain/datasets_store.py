@@ -32,6 +32,7 @@ class DatasetRegistry:
         label: str = "",
         dataset_id: str = "",
         task_id: str = "",
+        synthetic: bool = False,
     ) -> DomainObject:
         project_id = str(project_id or "").strip()
         if not project_id:
@@ -50,6 +51,7 @@ class DatasetRegistry:
             "dataset_id": dataset_id,
             "project_id": project_id,
             "task_id": str(task_id or "").strip(),
+            "synthetic": bool(synthetic),
             "path": result.path,
             "label": str(label or "").strip(),
             "size_bytes": result.size_bytes,

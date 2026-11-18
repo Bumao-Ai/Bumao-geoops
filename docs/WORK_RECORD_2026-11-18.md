@@ -23,6 +23,7 @@
 - 节点策略：`retry` 真实重试失败/异常节点，`NodeRun.attempts` 记录次数；`failure_action=continue` 允许下游继续，但 run 仍保持失败。`success_condition` / `outputs` / `preconditions` 仍只做定义记录，未自动判定。
 - 质量精度：新增 `geoops/quality/metrics.py`，读对齐的 ASCII 栅格，算 TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU；NODATA 单元排除；尺寸/像元不一致拒绝。
 - 质检 API 接受 `reference_path`、`predicted_path`、`synthetic_reference`，报告写入 `accuracy`，并加 `professional.accuracy` 检查。
+- 合成数据来源标记：数据集与成果登记支持 `synthetic`，质检报告继承该标记；合成数据不会被当成真实资产。
 
 ## 验证
 
