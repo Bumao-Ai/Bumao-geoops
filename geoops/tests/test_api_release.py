@@ -239,7 +239,7 @@ class ReleaseApiTests(unittest.TestCase):
     def test_overview_counts_the_new_layers(self) -> None:
         status, overview = self.call("GET", "/api/v1/overview")
         self.assertEqual(status, 200)
-        for key in ("projects", "datasets", "reviews"):
+        for key in ("projects", "survey_areas", "datasets", "reviews"):
             self.assertIn(key, overview)
 
 

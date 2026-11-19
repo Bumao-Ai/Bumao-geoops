@@ -244,6 +244,7 @@ def create_server(
                         "objects": len(registry),
                         "tasks": {"total": len(task_rows), "by_status": by_status},
                         "projects": len(project_registry.list()),
+                        "survey_areas": len(area_registry.list()),
                         "datasets": len(dataset_registry.list()),
                         "deliverables": len(deliverable_registry.list()),
                         "quality_reports": len(quality_service.list()),
