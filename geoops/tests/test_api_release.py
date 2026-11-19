@@ -14,6 +14,7 @@ from geoops.api import AuditLog, PermissionPolicy, create_server
 from geoops.artifacts import ArtifactStore
 from geoops.domain import DomainRegistry, ObjectType, TaskEngine
 from geoops.domain.projects import ProjectRegistry
+from geoops.workflow import RunJournal
 
 
 class ReleaseApiTests(unittest.TestCase):
@@ -39,12 +40,14 @@ class ReleaseApiTests(unittest.TestCase):
             }
         )
         self.audit = AuditLog(limit=100)
+        self.runs = RunJournal()
         self.server = create_server(
             self.registry,
             tasks=self.tasks,
             policy=self.policy,
             audit=self.audit,
             artifacts=self.artifacts,
+            runs=self.runs,
             extra={"version": "0.1.0"},
         )
         self.port = self.server.server_address[1]
@@ -139,6 +142,31 @@ class ReleaseApiTests(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(payload["kind"], kind)
             self.assertEqual(payload["count"], 0)
+
+    def test_execution_events_flattens_a_real_journal_row(self) -> None:
+        class FakeRun:
+            def to_dict(self):
+                return {
+                    "run_id": "RUN-API-1",
+                    "workflow_id": "WF-API-1",
+                    "status": "SUCCEEDED",
+                    "started_at": "2026-11-18T00:00:00Z",
+                    "finished_at": "2026-11-18T00:00:01Z",
+                    "node_runs": [
+                        {"node_id": "N1", "node_type": "data_input", "status": "SUCCEEDED",
+                         "attempts": 1, "started_at": "2026-11-18T00:00:00Z",
+                         "finished_at": "2026-11-18T00:00:01Z", "error": ""}
+                    ],
+                }
+        self.runs.record(FakeRun(), task_id=self.task.task_id, project_id="PRJ-API-1")
+        status, payload = self.call(
+            "GET", "/api/v1/execution-events?task_id=%s" % self.task.task_id
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual(payload["events"][0]["kind"], "run")
+        self.assertEqual(payload["events"][1]["kind"], "node")
+        self.assertEqual(payload["events"][1]["node_id"], "N1")
 
     def test_catalog_rejects_an_agent_with_unknown_models(self) -> None:
         status, payload = self.call(

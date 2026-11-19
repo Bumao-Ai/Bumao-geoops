@@ -7,6 +7,7 @@ Read endpoints:
     GET /api/v1/objects/<object_id>
     GET /api/v1/tasks              (when a task engine is supplied)
     GET /api/v1/runs               workflow runs from the journal (when supplied)
+    GET /api/v1/execution-events   flattened run/node events (optional ?task_id=)
     GET /api/v1/projects           registered projects
     GET /api/v1/survey-areas       registered survey areas (optional ?project_id=)
     GET /api/v1/datasets           registered datasets (optional ?project_id=)
@@ -62,7 +63,7 @@ import json
 import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, unquote, urlparse
 
 from geoops.artifacts import ArtifactError
@@ -284,6 +285,47 @@ def create_server(
                         "runs": rows,
                     },
                 )
+                return
+            if path == "/api/v1/execution-events":
+                if runs is None:
+                    self._json(404, {"error": "run journal not configured"})
+                    return
+                task_id = parse_qs(urlparse(self.path).query).get("task_id", [""])[0]
+                events: List[Dict[str, Any]] = []
+                for row in runs.rows():
+                    if task_id and row.get("task_id") != task_id:
+                        continue
+                    events.append(
+                        {
+                            "event_id": "%s:run" % row.get("run_id"),
+                            "kind": "run",
+                            "run_id": row.get("run_id"),
+                            "task_id": row.get("task_id"),
+                            "workflow_id": row.get("workflow_id"),
+                            "status": row.get("status"),
+                            "started_at": row.get("started_at"),
+                            "finished_at": row.get("finished_at"),
+                            "actor": row.get("actor"),
+                        }
+                    )
+                    for node in row.get("node_runs") or []:
+                        events.append(
+                            {
+                                "event_id": "%s:%s" % (row.get("run_id"), node.get("node_id")),
+                                "kind": "node",
+                                "run_id": row.get("run_id"),
+                                "task_id": row.get("task_id"),
+                                "workflow_id": row.get("workflow_id"),
+                                "node_id": node.get("node_id"),
+                                "node_type": node.get("node_type"),
+                                "status": node.get("status"),
+                                "attempts": node.get("attempts"),
+                                "started_at": node.get("started_at"),
+                                "finished_at": node.get("finished_at"),
+                                "error": node.get("error"),
+                            }
+                        )
+                self._json(200, {"count": len(events), "events": events})
                 return
             match = WORKFLOW_RUN_ITEM_PATH.match(path)
             if match:

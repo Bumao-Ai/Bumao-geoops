@@ -18,6 +18,8 @@ All notable changes to this project are documented in this file.
 - `geoops/workflow/external_tools.py`: explicit `external:<id>` tools from
   `var/external-tools.json` (or `GEOOPS_EXTERNAL_TOOLS`), argument templates,
   no-shell subprocess execution, and non-zero exit as an error.
+- `GET /api/v1/execution-events`: flattened run and node events from the real
+  run journal, optionally filtered by `task_id`.
 - Survey areas: `SurveyAreaRegistry` with real project linkage and validated
   `minx/miny/maxx/maxy` bounds; `GET/POST /api/v1/survey-areas`.
 - `GET /api/v1/datasets/<id>/profile`: real ASCII/GeoTIFF pixel summary
@@ -46,7 +48,7 @@ All notable changes to this project are documented in this file.
 
 ### Tests
 
-- `272 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
+- `273 tests OK`; `SMOKE PASS: 73 assertions`. Synthetic trace run produced
   `complete=True`, `missing=0`; it is explicitly marked synthetic, not a
   real acceptance.
 
@@ -462,6 +464,7 @@ Real per-module counts (re-counted, not estimated): `test_tasks` 12,
 | v0.1.0-beta.1 | 2026-11-08 | v0.2.0 (`f315041`) | Bootstrap scaffold, first runnable beta |
 | v0.1.0-beta.2 | 2026-11-09 | v0.2.0 (`f315041`) | Second beta of the 0.1 series |
 | v0.1.0-beta.3 | 2026-11-09 | v0.2.2 (`06d78fb`) | Vendored kernel synced to v0.2.2, full 25-file tree |
+
 
 
 

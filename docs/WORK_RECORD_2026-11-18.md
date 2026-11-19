@@ -22,6 +22,8 @@
   - `GET /api/v1/datasets/<id>/validate` 复核 sha256/CRS。
   - `GET /api/v1/datasets/<id>/profile` 真实读像元，返回尺寸、波段、像元大小、原点、有效格数、最值与均值。
   - `GET/POST /api/v1/survey-areas` 登记测区，校验真实项目、CRS 与 `minx/miny/maxx/maxy` 边界。
+  - `GET /api/v1/execution-events` 把真实 run journal 展开为 run/node 事件，可按 `task_id` 过滤。
+  - `GET /api/v1/models|agents|tools` 按目录类型读取。
 - 权限新增 `workflow:write` / `workflow:execute`（共 12 项），角色矩阵同步。
 - 审核记录可关联 `quality_report_id`；报告必须针对同一成果，否则拒绝；`APPROVE` 只接受状态为 `PASS` 的质量报告，且合成成果不能最终验收。
 - 节点策略：`retry` 真实重试失败/异常节点，`NodeRun.attempts` 记录次数；`failure_action=continue` 允许下游继续，但 run 仍保持失败。`preconditions` 按点路径检查，缺失即 `FAIL`；`outputs` 把节点输出字段映射为上下文别名；`success_condition` 支持 `PASS`、`status` 比较和点路径比较，不满足即 `FAIL`。
@@ -34,7 +36,7 @@
 
 ```text
 python -m unittest discover -s geoops\tests -t .
-Ran 272 tests in 25.5s
+Ran 273 tests in 25.6s
 OK
 
 python -m geoops.smoke
@@ -83,6 +85,7 @@ SMOKE PASS: 73 assertions
 - `docs/WORKFLOW_ENGINE.md`：使用说明和边界。
 
 本地提交：`78727fc`、`f72b906`、`314cbee`、`6889ad4`、`3195a3d`、`aadfbed`、`1a8c547`（重试/失败策略、精度指标、审核闸门）、`c833163`（合成数据来源标记）、`66ff316`（成果 artifact 绑定 API）、`cb2cf6f`（拒绝合成成果最终验收）。远程未 push。
+
 
 
 
