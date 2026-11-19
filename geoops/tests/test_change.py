@@ -21,6 +21,7 @@ import tempfile
 import unittest
 
 from geoops.artifacts import ArtifactStore
+from geoops.geotiff import read_geotiff_pixels
 from geoops.survey.change import (
     ChangeError,
     detect_changes,
@@ -134,6 +135,28 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual([value for value in mask["values"] if value == 1], [1, 1])
         self.assertEqual(mask["values"][-1], -9999)
         self.assertEqual(mask["ncols"], 5)
+
+    def test_geotiff_mask_is_a_real_tiff_with_source_georeferencing(self) -> None:
+        result = detect_changes(self.baseline, self.comparison, threshold=1, min_area_m2=150)
+        result["crs"] = "EPSG:3857"
+        result["crs_model"] = "projected"
+        mask_path = write_change_mask(
+            result, os.path.join(self.tempdir, "mask.tif")
+        )
+        image = read_geotiff_pixels(mask_path)
+        self.assertEqual(image["width"], 5)
+        self.assertEqual(image["height"], 4)
+        self.assertEqual(image["crs"], "EPSG:3857")
+        self.assertEqual(image["crs_model"], "projected")
+        self.assertEqual(image["pixel_size"], [10.0, 10.0])
+        self.assertEqual(image["values"][-1], -9999.0)
+        self.assertEqual(sum(1 for value in image["values"] if value == 1.0), 2)
+
+    def test_geotiff_mask_without_crs_is_refused(self) -> None:
+        result = detect_changes(self.baseline, self.comparison)
+        with self.assertRaises(ChangeError) as caught:
+            write_change_mask(result, os.path.join(self.tempdir, "mask.tif"))
+        self.assertIn("source CRS", str(caught.exception))
 
 
 class ChangeNodeTests(unittest.TestCase):

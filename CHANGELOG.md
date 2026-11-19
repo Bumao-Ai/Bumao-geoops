@@ -31,8 +31,14 @@ All notable changes to this project are documented in this file.
   Deflate images, striped or tiled, 8/16/32-bit chunky or separate-planar
   bands; JPEG/JPEG2000 decode through optional Pillow. Other codecs are
   explicit errors.
+- `geoops/geotiff.py`: `write_geotiff_mask` writes a real classic GeoTIFF
+  (one band, float32, uncompressed, strip layout) with ModelPixelScale,
+  ModelTiepoint, one EPSG GeoKey and GDAL_NODATA; CRS/model are required rather
+  than guessed.
 - `geoops/survey/change.py`: change detection accepts ASCII or classic GeoTIFF
-  rasters through one raster reader; the written mask remains ASCII.
+  rasters through one raster reader; a `.tif`/`.tiff` output writes a one-band
+  float32 GeoTIFF mask with the source PixelScale, Tiepoint, EPSG GeoKey and
+  GDAL_NODATA. Output without a source CRS is refused; `.asc` remains ASCII.
 - `geoops/quality/metrics.py`: ASCII mask confusion matrix with TP/FP/FN/TN,
   pixel accuracy, precision, recall, F1 and IoU; NODATA excluded; mismatched
   geometry refused.

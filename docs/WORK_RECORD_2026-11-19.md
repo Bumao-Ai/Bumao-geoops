@@ -15,6 +15,12 @@ here.
 - TIFF parser tolerance: unsupported ancillary field types (such as
   JPEGTables) are skipped instead of failing a file whose critical tags are
   valid; required tags still fail explicitly when absent.
+- GeoTIFF mask output: `write_change_mask` writes ASCII for `.asc`, or a real
+  one-band float32 classic GeoTIFF for `.tif`/`.tiff` when the source carries
+  `crs` and `crs_model`. The writer emits ModelPixelScale, ModelTiepoint, one
+  EPSG GeoKey and GDAL_NODATA; missing source CRS is refused, not guessed.
+- GeoTIFF reader now returns `crs`/`crs_model` alongside size and georeferencing,
+  so a change mask can reuse the source CRS.
 - `GET /api/v1/datasets/<id>/profile`: reads real ASCII or GeoTIFF pixels and
   returns dimensions, band count, cell size, origin, valid/NODATA counts,
   min/max/mean. An empty raster is a refusal, never a fabricated profile.
@@ -25,12 +31,15 @@ here.
 - `GET /api/v1/execution-events`: flattened run/node events from the real run
   journal, optionally filtered by `task_id`.
 - Tests for LZW round-trip, tiled TIFF pixels, GeoTIFF and NODATA profiles,
-  survey areas and execution events.
+  GeoTIFF mask output round-trip, survey areas and execution events.
 
 ## Verification
 
-- Full suite: `Ran 277 tests in 26.8s`, `OK`.
+- Full suite: `Ran 280 tests in 27.8s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
+- GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
+  pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
+  `-9999` preserved.
 - Temporary-port API check: `/api/v1/health` = `ok`; `/api/v1/survey-areas` and
   `/api/v1/models` routed correctly.
 - Live service on `127.0.0.1:8790` was restarted with the current code; `/ui/`

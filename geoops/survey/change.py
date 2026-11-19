@@ -1,4 +1,4 @@
-"""Change detection on real rasters (ESRI ASCII grid).
+"""Change detection on real rasters (ESRI ASCII or classic GeoTIFF).
 
 This is a real calculation, not a placeholder: two aligned grids are read,
 cells whose absolute difference reaches the threshold are marked, 4-neighbour
@@ -6,8 +6,8 @@ connectivity groups them into patches, and patches smaller than the declared
 minimum area are dropped before the mask is written. Values come from the
 files; nothing is invented.
 
-The ASCII grid is used because it is plain text the standard library can read
-exactly, so a test can hand-compute the expected cells. Cell area is
+The output is an ESRI ASCII grid by default, or a one-band float32 GeoTIFF when
+the output ends in ``.tif``/``.tiff`` and the source carries a CRS. Cell area is
 ``cellsize ** 2`` in map units, which is square metres only when the grid's CRS
 is projected in metres — the caller owns that check (R-OR-001 / R-CD-002).
 """
@@ -117,6 +117,8 @@ def read_raster_grid(path: str) -> Dict[str, Any]:
             "values": values,
             "source_format": "geotiff",
             "bands": bands,
+            "crs": image.get("crs") or "",
+            "crs_model": image.get("crs_model") or "",
         }
     return read_ascii_grid(path)
 
@@ -235,14 +237,45 @@ def detect_changes(
         "mask": mask,
         "invalid_mask": invalid_mask,
         "header": dict(baseline["header"]),
+        "crs": baseline.get("crs") or "",
+        "crs_model": baseline.get("crs_model") or "",
     }
 
 
 def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -9999) -> str:
-    """Write the mask as an ASCII grid with the source header."""
+    """Write the mask as ASCII, or as a real GeoTIFF when the suffix is .tif."""
     path = str(path or "").strip()
     if not path:
         raise ChangeError("output path must not be empty")
+    if path.lower().endswith((".tif", ".tiff")):
+        from geoops.geotiff import GeoTiffError, write_geotiff_mask
+
+        crs = str(result.get("crs") or "").strip()
+        crs_model = str(result.get("crs_model") or "").strip()
+        if not crs or crs_model not in ("geographic", "projected"):
+            raise ChangeError(
+                "GeoTIFF mask output requires a source CRS and CRS model; "
+                "use an ASCII source or write the mask as .asc"
+            )
+        values = [
+            float(nodata_value) if invalid else float(value)
+            for value, invalid in zip(result["mask"], result["invalid_mask"])
+        ]
+        try:
+            return write_geotiff_mask(
+                path,
+                width=int(result["ncols"]),
+                height=int(result["nrows"]),
+                cellsize=float(result["cellsize"]),
+                xllcorner=float(result["header"]["xllcorner"]),
+                yllcorner=float(result["header"]["yllcorner"]),
+                crs=crs,
+                crs_model=crs_model,
+                values=values,
+                nodata=float(nodata_value),
+            )
+        except GeoTiffError as exc:
+            raise ChangeError("cannot write GeoTIFF mask: %s" % exc) from exc
     path = os.path.abspath(path)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     header = result["header"]

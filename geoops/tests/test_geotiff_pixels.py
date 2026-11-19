@@ -8,7 +8,7 @@ import tempfile
 import unittest
 import zlib
 
-from geoops.geotiff import GeoTiffError, read_geotiff_pixels
+from geoops.geotiff import GeoTiffError, probe_geotiff, read_geotiff_pixels, write_geotiff_mask
 from geoops.survey.change import ChangeError, detect_changes, read_raster_grid
 
 try:
@@ -269,6 +269,32 @@ class GeoTiffPixelTests(unittest.TestCase):
         decoded = read_geotiff_pixels(self.path)
         self.assertEqual(decoded["bands"], 3)
         self.assertEqual(len(decoded["values"]), 12)
+
+    def test_written_geotiff_has_real_georeferencing(self) -> None:
+        path = os.path.join(tempfile.mkdtemp(prefix="geoops-write-"), "mask.tif")
+        write_geotiff_mask(
+            path,
+            width=2,
+            height=2,
+            cellsize=10.0,
+            xllcorner=500000.0,
+            yllcorner=4500000.0,
+            crs="EPSG:4326",
+            crs_model="geographic",
+            values=[1.0, 0.0, -9999.0, 1.0],
+            nodata=-9999.0,
+        )
+        probe = probe_geotiff(path)
+        self.assertEqual(probe["width"], 2)
+        self.assertEqual(probe["height"], 2)
+        self.assertEqual(probe["crs"], "EPSG:4326")
+        self.assertEqual(probe["pixel_size"], [10.0, 10.0])
+        self.assertEqual(probe["bounds"], [500000.0, 4500000.0, 500020.0, 4500020.0])
+        image = read_geotiff_pixels(path)
+        self.assertEqual(image["crs"], "EPSG:4326")
+        self.assertEqual(image["crs_model"], "geographic")
+        self.assertEqual(image["nodata"], -9999.0)
+        self.assertEqual(image["values"], [1.0, 0.0, -9999.0, 1.0])
 
     def test_unsupported_compression_is_refused_explicitly(self) -> None:
         _tiff(self.path, [1, 2, 3, 4], compression=6)

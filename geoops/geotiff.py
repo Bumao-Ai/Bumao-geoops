@@ -1,16 +1,21 @@
-"""Read GeoTIFF georeferencing from the file header, without GDAL.
+"""Read and write classic GeoTIFF, without GDAL.
 
-Only classic TIFF (magic 42) with GeoTIFF tags is supported. The parser returns
-width, height, band count, EPSG code, pixel size and bounds when the tags are
-present; an ordinary TIFF without those tags is refused rather than guessed.
+Only classic TIFF (magic 42) with GeoTIFF tags is supported. The header parser
+returns width, height, band count, EPSG code, pixel size and bounds when the
+tags are present; an ordinary TIFF without those tags is refused rather than
+guessed. Pixel decoding covers the codecs documented on
+:func:`read_geotiff_pixels`; :func:`write_geotiff_mask` writes a real one-band
+float32 GeoTIFF with PixelScale, Tiepoint, one EPSG GeoKey and GDAL_NODATA.
 
-This is deliberately a narrow reader: it does not decode pixels and it does not
-replace GDAL. It exists so a real GeoTIFF can supply its own CRS to the dataset
-registry on a machine where no geospatial library is installed.
+This is deliberately a narrow reader/writer: it does not replace GDAL, reproject
+or build overviews. It exists so a real GeoTIFF can supply its own CRS and so a
+change mask can leave as a georeferenced file on a machine with no geospatial
+library installed.
 """
 
 from __future__ import annotations
 
+import os
 import struct
 import zlib
 from typing import Any, Dict, List, Optional
@@ -232,6 +237,24 @@ def _undo_predictor(values: List[float], row_values: int, samples: int) -> None:
             values[index] = values[index] + values[index - samples]
 
 
+def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, str]:
+    geo_keys = entries.get(TAG_GEOKEYS) or []
+    if len(geo_keys) < 4:
+        return {"crs": "", "crs_model": ""}
+    key_count = int(geo_keys[3])
+    for index in range(key_count):
+        base = 4 + index * 4
+        if base + 3 >= len(geo_keys):
+            break
+        key_id, location, _count, value = geo_keys[base:base + 4]
+        if key_id in EPSG_KEYS and location == 0 and value:
+            return {
+                "crs": "EPSG:%d" % int(value),
+                "crs_model": EPSG_KEYS[key_id],
+            }
+    return {"crs": "", "crs_model": ""}
+
+
 def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[str, Any]:
     scale = entries.get(TAG_PIXEL_SCALE) or []
     tie = entries.get(TAG_TIEPOINT) or []
@@ -251,7 +274,7 @@ def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[s
         top = y + j * sy
         bounds = [left, top - height * sy, left + width * sx, top]
         pixel_size = [sx, sy]
-    return {"nodata": nodata, "pixel_size": pixel_size, "bounds": bounds}
+    return {"nodata": nodata, "pixel_size": pixel_size, "bounds": bounds, **_epsg_metadata(entries)}
 
 
 def _pillow_pixels(
@@ -282,7 +305,8 @@ def _pillow_pixels(
                 raise GeoTiffError(
                     "JPEG TIFF has %d decoded bands, header says %d" % (bands, samples)
                 )
-            pixels = list(image.getdata())
+            getter = getattr(image, "get_flattened_data", None)
+            pixels = list(getter() if callable(getter) else image.getdata())
     except GeoTiffError:
         raise
     except Exception as exc:
@@ -310,6 +334,8 @@ def _pillow_pixels(
         "nodata": metadata["nodata"],
         "pixel_size": metadata["pixel_size"],
         "bounds": metadata["bounds"],
+        "crs": metadata["crs"],
+        "crs_model": metadata["crs_model"],
     }
 
 
@@ -477,7 +503,165 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         "nodata": metadata["nodata"],
         "pixel_size": metadata["pixel_size"],
         "bounds": metadata["bounds"],
+        "crs": metadata["crs"],
+        "crs_model": metadata["crs_model"],
     }
+
+
+def _crs_number(crs: str) -> int:
+    value = str(crs or "").strip().upper()
+    if not value.startswith("EPSG:"):
+        raise GeoTiffError("GeoTIFF output needs a CRS such as EPSG:4326")
+    try:
+        number = int(value[5:])
+    except ValueError as exc:
+        raise GeoTiffError("invalid EPSG code: %s" % crs) from exc
+    if number <= 0 or number > 65535:
+        raise GeoTiffError("EPSG code out of GeoKey range: %d" % number)
+    return number
+
+
+def write_geotiff_mask(
+    path: str,
+    *,
+    width: int,
+    height: int,
+    cellsize: float,
+    xllcorner: float,
+    yllcorner: float,
+    crs: str,
+    crs_model: str,
+    values: List[float],
+    nodata: float = -9999.0,
+) -> str:
+    """Write a one-band float32, uncompressed classic GeoTIFF mask.
+
+    Only the georeferencing this program actually knows is written: PixelScale,
+    Tiepoint, one EPSG GeoKey and GDAL_NODATA. The output is a real TIFF that
+    this reader and GDAL can open; it is not a renamed ASCII file.
+    """
+    path = str(path or "").strip()
+    if not path:
+        raise GeoTiffError("GeoTIFF output path is empty")
+    if not path.lower().endswith((".tif", ".tiff")):
+        raise GeoTiffError("GeoTIFF output path must end in .tif or .tiff")
+    width, height = int(width), int(height)
+    if width <= 0 or height <= 0:
+        raise GeoTiffError("GeoTIFF dimensions must be positive")
+    if len(values) != width * height:
+        raise GeoTiffError(
+            "GeoTIFF has %d values for %dx%d pixels" % (len(values), width, height)
+        )
+    cellsize = float(cellsize)
+    xllcorner, yllcorner = float(xllcorner), float(yllcorner)
+    if cellsize <= 0 or not all(
+        value == value and abs(value) != float("inf")
+        for value in (cellsize, xllcorner, yllcorner)
+    ):
+        raise GeoTiffError("GeoTIFF georeferencing contains a non-finite value")
+    crs_model = str(crs_model or "").strip().lower()
+    if crs_model not in ("geographic", "projected"):
+        raise GeoTiffError("GeoTIFF output needs crs_model geographic or projected")
+    epsg = _crs_number(crs)
+    nodata = float(nodata)
+
+    pixel_offset = 8
+    pixel_bytes = width * height * 4
+    pixel_data = bytearray()
+    for raw in values:
+        number = float(raw)
+        if not (number == number and abs(number) != float("inf")):
+            raise GeoTiffError("GeoTIFF mask contains a non-finite value")
+        pixel_data.extend(struct.pack("<f", number))
+    ifd_offset = pixel_offset + len(pixel_data)
+    if ifd_offset % 2:
+        pixel_data.append(0)
+        ifd_offset += 1
+
+    top = yllcorner + height * cellsize
+    geo_keys = [
+        1,
+        1,
+        0,
+        3,
+        1024,
+        0,
+        1,
+        2 if crs_model == "geographic" else 1,
+        1025,
+        0,
+        1,
+        1,
+        2048 if crs_model == "geographic" else 3072,
+        0,
+        1,
+        epsg,
+    ]
+    specs = [
+        (256, 4, 1, struct.pack("<I", width)),
+        (257, 4, 1, struct.pack("<I", height)),
+        (258, 3, 1, struct.pack("<H", 32)),
+        (259, 3, 1, struct.pack("<H", 1)),
+        (262, 3, 1, struct.pack("<H", 1)),
+        (273, 4, 1, struct.pack("<I", pixel_offset)),
+        (277, 3, 1, struct.pack("<H", 1)),
+        (278, 4, 1, struct.pack("<I", height)),
+        (279, 4, 1, struct.pack("<I", pixel_bytes)),
+        (284, 3, 1, struct.pack("<H", 1)),
+        (339, 3, 1, struct.pack("<H", 3)),
+        (
+            33550,
+            12,
+            3,
+            struct.pack("<3d", cellsize, cellsize, 0.0),
+        ),
+        (
+            33922,
+            12,
+            6,
+            struct.pack("<6d", 0.0, 0.0, 0.0, xllcorner, top, 0.0),
+        ),
+        (34735, 3, 16, struct.pack("<16H", *geo_keys)),
+        (
+            42113,
+            2,
+            len(repr(nodata)) + 1,
+            (repr(nodata) + "\x00").encode("latin-1"),
+        ),
+    ]
+
+    ifd_size = 2 + 12 * len(specs) + 4
+    aux_cursor = ifd_offset + ifd_size
+    aux_data = bytearray()
+    ifd_bytes = bytearray(struct.pack("<H", len(specs)))
+    for tag, typ, count, payload in specs:
+        if len(payload) <= 4:
+            value_field = payload + b"\x00" * (4 - len(payload))
+        else:
+            align = 8 if typ == 12 else (2 if typ in (3, 4) else 1)
+            padding = (-aux_cursor) % align
+            aux_data.extend(b"\x00" * padding)
+            aux_cursor += padding
+            value_field = struct.pack("<I", aux_cursor)
+            aux_data.extend(payload)
+            aux_cursor += len(payload)
+        ifd_bytes.extend(struct.pack("<HHI", tag, typ, count))
+        ifd_bytes.extend(value_field)
+    ifd_bytes.extend(struct.pack("<I", 0))
+
+    body = b"II" + struct.pack("<H", 42) + struct.pack("<I", ifd_offset)
+    body += bytes(pixel_data)
+    body += bytes(ifd_bytes)
+    body += bytes(aux_data)
+    absolute = os.path.abspath(path)
+    os.makedirs(os.path.dirname(absolute) or ".", exist_ok=True)
+    temp_path = absolute + ".tmp"
+    with open(temp_path, "wb") as handle:
+        handle.write(body)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temp_path, absolute)
+    return absolute
 
 
 def _iter_entries(data: bytes, endian: str, ifd_offset: int):
