@@ -13,6 +13,7 @@ Read endpoints:
     GET /api/v1/datasets/<id>/validate
     GET /api/v1/datasets/<id>/profile  real pixel profile (ASCII or GeoTIFF)
     GET /api/v1/catalog            models, agents and tools
+    GET /api/v1/models|agents|tools  catalog slices by kind
     GET /api/v1/deliverables       registered deliverables (optional ?task_id=)
     GET /api/v1/quality-reports   quality reports (also /quality-checks alias)
     GET /api/v1/settings           roles, permission matrix and caller grants
@@ -339,6 +340,11 @@ def create_server(
                         "agents": [row.to_dict() for row in catalog_registry.list("Agent")],
                     },
                 )
+                return
+            if path in ("/api/v1/models", "/api/v1/agents", "/api/v1/tools"):
+                kind = {"models": "Model", "agents": "Agent", "tools": "Tool"}[path.rsplit("/", 1)[1]]
+                rows = [row.to_dict() for row in catalog_registry.list(kind)]
+                self._json(200, {"count": len(rows), "kind": kind, "items": rows})
                 return
             if path == "/api/v1/deliverables":
                 task_id = parse_qs(urlparse(self.path).query).get("task_id", [""])[0]

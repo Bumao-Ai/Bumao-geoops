@@ -133,6 +133,13 @@ class ReleaseApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(listing["count"], 1)
 
+    def test_catalog_slices_are_readable_by_kind(self) -> None:
+        for path, kind in (("/api/v1/models", "Model"), ("/api/v1/agents", "Agent"), ("/api/v1/tools", "Tool")):
+            status, payload = self.call("GET", path)
+            self.assertEqual(status, 200)
+            self.assertEqual(payload["kind"], kind)
+            self.assertEqual(payload["count"], 0)
+
     def test_catalog_rejects_an_agent_with_unknown_models(self) -> None:
         status, payload = self.call(
             "POST", "/api/v1/catalog",
