@@ -29,7 +29,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 277 tests in 28.1s`, `OK`.
+- Full suite: `Ran 277 tests in 26.8s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - Temporary-port API check: `/api/v1/health` = `ok`; `/api/v1/survey-areas` and
   `/api/v1/models` routed correctly.
@@ -46,6 +46,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 
