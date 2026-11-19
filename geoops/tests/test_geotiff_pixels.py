@@ -11,6 +11,14 @@ import zlib
 from geoops.geotiff import GeoTiffError, read_geotiff_pixels
 from geoops.survey.change import ChangeError, detect_changes, read_raster_grid
 
+try:
+    from PIL import Image
+
+    _HAS_PIL = True
+except ImportError:  # Pillow is optional; JPEG TIFFs are refused without it.
+    Image = None
+    _HAS_PIL = False
+
 
 def _lzw_encode(values) -> bytes:
     dictionary = {bytes([value]): value for value in range(256)}
@@ -253,8 +261,20 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(image["bands"], 2)
         self.assertEqual(image["values"], [1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0])
 
+    @unittest.skipUnless(_HAS_PIL, "Pillow is not installed; JPEG TIFF decoding is optional")
+    def test_jpeg_compressed_tiff_is_decoded(self) -> None:
+        image = Image.new("L", (2, 2))
+        image.putdata([10, 20, 30, 40])
+        image.save(self.path, format="TIFF", compression="jpeg")
+        decoded = read_geotiff_pixels(self.path)
+        self.assertEqual(decoded["width"], 2)
+        self.assertEqual(decoded["height"], 2)
+        self.assertEqual(decoded["bands"], 1)
+        self.assertEqual(decoded["compression"], 7)
+        self.assertEqual(len(decoded["values"]), 4)
+
     def test_unsupported_compression_is_refused_explicitly(self) -> None:
-        _tiff(self.path, [1, 2, 3, 4], compression=7)
+        _tiff(self.path, [1, 2, 3, 4], compression=6)
         with self.assertRaises(GeoTiffError):
             read_geotiff_pixels(self.path)
 

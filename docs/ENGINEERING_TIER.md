@@ -63,7 +63,7 @@
 |---|---|---|---|
 | 1 | 建真实项目 | 通过（软件路径） | `ProjectRegistry` 六字段必填、编号唯一；`POST /api/v1/projects`；数据页表单 |
 | 2 | 建真实任务 | 通过（软件路径） | `TaskEngine.create` 要求项目已登记；七态状态机；写操作页与 API |
-| 3 | 导入真实遥感影像 | 部分 | 数据集登记读真实文件算 sha256；classic GeoTIFF 已支持未压缩/LZW/Deflate、条带/分块、chunky/分开波段像素解码，JPEG 压缩未支持；尚无用户提供的真实遥感影像入库 |
+| 3 | 导入真实遥感影像 | 部分 | 数据集登记读真实文件算 sha256；classic GeoTIFF 已支持未压缩/LZW/Deflate、条带/分块、chunky/分开波段像素解码，JPEG/JPEG2000 可选 Pillow 解码；尚无用户提供的真实遥感影像入库 |
 | 4 | 识别必要空间元信息 | 部分 | classic GeoTIFF 读 EPSG/宽高/波段/范围/像元大小；ASCII + sidecar；BigTIFF、投影变换未做 |
 | 5 | 登记并调用真实 AI 模型或算法 | 部分 | 目录登记 + `builtin:change_detection` 真跑逐格差分；OpenAI-compatible 模型运行时与 workflow `model_call` / `agent_execute` 已实现，但当前未配置真实端点 |
 | 6 | 用 Agent 组织执行过程 | 部分 | Agent 目录、依赖校验、JSON 计划循环、声明工具白名单、内置工具真实执行与 `tool_calls` 记录已做；外部工具可经 `external:<id>` 配置执行，真实模型端点仍缺 |
@@ -79,6 +79,7 @@
 
 结论：**十五项未全过，0.1 不能宣称正式完成。** 软件层（1/2/4/7/8/11/12/13/15）已可跑；
 3/5/6/9/10/14 的代码执行路径已实现（GeoTIFF 条带像素、Agent 工具循环与 `tool_calls`、节点策略、外部工具配置、GeoTIFF 掩膜精度入口），但真实影像、真实模型端点、真实审核样本和完整真实验收环仍未提供，因此这些项仍按“部分”记录，缺口已写进 README 与 CHANGELOG。
+
 
 
 

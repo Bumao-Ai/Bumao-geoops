@@ -29,7 +29,8 @@ All notable changes to this project are documented in this file.
   executed; missing preconditions and failed conditions stop the node.
 - `geoops/geotiff.py`: classic TIFF pixel decoding for uncompressed, LZW and
   Deflate images, striped or tiled, 8/16/32-bit chunky or separate-planar
-  bands; other codecs are explicit errors.
+  bands; JPEG/JPEG2000 decode through optional Pillow. Other codecs are
+  explicit errors.
 - `geoops/survey/change.py`: change detection accepts ASCII or classic GeoTIFF
   rasters through one raster reader; the written mask remains ASCII.
 - `geoops/quality/metrics.py`: ASCII mask confusion matrix with TP/FP/FN/TN,
@@ -464,6 +465,7 @@ Real per-module counts (re-counted, not estimated): `test_tasks` 12,
 | v0.1.0-beta.1 | 2026-11-08 | v0.2.0 (`f315041`) | Bootstrap scaffold, first runnable beta |
 | v0.1.0-beta.2 | 2026-11-09 | v0.2.0 (`f315041`) | Second beta of the 0.1 series |
 | v0.1.0-beta.3 | 2026-11-09 | v0.2.2 (`06d78fb`) | Vendored kernel synced to v0.2.2, full 25-file tree |
+
 
 
 

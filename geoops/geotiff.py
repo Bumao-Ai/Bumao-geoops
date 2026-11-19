@@ -91,7 +91,15 @@ def _read_entries(path: str):
         raw_file = handle.read()
     entries = {}
     for tag, typ, n, raw in _iter_entries(raw_file, endian, ifd_offset):
-        entries[tag] = _read_field(raw_file, endian, typ, n, raw)
+        try:
+            entries[tag] = _read_field(raw_file, endian, typ, n, raw)
+        except GeoTiffError as exc:
+            # Unknown ancillary types (for example JPEGTables with type 7)
+            # are not fields this reader needs; a critical tag will still be
+            # absent and fail explicitly below.
+            if str(exc).startswith("unsupported TIFF field type"):
+                continue
+            raise
     return endian, raw_file, entries
 
 
@@ -224,6 +232,87 @@ def _undo_predictor(values: List[float], row_values: int, samples: int) -> None:
             values[index] = values[index] + values[index - samples]
 
 
+def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[str, Any]:
+    scale = entries.get(TAG_PIXEL_SCALE) or []
+    tie = entries.get(TAG_TIEPOINT) or []
+    nodata = None
+    raw_nodata = entries.get(TAG_GDAL_NODATA)
+    if isinstance(raw_nodata, str) and raw_nodata.strip().strip("\x00"):
+        try:
+            nodata = float(raw_nodata.strip().strip("\x00"))
+        except ValueError:
+            nodata = None
+    pixel_size = None
+    bounds = None
+    if len(scale) >= 2 and len(tie) >= 6:
+        sx, sy = float(scale[0]), float(scale[1])
+        i, j, _k, x, y, _z = [float(value) for value in tie[:6]]
+        left = x - i * sx
+        top = y + j * sy
+        bounds = [left, top - height * sy, left + width * sx, top]
+        pixel_size = [sx, sy]
+    return {"nodata": nodata, "pixel_size": pixel_size, "bounds": bounds}
+
+
+def _pillow_pixels(
+    path: str,
+    width: int,
+    height: int,
+    samples: int,
+    compression: int,
+    bits: int,
+    entries: Dict[int, Any],
+) -> Dict[str, Any]:
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise GeoTiffError(
+            "compression %s needs Pillow; install Pillow or convert the raster to LZW/Deflate"
+            % compression
+        ) from exc
+    try:
+        with Image.open(path) as image:
+            if image.size != (int(width), int(height)):
+                raise GeoTiffError(
+                    "JPEG TIFF size %s does not match its header %s"
+                    % (image.size, (int(width), int(height)))
+                )
+            bands = len(image.getbands())
+            if bands != int(samples):
+                raise GeoTiffError(
+                    "JPEG TIFF has %d decoded bands, header says %d" % (bands, samples)
+                )
+            pixels = list(image.getdata())
+    except GeoTiffError:
+        raise
+    except Exception as exc:
+        raise GeoTiffError("Pillow cannot decode the JPEG TIFF: %s" % exc) from exc
+    values: List[float] = []
+    for item in pixels:
+        if isinstance(item, (tuple, list)):
+            values.extend(float(value) for value in item)
+        else:
+            values.append(float(item))
+    total = int(width) * int(height) * int(samples)
+    if len(values) < total:
+        raise GeoTiffError(
+            "JPEG TIFF decoded %d samples, expected %d" % (len(values), total)
+        )
+    metadata = _raster_metadata(entries, int(width), int(height))
+    return {
+        "driver": "GTiff",
+        "width": int(width),
+        "height": int(height),
+        "bands": int(bands),
+        "bits_per_sample": int(bits),
+        "compression": int(compression),
+        "values": values[:total],
+        "nodata": metadata["nodata"],
+        "pixel_size": metadata["pixel_size"],
+        "bounds": metadata["bounds"],
+    }
+
+
 def read_geotiff_pixels(path: str) -> Dict[str, Any]:
     """Decode classic TIFF strips or tiles for uncompressed/LZW/Deflate.
 
@@ -245,11 +334,13 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         raise GeoTiffError("TIFF has no image width/height")
     if bits not in (8, 16, 32):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
-    if compression not in (1, 5, 8, 32946):
+    if compression not in (1, 5, 7, 8, 32946, 34712):
         raise GeoTiffError(
-            "unsupported TIFF compression %s; uncompressed, LZW or Deflate only"
+            "unsupported TIFF compression %s; uncompressed, LZW, Deflate, JPEG or JPEG2000 only"
             % compression
         )
+    if compression in (7, 34712):
+        return _pillow_pixels(path, width, height, samples, compression, bits, entries)
     if planar not in (1, 2):
         raise GeoTiffError("unsupported PlanarConfiguration: %s" % planar)
     if predictor not in (1, 2):
@@ -373,25 +464,7 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
             "TIFF decoded %d samples, expected %d" % (len(values), total)
         )
     values = values[:total]
-
-    scale = entries.get(TAG_PIXEL_SCALE) or []
-    tie = entries.get(TAG_TIEPOINT) or []
-    nodata = None
-    raw_nodata = entries.get(TAG_GDAL_NODATA)
-    if isinstance(raw_nodata, str) and raw_nodata.strip().strip("\x00"):
-        try:
-            nodata = float(raw_nodata.strip().strip("\x00"))
-        except ValueError:
-            nodata = None
-    pixel_size = None
-    bounds = None
-    if len(scale) >= 2 and len(tie) >= 6:
-        sx, sy = float(scale[0]), float(scale[1])
-        i, j, _k, x, y, _z = [float(value) for value in tie[:6]]
-        left = x - i * sx
-        top = y + j * sy
-        bounds = [left, top - height * sy, left + width * sx, top]
-        pixel_size = [sx, sy]
+    metadata = _raster_metadata(entries, int(width), int(height))
 
     return {
         "driver": "GTiff",
@@ -401,9 +474,9 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         "bits_per_sample": bits,
         "compression": int(compression),
         "values": values,
-        "nodata": nodata,
-        "pixel_size": pixel_size,
-        "bounds": bounds,
+        "nodata": metadata["nodata"],
+        "pixel_size": metadata["pixel_size"],
+        "bounds": metadata["bounds"],
     }
 
 

@@ -10,7 +10,8 @@ here.
   existing uncompressed/Deflate strip support. LZW uses MSB-first codes with
   the TIFF early code-width change; predictor reversal is applied per block
   (strip or tile), with chunky or separate-planar bands. JPEG/JPEG2000
-  remains an explicit refusal.
+  decode through optional Pillow; when Pillow is absent they remain explicit
+  refusals.
 - `GET /api/v1/datasets/<id>/profile`: reads real ASCII or GeoTIFF pixels and
   returns dimensions, band count, cell size, origin, valid/NODATA counts,
   min/max/mean. An empty raster is a refusal, never a fabricated profile.
@@ -25,7 +26,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 276 tests in 26.2s`, `OK`.
+- Full suite: `Ran 277 tests in 28.1s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - Temporary-port API check: `/api/v1/health` = `ok`; `/api/v1/survey-areas` and
   `/api/v1/models` routed correctly.
@@ -42,5 +43,6 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
