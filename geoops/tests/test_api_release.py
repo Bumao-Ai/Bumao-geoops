@@ -101,6 +101,15 @@ class ReleaseApiTests(unittest.TestCase):
         status, validation = self.call("GET", "/api/v1/datasets/%s/validate" % dataset["object_id"])
         self.assertEqual(status, 200)
         self.assertEqual(validation["status"], "PASS")
+        status, profile = self.call("GET", "/api/v1/datasets/%s/profile" % dataset["object_id"])
+        self.assertEqual(status, 200)
+        self.assertEqual(profile["format"], "ascii")
+        self.assertEqual(profile["ncols"], 2)
+        self.assertEqual(profile["nrows"], 1)
+        self.assertEqual(profile["valid_cells"], 2)
+        self.assertEqual(profile["min"], 0.0)
+        self.assertEqual(profile["max"], 1.0)
+        self.assertEqual(profile["mean"], 0.5)
 
     def test_dataset_without_a_project_is_refused(self) -> None:
         status, payload = self.call(

@@ -19,10 +19,12 @@
   - `POST /api/v1/tasks/<id>/start|pause|resume|cancel` 作为状态机薄别名。
   - `GET /api/v1/deliverables/<id>/trace` 从成果反查任务/运行/审核。
   - `POST /api/v1/deliverables/<id>/artifacts` 把真实文件 sha256 绑定到成果，写入 artifact 索引。
+  - `GET /api/v1/datasets/<id>/validate` 复核 sha256/CRS。
+  - `GET /api/v1/datasets/<id>/profile` 真实读像元，返回尺寸、波段、像元大小、原点、有效格数、最值与均值。
 - 权限新增 `workflow:write` / `workflow:execute`（共 12 项），角色矩阵同步。
 - 审核记录可关联 `quality_report_id`；报告必须针对同一成果，否则拒绝；`APPROVE` 只接受状态为 `PASS` 的质量报告，且合成成果不能最终验收。
 - 节点策略：`retry` 真实重试失败/异常节点，`NodeRun.attempts` 记录次数；`failure_action=continue` 允许下游继续，但 run 仍保持失败。`preconditions` 按点路径检查，缺失即 `FAIL`；`outputs` 把节点输出字段映射为上下文别名；`success_condition` 支持 `PASS`、`status` 比较和点路径比较，不满足即 `FAIL`。
-- 质量精度：新增 `geoops/quality/metrics.py`，读对齐的 ASCII 栅格，算 TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU；NODATA 单元排除；尺寸/像元不一致拒绝。
+- 质量精度：新增 `geoops/quality/metrics.py`，读对齐的 ASCII 或 GeoTIFF 掩膜，算 TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU；NODATA 单元排除；尺寸/像元不一致拒绝。
 - 质检 API 接受 `reference_path`、`predicted_path`、`synthetic_reference`，报告写入 `accuracy`，并加 `professional.accuracy` 检查。
 - 质检报告写入 `basis`、`method`、`data`（目标/参考/预测路径）与 `evidence`（目标 id、路径、sha256、检查数、是否算精度），不只给一个 status。
 - 合成数据来源标记：数据集与成果登记支持 `synthetic`，质检报告继承该标记；合成数据不会被当成真实资产。

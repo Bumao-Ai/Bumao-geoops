@@ -10,6 +10,7 @@ Read endpoints:
     GET /api/v1/projects           registered projects
     GET /api/v1/datasets           registered datasets (optional ?project_id=)
     GET /api/v1/datasets/<id>/validate
+    GET /api/v1/datasets/<id>/profile  real pixel profile (ASCII or GeoTIFF)
     GET /api/v1/catalog            models, agents and tools
     GET /api/v1/deliverables       registered deliverables (optional ?task_id=)
     GET /api/v1/quality-reports   quality reports (also /quality-checks alias)
@@ -85,6 +86,7 @@ TRANSITION_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/transitions$")
 TASK_ACTION_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/(start|pause|resume|cancel)$")
 TRACE_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/trace$")
 DATASET_VALIDATE_PATH = re.compile(r"^/api/v1/datasets/([^/]+)/validate$")
+DATASET_PROFILE_PATH = re.compile(r"^/api/v1/datasets/([^/]+)/profile$")
 DELIVERABLE_ARCHIVE_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/archive$")
 DELIVERABLE_ARTIFACT_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/artifacts$")
 DELIVERABLE_TRACE_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/trace$")
@@ -302,6 +304,16 @@ def create_server(
                 dataset_id = unquote(match.group(1))
                 try:
                     result = dataset_registry.validate(dataset_id)
+                except DatasetError as exc:
+                    self._json(404, {"error": str(exc)})
+                    return
+                self._json(200, result)
+                return
+            match = DATASET_PROFILE_PATH.match(path)
+            if match:
+                dataset_id = unquote(match.group(1))
+                try:
+                    result = dataset_registry.profile(dataset_id)
                 except DatasetError as exc:
                     self._json(404, {"error": str(exc)})
                     return

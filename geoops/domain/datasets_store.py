@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 from geoops.domain import datasets as probe
 from geoops.domain.projects import ProjectRegistry
 from geoops.domain.registry import DomainObject, DomainRegistry, ObjectType
+from geoops.survey.change import ChangeError, read_raster_grid
 
 
 class DatasetError(ValueError):
@@ -111,3 +112,37 @@ class DatasetRegistry:
             checks.append({"name": "crs", "status": "PASS", "detail": fresh.crs})
         status = "PASS" if all(check["status"] == "PASS" for check in checks) else "FAIL"
         return {"dataset_id": dataset_id, "status": status, "checks": checks}
+
+    def profile(self, dataset_id: str) -> Dict[str, Any]:
+        """Read the real raster pixels and return a profile; never guess values."""
+        obj = self.get(dataset_id)
+        if obj is None:
+            raise DatasetError("unknown dataset_id: %s" % dataset_id)
+        path = str(obj.payload.get("path") or "")
+        if not path or not os.path.isfile(path):
+            raise DatasetError("dataset file is missing: %s" % dataset_id)
+        try:
+            grid = read_raster_grid(path)
+        except ChangeError as exc:
+            raise DatasetError("cannot profile raster: %s" % exc) from exc
+        nodata = grid["header"].get("nodata_value")
+        valid = [value for value in grid["values"] if nodata is None or value != nodata]
+        if not valid:
+            raise DatasetError("raster %s has no valid cells after NODATA removal" % dataset_id)
+        return {
+            "dataset_id": dataset_id,
+            "path": path,
+            "format": grid.get("source_format") or "ascii",
+            "bands": int(grid.get("bands") or 1),
+            "ncols": grid["ncols"],
+            "nrows": grid["nrows"],
+            "cellsize": grid["cellsize"],
+            "xllcorner": grid["header"].get("xllcorner"),
+            "yllcorner": grid["header"].get("yllcorner"),
+            "nodata": nodata,
+            "valid_cells": len(valid),
+            "nodata_cells": len(grid["values"]) - len(valid),
+            "min": min(valid),
+            "max": max(valid),
+            "mean": sum(valid) / len(valid),
+        }

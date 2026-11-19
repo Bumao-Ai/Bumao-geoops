@@ -18,6 +18,8 @@ All notable changes to this project are documented in this file.
 - `geoops/workflow/external_tools.py`: explicit `external:<id>` tools from
   `var/external-tools.json` (or `GEOOPS_EXTERNAL_TOOLS`), argument templates,
   no-shell subprocess execution, and non-zero exit as an error.
+- `GET /api/v1/datasets/<id>/profile`: real ASCII/GeoTIFF pixel summary
+  (dimensions, bands, cellsize, origin, NODATA count, min/max/mean).
 - Node policies: declared `outputs` aliases, dotted `preconditions`, and
   `success_condition` (`PASS`, `status == …`, or a dotted-path comparison) are
   executed; missing preconditions and failed conditions stop the node.
