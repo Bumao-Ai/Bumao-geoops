@@ -23,7 +23,7 @@ All notable changes to this project are documented in this file.
 - Survey areas: `SurveyAreaRegistry` with real project linkage and validated
   `minx/miny/maxx/maxy` bounds; `GET/POST /api/v1/survey-areas`.
 - `GET /api/v1/datasets/<id>/profile`: real ASCII/GeoTIFF pixel summary
-  (dimensions, bands, cellsize, origin, NODATA count, min/max/mean).
+  (dimensions, bands, cellsize, origin, bounds, CRS, NODATA count, min/max/mean).
 - Node policies: declared `outputs` aliases, dotted `preconditions`, and
   `success_condition` (`PASS`, `status == …`, or a dotted-path comparison) are
   executed; missing preconditions and failed conditions stop the node.

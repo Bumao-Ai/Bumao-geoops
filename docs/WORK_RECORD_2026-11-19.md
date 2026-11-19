@@ -22,8 +22,9 @@ here.
 - GeoTIFF reader now returns `crs`/`crs_model` alongside size and georeferencing,
   so a change mask can reuse the source CRS.
 - `GET /api/v1/datasets/<id>/profile`: reads real ASCII or GeoTIFF pixels and
-  returns dimensions, band count, cell size, origin, valid/NODATA counts,
-  min/max/mean. An empty raster is a refusal, never a fabricated profile.
+  returns dimensions, band count, cell size, origin, bounds, CRS, valid/NODATA
+  counts, min/max/mean. An empty raster is a refusal, never a fabricated
+  profile.
 - `SurveyAreaRegistry` and `GET/POST /api/v1/survey-areas`: a survey area
   requires a real project, name, type and CRS; optional bounds must be four
   finite numbers with positive extent.

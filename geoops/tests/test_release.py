@@ -105,6 +105,8 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(profile["min"], 1.0)
         self.assertEqual(profile["max"], 1.0)
         self.assertEqual(profile["mean"], 1.0)
+        self.assertEqual(profile["bounds"], [0.0, 0.0, 2.0, 2.0])
+        self.assertEqual(profile["crs"], "EPSG:4547")
 
     def test_profile_reads_real_geotiff_pixels(self) -> None:
         path = os.path.join(self.tempdir, "tile.tif")
@@ -118,6 +120,8 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(profile["nrows"], 2)
         self.assertEqual(profile["valid_cells"], 4)
         self.assertEqual(profile["mean"], 2.5)
+        self.assertEqual(profile["bounds"], [0.0, -20.0, 20.0, 0.0])
+        self.assertEqual(profile["crs"], "EPSG:4547")
 
 
 class SurveyAreaTests(unittest.TestCase):

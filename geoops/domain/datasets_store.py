@@ -129,17 +129,33 @@ class DatasetRegistry:
         valid = [value for value in grid["values"] if nodata is None or value != nodata]
         if not valid:
             raise DatasetError("raster %s has no valid cells after NODATA removal" % dataset_id)
+        ncols = int(grid["ncols"])
+        nrows = int(grid["nrows"])
+        cellsize = float(grid["cellsize"])
+        xll = grid["header"].get("xllcorner")
+        yll = grid["header"].get("yllcorner")
+        bounds = None
+        if xll is not None and yll is not None:
+            bounds = [
+                float(xll),
+                float(yll),
+                float(xll) + ncols * cellsize,
+                float(yll) + nrows * cellsize,
+            ]
         return {
             "dataset_id": dataset_id,
             "path": path,
             "format": grid.get("source_format") or "ascii",
             "bands": int(grid.get("bands") or 1),
             "band": 1,
-            "ncols": grid["ncols"],
-            "nrows": grid["nrows"],
-            "cellsize": grid["cellsize"],
-            "xllcorner": grid["header"].get("xllcorner"),
-            "yllcorner": grid["header"].get("yllcorner"),
+            "ncols": ncols,
+            "nrows": nrows,
+            "cellsize": cellsize,
+            "xllcorner": xll,
+            "yllcorner": yll,
+            "bounds": bounds,
+            "crs": str(obj.payload.get("crs") or grid.get("crs") or ""),
+            "crs_model": str(grid.get("crs_model") or ""),
             "nodata": nodata,
             "valid_cells": len(valid),
             "nodata_cells": len(grid["values"]) - len(valid),
