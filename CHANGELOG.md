@@ -28,8 +28,8 @@ All notable changes to this project are documented in this file.
   `success_condition` (`PASS`, `status == …`, or a dotted-path comparison) are
   executed; missing preconditions and failed conditions stop the node.
 - `geoops/geotiff.py`: classic TIFF pixel decoding for uncompressed, LZW and
-  Deflate images, striped or tiled, 8/16/32-bit chunky bands; separate-planar
-  layouts and other codecs are explicit errors.
+  Deflate images, striped or tiled, 8/16/32-bit chunky or separate-planar
+  bands; other codecs are explicit errors.
 - `geoops/survey/change.py`: change detection accepts ASCII or classic GeoTIFF
   rasters through one raster reader; the written mask remains ASCII.
 - `geoops/quality/metrics.py`: ASCII mask confusion matrix with TP/FP/FN/TN,
