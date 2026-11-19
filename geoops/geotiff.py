@@ -144,11 +144,92 @@ def probe_geotiff(path: str) -> Dict[str, Any]:
     }
 
 
-def read_geotiff_pixels(path: str) -> Dict[str, Any]:
-    """Decode classic TIFF strips for uncompressed/Deflate and chunky bands.
+def _lzw_decode(data: bytes) -> bytes:
+    """Decode TIFF LZW (MSB-first codes, early code-width change)."""
+    dictionary: Dict[int, bytes] = {index: bytes([index]) for index in range(256)}
+    clear, eoi, next_code, width = 256, 257, 258, 9
+    bit_buffer = 0
+    bit_count = 0
+    output = bytearray()
+    previous: Optional[bytes] = None
 
-    LZW, tiled layouts and separate planar bands are refused explicitly. No
-    value is guessed: a missing strip or a short decode is an error.
+    def reset() -> None:
+        nonlocal dictionary, next_code, width, previous
+        dictionary = {index: bytes([index]) for index in range(256)}
+        next_code, width, previous = 258, 9, None
+
+    for byte in data:
+        bit_buffer = (bit_buffer << 8) | byte
+        bit_count += 8
+        while bit_count >= width:
+            bit_count -= width
+            code = (bit_buffer >> bit_count) & ((1 << width) - 1)
+            bit_buffer &= (1 << bit_count) - 1
+            if code == clear:
+                reset()
+                continue
+            if code == eoi:
+                if len(output) == 0:
+                    raise GeoTiffError("LZW stream ended without image data")
+                return bytes(output)
+            if previous is None:
+                entry = dictionary.get(code)
+                if entry is None:
+                    raise GeoTiffError("LZW first code %d is not in the dictionary" % code)
+            elif code in dictionary:
+                entry = dictionary[code]
+            elif code == next_code:
+                entry = previous + previous[:1]
+            else:
+                raise GeoTiffError("LZW code %d is out of range" % code)
+            output.extend(entry)
+            if previous is not None and next_code < 4096:
+                dictionary[next_code] = previous + entry[:1]
+                next_code += 1
+                # TIFF LZW switches width one code early (511, 1023, 2047).
+                if width < 12 and next_code == (1 << width) - 1:
+                    width += 1
+            previous = entry
+    if len(output) == 0:
+        raise GeoTiffError("LZW stream has no image data")
+    return bytes(output)
+
+
+def _decode_samples(raw: bytes, endian: str, bits: int, sample_format: int) -> List[float]:
+    bytes_per_sample = bits // 8
+    count = len(raw) // bytes_per_sample
+    if count <= 0:
+        raise GeoTiffError("empty TIFF strip or tile")
+    if bits == 8:
+        if sample_format == 3:
+            raise GeoTiffError("8-bit float samples are invalid")
+        fmt = ("%db" if sample_format == 2 else "%dB") % count
+    elif bits == 16:
+        if sample_format == 3:
+            raise GeoTiffError("16-bit float samples are not supported")
+        fmt = "%d%s" % (count, "h" if sample_format == 2 else "H")
+    else:
+        fmt = "%d%s" % (count, {1: "I", 2: "i", 3: "f"}[sample_format])
+    try:
+        return [float(value) for value in struct.unpack(endian + fmt, raw[:count * bytes_per_sample])]
+    except struct.error as exc:
+        raise GeoTiffError("TIFF strip or tile is truncated: %s" % exc) from exc
+
+
+def _undo_predictor(values: List[float], row_values: int, samples: int) -> None:
+    if row_values <= 0 or len(values) % row_values:
+        return
+    for start in range(0, len(values), row_values):
+        for index in range(start + samples, start + row_values):
+            values[index] = values[index] + values[index - samples]
+
+
+def read_geotiff_pixels(path: str) -> Dict[str, Any]:
+    """Decode classic TIFF strips or tiles for uncompressed/LZW/Deflate.
+
+    Chunky bands are supported; separate planar bands and other codecs are
+    refused explicitly. No value is guessed: a missing block or a short decode
+    is an error.
     """
     endian, raw_file, entries = _read_entries(path)
     width = _first(entries.get(TAG_WIDTH))
@@ -164,9 +245,10 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         raise GeoTiffError("TIFF has no image width/height")
     if bits not in (8, 16, 32):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
-    if compression not in (1, 8, 32946):
+    if compression not in (1, 5, 8, 32946):
         raise GeoTiffError(
-            "unsupported TIFF compression %s; uncompressed or Deflate only" % compression
+            "unsupported TIFF compression %s; uncompressed, LZW or Deflate only"
+            % compression
         )
     if planar != 1:
         raise GeoTiffError("separate planar TIFF bands are not supported")
@@ -174,53 +256,78 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         raise GeoTiffError("unsupported TIFF predictor: %s" % predictor)
     if sample_format not in (1, 2, 3):
         raise GeoTiffError("unsupported SampleFormat: %s" % sample_format)
-    if 322 in entries or 323 in entries or 324 in entries or 325 in entries:
-        raise GeoTiffError("tiled TIFF is not supported; use strips")
-    offsets = entries.get(TAG_STRIP_OFFSETS)
-    byte_counts = entries.get(TAG_STRIP_BYTE_COUNTS)
-    if not isinstance(offsets, list) or not offsets:
-        raise GeoTiffError("TIFF has no StripOffsets")
-    if not isinstance(byte_counts, list) or len(byte_counts) != len(offsets):
-        raise GeoTiffError("TIFF StripByteCounts do not match StripOffsets")
-
-    bytes_per_sample = bits // 8
     total = int(width) * int(height) * int(samples)
-    values: List[float] = []
-    for offset, count in zip(offsets, byte_counts):
+
+    def block_values(offset: int, count: int, label: str) -> List[float]:
         if offset < 0 or count <= 0 or offset + count > len(raw_file):
-            raise GeoTiffError("TIFF strip points outside the file")
+            raise GeoTiffError("TIFF %s points outside the file" % label)
         raw = raw_file[int(offset):int(offset) + int(count)]
-        if compression in (8, 32946):
+        if compression == 5:
+            raw = _lzw_decode(raw)
+        elif compression in (8, 32946):
             try:
                 raw = zlib.decompress(raw)
             except zlib.error as exc:
-                raise GeoTiffError("Deflate strip is corrupt: %s" % exc) from exc
-        expected_bytes = len(raw) // bytes_per_sample
-        if expected_bytes <= 0:
-            raise GeoTiffError("empty TIFF strip")
-        if bits == 8:
-            fmt = ("%db" if sample_format == 2 else "%dB") % expected_bytes
-            if sample_format == 3:
-                raise GeoTiffError("8-bit float samples are invalid")
-        elif bits == 16:
-            fmt = "%d%s" % (expected_bytes, "h" if sample_format == 2 else "H")
-            if sample_format == 3:
-                raise GeoTiffError("16-bit float samples are not supported")
-        else:
-            fmt = "%d%s" % (expected_bytes, {1: "I", 2: "i", 3: "f"}[sample_format])
-        try:
-            strip_values = list(struct.unpack(endian + fmt, raw))
-        except struct.error as exc:
-            raise GeoTiffError("TIFF strip is truncated: %s" % exc) from exc
-        values.extend(float(value) for value in strip_values)
+                raise GeoTiffError("Deflate %s is corrupt: %s" % (label, exc)) from exc
+        return _decode_samples(raw, endian, bits, sample_format)
 
-    if predictor == 2:
-        # TIFF horizontal differencing is per row; reverse it before use.
-        row_values = int(width) * int(samples)
-        if row_values and len(values) % row_values == 0:
-            for start in range(0, len(values), row_values):
-                for index in range(start + samples, start + row_values):
-                    values[index] = values[index] + values[index - samples]
+    values: List[float] = []
+    tile_width = _first(entries.get(322))
+    tile_length = _first(entries.get(323))
+    tile_offsets = entries.get(324)
+    tile_counts = entries.get(325)
+    if 322 in entries or 323 in entries or 324 in entries or 325 in entries:
+        if not tile_width or not tile_length:
+            raise GeoTiffError("tiled TIFF has no TileWidth/TileLength")
+        if not isinstance(tile_offsets, list) or not tile_offsets:
+            raise GeoTiffError("TIFF has no TileOffsets")
+        if not isinstance(tile_counts, list) or len(tile_counts) != len(tile_offsets):
+            raise GeoTiffError("TIFF TileByteCounts do not match TileOffsets")
+        columns = (int(width) + int(tile_width) - 1) // int(tile_width)
+        rows = (int(height) + int(tile_length) - 1) // int(tile_length)
+        if len(tile_offsets) < columns * rows:
+            raise GeoTiffError("TIFF has fewer tiles than its declared grid")
+        values = [0.0] * total
+        for tile_index, (offset, count) in enumerate(zip(tile_offsets, tile_counts)):
+            tile_values = block_values(
+                int(offset), int(count), "tile %d" % tile_index
+            )
+            expected_tile = int(tile_width) * int(tile_length) * int(samples)
+            if len(tile_values) < expected_tile:
+                raise GeoTiffError(
+                    "TIFF tile %d decoded %d samples, expected %d"
+                    % (tile_index, len(tile_values), expected_tile)
+                )
+            if predictor == 2:
+                _undo_predictor(tile_values, int(tile_width) * int(samples), int(samples))
+            tile_row = tile_index // columns
+            tile_col = tile_index % columns
+            for row in range(int(tile_length)):
+                target_row = tile_row * int(tile_length) + row
+                if target_row >= int(height):
+                    break
+                for col in range(int(tile_width)):
+                    target_col = tile_col * int(tile_width) + col
+                    if target_col >= int(width):
+                        break
+                    source = (row * int(tile_width) + col) * int(samples)
+                    target = (target_row * int(width) + target_col) * int(samples)
+                    for band in range(int(samples)):
+                        values[target + band] = tile_values[source + band]
+    else:
+        offsets = entries.get(TAG_STRIP_OFFSETS)
+        byte_counts = entries.get(TAG_STRIP_BYTE_COUNTS)
+        if not isinstance(offsets, list) or not offsets:
+            raise GeoTiffError("TIFF has no StripOffsets")
+        if not isinstance(byte_counts, list) or len(byte_counts) != len(offsets):
+            raise GeoTiffError("TIFF StripByteCounts do not match StripOffsets")
+        for index, (offset, count) in enumerate(zip(offsets, byte_counts)):
+            values.extend(block_values(int(offset), int(count), "strip %d" % index))
+
+    if predictor == 2 and not (322 in entries or 324 in entries):
+        # Strip horizontal differencing is per image row; tile predictor was
+        # reversed per tile above.
+        _undo_predictor(values, int(width) * int(samples), int(samples))
 
     if len(values) < total:
         raise GeoTiffError(

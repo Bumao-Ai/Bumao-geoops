@@ -31,7 +31,7 @@
 
 ```text
 python -m unittest discover -s geoops\tests -t .
-Ran 264 tests in 26.3s
+Ran 266 tests in 24.7s
 OK
 
 python -m geoops.smoke
@@ -57,7 +57,7 @@ SMOKE PASS: 73 assertions
 
 ## 仍未完成（不粉饰）
 
-- 没有用户真实遥感影像；classic GeoTIFF 已支持未压缩/Deflate 条带像素解码，LZW、分块、分开波段仍不支持。
+- 没有用户真实遥感影像；classic GeoTIFF 已支持未压缩/LZW/Deflate、条带/分块像素解码，分开波段、JPEG 压缩仍不支持。
 - 模型运行时存在但当前 `NOT_CONFIGURED`；没有真实模型端点。
 - Agent 已能执行声明的内置工具；外部工具只能通过显式配置的 `external:<id>` 真实子进程执行，未配置即报错，GDAL/QGIS 本体未安装。
 - 真实分类精度/几何精度与真实完整追溯环仍缺；合成 ASCII 掩膜混淆矩阵、合成追溯闭环已跑通，不能替代真实验收。
@@ -71,7 +71,7 @@ SMOKE PASS: 73 assertions
 - `geoops/workflow/executor.py`：节点重试、失败继续策略与 `attempts` 记录。
 - `geoops/quality/metrics.py`：ASCII 掩膜混淆矩阵与精度指标。
 - `geoops/tests/test_quality_metrics.py`：精度指标测试。
-- `geoops/geotiff.py`：经典 TIFF 头/GeoKey + 未压缩/Deflate 条带像素解码。
+- `geoops/geotiff.py`：经典 TIFF 头/GeoKey + 未压缩/LZW/Deflate 条带与分块像素解码。
 - `geoops/workflow/gis_nodes.py`：内置 ASCII/GeoTIFF 栅格剖面工具与 `external:<id>` 外部程序适配。
 - `geoops/workflow/external_tools.py`：显式工具配置、参数占位符、无 shell 子进程执行与非零退出报错。
 - `geoops/ai/agent_executor.py`：Agent JSON 计划、工具白名单、内置工具执行、步数上限与 `tool_calls`。
@@ -80,6 +80,7 @@ SMOKE PASS: 73 assertions
 - `docs/WORKFLOW_ENGINE.md`：使用说明和边界。
 
 本地提交：`78727fc`、`f72b906`、`314cbee`、`6889ad4`、`3195a3d`、`aadfbed`、`1a8c547`（重试/失败策略、精度指标、审核闸门）、`c833163`（合成数据来源标记）、`66ff316`（成果 artifact 绑定 API）、`cb2cf6f`（拒绝合成成果最终验收）。远程未 push。
+
 
 
 

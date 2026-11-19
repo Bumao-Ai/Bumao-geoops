@@ -65,7 +65,7 @@
 
 ## 当前边界
 
-- 变化检测支持 ESRI ASCII 与经典 GeoTIFF（未压缩/Deflate 条带、chunky、8/16/32 位）；LZW、BigTIFF、分块、分开波段明确拒绝；LZW/分块等未做。
+- 变化检测支持 ESRI ASCII 与经典 GeoTIFF（未压缩/LZW/Deflate、条带/分块、chunky、8/16/32 位）；分开波段、BigTIFF、JPEG 压缩明确拒绝。
 - `gis_tool_call` 的内置 `builtin:ascii_grid_profile` 是零依赖真实链路；`external:<id>` 只有在 `var/external-tools.json`（或 `GEOOPS_EXTERNAL_TOOLS`）显式配置命令后才真实执行子进程，未配置或退出非零即 `ERROR`。GDAL/QGIS 本体未安装。
 - `agent_execute` 会执行 Agent 声明的内置工具（ASCII/GeoTIFF profile、变化检测、规则引擎）或已配置的 `external:<id>`，并记录 `tool_calls`、每步参数/结果和总步数；未声明/未配置工具明确报错。
 - Agent 的模型必须按约定返回 JSON `{"tool": ...}` 或 `{"final": ...}`；模型不返回计划、请求未声明工具或超过步数预算时，节点 `ERROR`。
