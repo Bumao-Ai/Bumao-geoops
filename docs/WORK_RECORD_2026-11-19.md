@@ -12,6 +12,9 @@ here.
   (strip or tile), with chunky or separate-planar bands. JPEG/JPEG2000
   decode through optional Pillow; when Pillow is absent they remain explicit
   refusals.
+- TIFF parser tolerance: unsupported ancillary field types (such as
+  JPEGTables) are skipped instead of failing a file whose critical tags are
+  valid; required tags still fail explicitly when absent.
 - `GET /api/v1/datasets/<id>/profile`: reads real ASCII or GeoTIFF pixels and
   returns dimensions, band count, cell size, origin, valid/NODATA counts,
   min/max/mean. An empty raster is a refusal, never a fabricated profile.
