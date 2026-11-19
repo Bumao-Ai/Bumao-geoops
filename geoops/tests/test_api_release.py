@@ -107,6 +107,8 @@ class ReleaseApiTests(unittest.TestCase):
         status, profile = self.call("GET", "/api/v1/datasets/%s/profile" % dataset["object_id"])
         self.assertEqual(status, 200)
         self.assertEqual(profile["format"], "ascii")
+        self.assertEqual(profile["bands"], 1)
+        self.assertEqual(profile["band"], 1)
         self.assertEqual(profile["ncols"], 2)
         self.assertEqual(profile["nrows"], 1)
         self.assertEqual(profile["valid_cells"], 2)

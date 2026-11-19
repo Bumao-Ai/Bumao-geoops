@@ -134,6 +134,7 @@ class DatasetRegistry:
             "path": path,
             "format": grid.get("source_format") or "ascii",
             "bands": int(grid.get("bands") or 1),
+            "band": 1,
             "ncols": grid["ncols"],
             "nrows": grid["nrows"],
             "cellsize": grid["cellsize"],
