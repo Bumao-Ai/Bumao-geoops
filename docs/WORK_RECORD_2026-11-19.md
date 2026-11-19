@@ -29,6 +29,10 @@ here.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - Temporary-port API check: `/api/v1/health` = `ok`; `/api/v1/survey-areas` and
   `/api/v1/models` routed correctly.
+- Live service on `127.0.0.1:8790` was restarted with the current code; `/ui/`
+  returned 200, `/api/v1/survey-areas` and `/api/v1/execution-events` responded,
+  and a real 2×2 ASCII dataset registered through the API returned a profile
+  of `ncols=2`, `nrows=2`, `valid_cells=4`, `min=1`, `max=4`, `mean=2.5`.
 
 ## Still blocked or not claimed
 
@@ -36,8 +40,6 @@ here.
   was supplied.
 - Real imagery, ground-truth samples, GDAL/QGIS and formal review accounts are
   still required for the remaining 0.1 acceptance items.
-- The long-running console on `127.0.0.1:8790` was started before today's
-  endpoints and may need a restart to serve them.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
 
