@@ -262,16 +262,13 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(image["values"], [1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0])
 
     @unittest.skipUnless(_HAS_PIL, "Pillow is not installed; JPEG TIFF decoding is optional")
-    def test_jpeg_compressed_tiff_is_decoded(self) -> None:
-        image = Image.new("L", (2, 2))
-        image.putdata([10, 20, 30, 40])
+    def test_jpeg_rgb_tiff_is_interleaved(self) -> None:
+        image = Image.new("RGB", (2, 2))
+        image.putdata([(10, 20, 30), (40, 50, 60), (70, 80, 90), (100, 110, 120)])
         image.save(self.path, format="TIFF", compression="jpeg")
         decoded = read_geotiff_pixels(self.path)
-        self.assertEqual(decoded["width"], 2)
-        self.assertEqual(decoded["height"], 2)
-        self.assertEqual(decoded["bands"], 1)
-        self.assertEqual(decoded["compression"], 7)
-        self.assertEqual(len(decoded["values"]), 4)
+        self.assertEqual(decoded["bands"], 3)
+        self.assertEqual(len(decoded["values"]), 12)
 
     def test_unsupported_compression_is_refused_explicitly(self) -> None:
         _tiff(self.path, [1, 2, 3, 4], compression=6)
