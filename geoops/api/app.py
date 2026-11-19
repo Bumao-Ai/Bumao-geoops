@@ -8,6 +8,7 @@ Read endpoints:
     GET /api/v1/tasks              (when a task engine is supplied)
     GET /api/v1/runs               workflow runs from the journal (when supplied)
     GET /api/v1/projects           registered projects
+    GET /api/v1/survey-areas       registered survey areas (optional ?project_id=)
     GET /api/v1/datasets           registered datasets (optional ?project_id=)
     GET /api/v1/datasets/<id>/validate
     GET /api/v1/datasets/<id>/profile  real pixel profile (ASCII or GeoTIFF)
@@ -70,6 +71,7 @@ from geoops.catalog import Catalog, CatalogError
 from geoops.domain.datasets_store import DatasetError, DatasetRegistry
 from geoops.domain.deliverables import DeliverableError, DeliverableRegistry
 from geoops.domain.projects import ProjectError, ProjectRegistry
+from geoops.domain.survey_areas import SurveyAreaError, SurveyAreaRegistry
 from geoops.quality.service import QualityError, QualityService
 from geoops.review import ReviewEngine, ReviewError
 from geoops.trace import build_deliverable_trace, build_trace
@@ -151,6 +153,7 @@ def create_server(
     artifacts: Optional[Any] = None,
     runs: Optional[Any] = None,
     projects: Optional[Any] = None,
+    survey_areas: Optional[Any] = None,
     datasets: Optional[Any] = None,
     catalog: Optional[Any] = None,
     deliverables: Optional[Any] = None,
@@ -166,6 +169,9 @@ def create_server(
     audit_log = audit if audit is not None else AuditLog()
     writes_enabled = policy is not None and tasks is not None
     project_registry = projects if projects is not None else ProjectRegistry(registry)
+    area_registry = (
+        survey_areas if survey_areas is not None else SurveyAreaRegistry(registry, project_registry)
+    )
     dataset_registry = (
         datasets if datasets is not None else DatasetRegistry(registry, project_registry)
     )
@@ -293,6 +299,11 @@ def create_server(
             if path == "/api/v1/projects":
                 rows = [row.to_dict() for row in project_registry.list()]
                 self._json(200, {"count": len(rows), "projects": rows})
+                return
+            if path == "/api/v1/survey-areas":
+                project_id = parse_qs(urlparse(self.path).query).get("project_id", [""])[0]
+                rows = [row.to_dict() for row in area_registry.list(project_id)]
+                self._json(200, {"count": len(rows), "survey_areas": rows})
                 return
             if path == "/api/v1/datasets":
                 project_id = parse_qs(urlparse(self.path).query).get("project_id", [""])[0]
@@ -673,6 +684,30 @@ def create_server(
                     return
                 audit_log.record("POST", path, self._token(), "allow", "project registered", 201)
                 self._json(201, {"project": project.to_dict()})
+                return
+
+            if path == "/api/v1/survey-areas":
+                if not self._authorize("project:write", path):
+                    return
+                payload = self._read_json()
+                if payload is None:
+                    return
+                try:
+                    area = area_registry.register(
+                        area_id=str(payload.get("area_id") or ""),
+                        project_id=str(payload.get("project_id") or ""),
+                        name=str(payload.get("name") or ""),
+                        area_type=str(payload.get("area_type") or ""),
+                        crs=str(payload.get("crs") or ""),
+                        bounds=payload.get("bounds"),
+                        description=str(payload.get("description") or ""),
+                        task_id=str(payload.get("task_id") or ""),
+                    )
+                except (SurveyAreaError, ValueError) as exc:
+                    self._deny(400, str(exc), path)
+                    return
+                audit_log.record("POST", path, self._token(), "allow", "survey area registered", 201)
+                self._json(201, {"survey_area": area.to_dict()})
                 return
 
             if path == "/api/v1/datasets":

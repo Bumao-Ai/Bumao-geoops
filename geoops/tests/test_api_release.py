@@ -120,6 +120,19 @@ class ReleaseApiTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("project", payload["error"])
 
+    def test_survey_area_is_registered_against_a_real_project(self) -> None:
+        status, payload = self.call(
+            "POST", "/api/v1/survey-areas",
+            {"area_id": "AREA-API-1", "project_id": "PRJ-API-1", "name": "测区",
+             "area_type": "project", "crs": "EPSG:4547", "bounds": [0, 0, 10, 10]},
+            token="admin",
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(payload["survey_area"]["payload"]["bounds"], [0.0, 0.0, 10.0, 10.0])
+        status, listing = self.call("GET", "/api/v1/survey-areas?project_id=PRJ-API-1")
+        self.assertEqual(status, 200)
+        self.assertEqual(listing["count"], 1)
+
     def test_catalog_rejects_an_agent_with_unknown_models(self) -> None:
         status, payload = self.call(
             "POST", "/api/v1/catalog",

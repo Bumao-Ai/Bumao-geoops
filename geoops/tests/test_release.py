@@ -11,6 +11,7 @@ from geoops.artifacts import ArtifactStore
 from geoops.catalog import Catalog, CatalogError
 from geoops.domain import DomainRegistry, ObjectType, TaskEngine
 from geoops.domain.datasets_store import DatasetError, DatasetRegistry
+from geoops.domain.survey_areas import SurveyAreaError, SurveyAreaRegistry
 from geoops.tests.test_geotiff_pixels import _georeferenced_tiff
 from geoops.domain.projects import ProjectError, ProjectRegistry
 from geoops.review import ReviewEngine, ReviewError
@@ -100,6 +101,35 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(profile["nrows"], 2)
         self.assertEqual(profile["valid_cells"], 4)
         self.assertEqual(profile["mean"], 2.5)
+
+
+class SurveyAreaTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.registry = DomainRegistry()
+        self.projects = ProjectRegistry(self.registry)
+        self.projects.register("PRJ-1", "P-1", "项目", "survey", "哈尔滨", "EPSG:4547", "1985")
+        self.areas = SurveyAreaRegistry(self.registry, self.projects)
+
+    def test_a_real_area_is_registered_with_its_bounds(self) -> None:
+        area = self.areas.register(
+            "AREA-1", "PRJ-1", "测区一", "project", "EPSG:4547",
+            bounds=[0, 0, 10, 10],
+        )
+        self.assertEqual(area.payload["bounds"], [0.0, 0.0, 10.0, 10.0])
+        self.assertEqual(len(self.areas.list("PRJ-1")), 1)
+        self.assertEqual(self.areas.list("PRJ-OTHER"), [])
+
+    def test_malformed_bounds_are_refused(self) -> None:
+        for bounds in ([0, 0, 0, 1], [0, 1], "0 0 1 1", [0, 0, float("nan"), 1]):
+            with self.assertRaises(SurveyAreaError):
+                self.areas.register(
+                    "AREA-X", "PRJ-1", "坏边界", "project", "EPSG:4547", bounds=bounds,
+                )
+        self.assertEqual(len(self.areas.list()), 0)
+
+    def test_an_unknown_project_is_refused(self) -> None:
+        with self.assertRaises(SurveyAreaError):
+            self.areas.register("AREA-2", "PRJ-NOPE", "测区", "project", "EPSG:4547")
 
 
 class CatalogTests(unittest.TestCase):
