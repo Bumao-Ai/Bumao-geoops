@@ -33,7 +33,7 @@
 
 ```text
 python -m unittest discover -s geoops\tests -t .
-Ran 266 tests in 24.7s
+Ran 267 tests in 24.4s
 OK
 
 python -m geoops.smoke
@@ -82,6 +82,8 @@ SMOKE PASS: 73 assertions
 - `docs/WORKFLOW_ENGINE.md`：使用说明和边界。
 
 本地提交：`78727fc`、`f72b906`、`314cbee`、`6889ad4`、`3195a3d`、`aadfbed`、`1a8c547`（重试/失败策略、精度指标、审核闸门）、`c833163`（合成数据来源标记）、`66ff316`（成果 artifact 绑定 API）、`cb2cf6f`（拒绝合成成果最终验收）。远程未 push。
+
+
 
 
 
