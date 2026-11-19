@@ -9,8 +9,8 @@ here.
 - Classic GeoTIFF pixel decoding for LZW and tiled layouts, in addition to the
   existing uncompressed/Deflate strip support. LZW uses MSB-first codes with
   the TIFF early code-width change; predictor reversal is applied per block
-  (strip or tile). Separate-planar layouts and JPEG/JPEG2000 remain explicit
-  refusals.
+  (strip or tile), with chunky or separate-planar bands. JPEG/JPEG2000
+  remains an explicit refusal.
 - `GET /api/v1/datasets/<id>/profile`: reads real ASCII or GeoTIFF pixels and
   returns dimensions, band count, cell size, origin, valid/NODATA counts,
   min/max/mean. An empty raster is a refusal, never a fabricated profile.
@@ -25,7 +25,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 274 tests in 25.9s`, `OK`.
+- Full suite: `Ran 276 tests in 26.2s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - Temporary-port API check: `/api/v1/health` = `ok`; `/api/v1/survey-areas` and
   `/api/v1/models` routed correctly.
@@ -40,3 +40,5 @@ here.
   endpoints and may need a restart to serve them.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
+

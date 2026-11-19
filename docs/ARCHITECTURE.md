@@ -48,7 +48,7 @@ Bumao Core (vendored, read-only)
 | `geoops/domain/projects.py` | `ProjectRegistry.register` requires `project_code / name / project_type / area / crs / vertical_datum`, refuses a blank field, a duplicate id or a duplicate `project_code`. |
 | `geoops/domain/survey_areas.py` | `SurveyAreaRegistry.register` requires a real project, name, type and CRS; bounds are optional but, when given, must be four finite numbers with positive extent. |
 | `geoops/domain/datasets_store.py` | `DatasetRegistry` refuses a dataset whose probe is not READY or whose project is unknown, stores the real hash/CRS/metadata, and `validate()` re-probes the file: content change, missing CRS or a probe failure is FAIL/ERROR, never PASS. `profile()` reads real pixels and rejects an empty raster instead of inventing statistics. |
-| `geoops/geotiff.py` | Header-only classic-TIFF reader for `ModelPixelScale`, `ModelTiepoint` and `GeoKeyDirectory`, plus real pixel decoding for uncompressed, LZW and Deflate strips or tiles, chunky bands and 8/16/32-bit samples. Returns EPSG, size, band count, bounds and pixel size without GDAL; BigTIFF, separate-planar layouts and JPEG/JPEG2000 are refused explicitly. |
+| `geoops/geotiff.py` | Header-only classic-TIFF reader for `ModelPixelScale`, `ModelTiepoint` and `GeoKeyDirectory`, plus real pixel decoding for uncompressed, LZW and Deflate strips or tiles, chunky or separate-planar bands and 8/16/32-bit samples. Returns EPSG, size, band count, bounds and pixel size without GDAL; BigTIFF and JPEG/JPEG2000 are refused explicitly. |
 | `geoops/ai/runtime.py` | OpenAI-compatible `POST /chat/completions` client configured from `GEOOPS_MODEL_BASE_URL` / `GEOOPS_MODEL_API_KEY` / `GEOOPS_MODEL_NAME`. Missing configuration raises `NOT_CONFIGURED`; provider HTTP errors, non-JSON replies, empty content and unreachable endpoints fail explicitly. The key is never returned by `status()` or audit output. |
 | `geoops/ai/nodes.py` | `model_chat_node` calls the runtime inside a workflow and records text, model, usage and latency. Without a configured endpoint the node ends `ERROR`, never `PASS` with placeholder content. |
 | `geoops/catalog.py` | Model / Tool / Agent records with checked availability: `builtin:` must be an implemented adapter, `external:` must exist on disk, an agent with unknown dependencies is refused and inherits dependency availability. |
@@ -149,3 +149,4 @@ The no-data run registers transient domain objects, calls the kernel, runs the
 workflow, exercises the quality checker with real pass/fail/error paths, and
 queries the HTTP API. It requires no imagery. The real output of a local run is
 recorded in `docs/SMOKE_OUTPUT.md`.
+

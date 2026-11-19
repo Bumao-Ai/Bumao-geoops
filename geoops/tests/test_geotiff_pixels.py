@@ -45,6 +45,71 @@ def _lzw_encode(values) -> bytes:
     return int(text, 2).to_bytes(len(text) // 8, "big") if text else b""
 
 
+def _planar_tiff(path: str, plane_one, plane_two) -> None:
+    count = 11
+    data_offset = 8 + 2 + count * 12 + 4
+    offsets_offset = data_offset
+    counts_offset = offsets_offset + 8
+    data_start = counts_offset + 8
+    offsets = [data_start, data_start + 4]
+    entries = [
+        (256, 3, 1, 2),
+        (257, 3, 1, 2),
+        (258, 3, 2, 8 | (8 << 16)),
+        (259, 3, 1, 1),
+        (262, 3, 1, 1),
+        (273, 4, 2, offsets_offset),
+        (277, 3, 1, 2),
+        (278, 3, 1, 2),
+        (279, 4, 2, counts_offset),
+        (284, 3, 1, 2),
+        (339, 3, 2, 1 | (1 << 16)),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += struct.pack("<2I", *offsets)
+    body += struct.pack("<2I", 4, 4)
+    body += bytes(plane_one) + bytes(plane_two)
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
+def _planar_tiled_tiff(path: str, plane_one, plane_two) -> None:
+    count = 12
+    data_offset = 8 + 2 + count * 12 + 4
+    offsets_offset = data_offset
+    counts_offset = offsets_offset + 8
+    data_start = counts_offset + 8
+    offsets = [data_start, data_start + 4]
+    entries = [
+        (256, 3, 1, 2),
+        (257, 3, 1, 2),
+        (258, 3, 2, 8 | (8 << 16)),
+        (259, 3, 1, 1),
+        (262, 3, 1, 1),
+        (277, 3, 1, 2),
+        (284, 3, 1, 2),
+        (322, 3, 1, 2),
+        (323, 3, 1, 2),
+        (324, 4, 2, offsets_offset),
+        (325, 4, 2, counts_offset),
+        (339, 3, 2, 1 | (1 << 16)),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += struct.pack("<2I", *offsets)
+    body += struct.pack("<2I", 4, 4)
+    body += bytes(plane_one) + bytes(plane_two)
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _tiled_tiff(path: str, values) -> None:
     count = 12
     data_offset = 8 + 2 + count * 12 + 4
@@ -175,6 +240,18 @@ class GeoTiffPixelTests(unittest.TestCase):
         _tiled_tiff(self.path, [1, 2, 3, 4])
         image = read_geotiff_pixels(self.path)
         self.assertEqual(image["values"], [1.0, 2.0, 3.0, 4.0])
+
+    def test_separate_planar_bands_are_interleaved(self) -> None:
+        _planar_tiff(self.path, [1, 2, 3, 4], [5, 6, 7, 8])
+        image = read_geotiff_pixels(self.path)
+        self.assertEqual(image["bands"], 2)
+        self.assertEqual(image["values"], [1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0])
+
+    def test_separate_planar_tiles_are_interleaved(self) -> None:
+        _planar_tiled_tiff(self.path, [1, 2, 3, 4], [5, 6, 7, 8])
+        image = read_geotiff_pixels(self.path)
+        self.assertEqual(image["bands"], 2)
+        self.assertEqual(image["values"], [1.0, 5.0, 2.0, 6.0, 3.0, 7.0, 4.0, 8.0])
 
     def test_unsupported_compression_is_refused_explicitly(self) -> None:
         _tiff(self.path, [1, 2, 3, 4], compression=7)

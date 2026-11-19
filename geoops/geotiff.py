@@ -227,9 +227,9 @@ def _undo_predictor(values: List[float], row_values: int, samples: int) -> None:
 def read_geotiff_pixels(path: str) -> Dict[str, Any]:
     """Decode classic TIFF strips or tiles for uncompressed/LZW/Deflate.
 
-    Chunky bands are supported; separate planar bands and other codecs are
-    refused explicitly. No value is guessed: a missing block or a short decode
-    is an error.
+    Chunky and separate-planar bands are supported; other codecs are refused
+    explicitly. No value is guessed: a missing block or a short decode is an
+    error.
     """
     endian, raw_file, entries = _read_entries(path)
     width = _first(entries.get(TAG_WIDTH))
@@ -250,13 +250,14 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
             "unsupported TIFF compression %s; uncompressed, LZW or Deflate only"
             % compression
         )
-    if planar != 1:
-        raise GeoTiffError("separate planar TIFF bands are not supported")
+    if planar not in (1, 2):
+        raise GeoTiffError("unsupported PlanarConfiguration: %s" % planar)
     if predictor not in (1, 2):
         raise GeoTiffError("unsupported TIFF predictor: %s" % predictor)
     if sample_format not in (1, 2, 3):
         raise GeoTiffError("unsupported SampleFormat: %s" % sample_format)
     total = int(width) * int(height) * int(samples)
+    samples_per_block = 1 if planar == 2 else int(samples)
 
     def block_values(offset: int, count: int, label: str) -> List[float]:
         if offset < 0 or count <= 0 or offset + count > len(raw_file):
@@ -285,35 +286,47 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
             raise GeoTiffError("TIFF TileByteCounts do not match TileOffsets")
         columns = (int(width) + int(tile_width) - 1) // int(tile_width)
         rows = (int(height) + int(tile_length) - 1) // int(tile_length)
-        if len(tile_offsets) < columns * rows:
+        grid = columns * rows
+        required_tiles = grid * (int(samples) if planar == 2 else 1)
+        if len(tile_offsets) < required_tiles:
             raise GeoTiffError("TIFF has fewer tiles than its declared grid")
         values = [0.0] * total
-        for tile_index, (offset, count) in enumerate(zip(tile_offsets, tile_counts)):
-            tile_values = block_values(
-                int(offset), int(count), "tile %d" % tile_index
-            )
-            expected_tile = int(tile_width) * int(tile_length) * int(samples)
-            if len(tile_values) < expected_tile:
-                raise GeoTiffError(
-                    "TIFF tile %d decoded %d samples, expected %d"
-                    % (tile_index, len(tile_values), expected_tile)
+        planes = range(int(samples)) if planar == 2 else [0]
+        for plane in planes:
+            for tile_index in range(grid):
+                block_index = plane * grid + tile_index if planar == 2 else tile_index
+                offset, count = tile_offsets[block_index], tile_counts[block_index]
+                tile_values = block_values(
+                    int(offset), int(count), "tile %d" % block_index
                 )
-            if predictor == 2:
-                _undo_predictor(tile_values, int(tile_width) * int(samples), int(samples))
-            tile_row = tile_index // columns
-            tile_col = tile_index % columns
-            for row in range(int(tile_length)):
-                target_row = tile_row * int(tile_length) + row
-                if target_row >= int(height):
-                    break
-                for col in range(int(tile_width)):
-                    target_col = tile_col * int(tile_width) + col
-                    if target_col >= int(width):
+                expected_tile = int(tile_width) * int(tile_length) * samples_per_block
+                if len(tile_values) < expected_tile:
+                    raise GeoTiffError(
+                        "TIFF tile %d decoded %d samples, expected %d"
+                        % (block_index, len(tile_values), expected_tile)
+                    )
+                if predictor == 2:
+                    _undo_predictor(
+                        tile_values,
+                        int(tile_width) * samples_per_block,
+                        samples_per_block,
+                    )
+                tile_row = tile_index // columns
+                tile_col = tile_index % columns
+                for row in range(int(tile_length)):
+                    target_row = tile_row * int(tile_length) + row
+                    if target_row >= int(height):
                         break
-                    source = (row * int(tile_width) + col) * int(samples)
-                    target = (target_row * int(width) + target_col) * int(samples)
-                    for band in range(int(samples)):
-                        values[target + band] = tile_values[source + band]
+                    for col in range(int(tile_width)):
+                        target_col = tile_col * int(tile_width) + col
+                        if target_col >= int(width):
+                            break
+                        source = (row * int(tile_width) + col) * samples_per_block
+                        target = (target_row * int(width) + target_col) * int(samples)
+                        if planar == 2:
+                            target += plane
+                        for band in range(samples_per_block):
+                            values[target + band] = tile_values[source + band]
     else:
         offsets = entries.get(TAG_STRIP_OFFSETS)
         byte_counts = entries.get(TAG_STRIP_BYTE_COUNTS)
@@ -321,10 +334,36 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
             raise GeoTiffError("TIFF has no StripOffsets")
         if not isinstance(byte_counts, list) or len(byte_counts) != len(offsets):
             raise GeoTiffError("TIFF StripByteCounts do not match StripOffsets")
-        for index, (offset, count) in enumerate(zip(offsets, byte_counts)):
-            values.extend(block_values(int(offset), int(count), "strip %d" % index))
+        if planar == 2:
+            if len(offsets) % int(samples):
+                raise GeoTiffError("separate planar StripOffsets do not match bands")
+            strips_per_plane = len(offsets) // int(samples)
+            values = [0.0] * total
+            for plane in range(int(samples)):
+                plane_values: List[float] = []
+                for index in range(
+                    plane * strips_per_plane, (plane + 1) * strips_per_plane
+                ):
+                    plane_values.extend(
+                        block_values(
+                            int(offsets[index]), int(byte_counts[index]), "strip %d" % index
+                        )
+                    )
+                if predictor == 2:
+                    _undo_predictor(plane_values, int(width), 1)
+                expected_plane = int(width) * int(height)
+                if len(plane_values) < expected_plane:
+                    raise GeoTiffError(
+                        "TIFF band %d decoded %d samples, expected %d"
+                        % (plane, len(plane_values), expected_plane)
+                    )
+                for index in range(expected_plane):
+                    values[index * int(samples) + plane] = plane_values[index]
+        else:
+            for index, (offset, count) in enumerate(zip(offsets, byte_counts)):
+                values.extend(block_values(int(offset), int(count), "strip %d" % index))
 
-    if predictor == 2 and not (322 in entries or 324 in entries):
+    if predictor == 2 and planar == 1 and not (322 in entries or 324 in entries):
         # Strip horizontal differencing is per image row; tile predictor was
         # reversed per tile above.
         _undo_predictor(values, int(width) * int(samples), int(samples))
