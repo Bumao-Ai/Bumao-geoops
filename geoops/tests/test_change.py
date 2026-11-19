@@ -21,7 +21,7 @@ import tempfile
 import unittest
 
 from geoops.artifacts import ArtifactStore
-from geoops.geotiff import read_geotiff_pixels
+from geoops.geotiff import read_geotiff_pixels, write_geotiff_mask
 from geoops.survey.change import (
     ChangeError,
     detect_changes,
@@ -190,6 +190,43 @@ class ChangeNodeTests(unittest.TestCase):
             run_id="RUN-C-2",
         )
         self.assertEqual(outcome.status, NodeStatus.FAIL)
+
+    def test_node_writes_a_geotiff_mask_from_geotiff_sources(self) -> None:
+        baseline = os.path.join(self.tempdir, "baseline.tif")
+        comparison = os.path.join(self.tempdir, "comparison.tif")
+        write_geotiff_mask(
+            baseline,
+            width=2,
+            height=2,
+            cellsize=10.0,
+            xllcorner=500000.0,
+            yllcorner=4500000.0,
+            crs="EPSG:3857",
+            crs_model="projected",
+            values=[10.0, 10.0, 10.0, 10.0],
+        )
+        write_geotiff_mask(
+            comparison,
+            width=2,
+            height=2,
+            cellsize=10.0,
+            xllcorner=500000.0,
+            yllcorner=4500000.0,
+            crs="EPSG:3857",
+            crs_model="projected",
+            values=[10.0, 20.0, 10.0, 10.0],
+        )
+        node = change_detect_node("C2", "change detect", threshold=1)
+        context = {
+            "baseline_path": baseline,
+            "comparison_path": comparison,
+            "change_output_path": os.path.join(self.tempdir, "mask.tif"),
+        }
+        outcome = run([node], context, run_id="RUN-C-3")
+        self.assertEqual(outcome.status, NodeStatus.PASS)
+        image = read_geotiff_pixels(context["change_result"]["mask_path"])
+        self.assertEqual(image["crs"], "EPSG:3857")
+        self.assertEqual(image["values"], [0.0, 1.0, 0.0, 0.0])
 
     def test_node_fails_on_a_missing_grid(self) -> None:
         node = change_detect_node("C1", "change detect")
