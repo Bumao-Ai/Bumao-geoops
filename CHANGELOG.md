@@ -60,6 +60,10 @@ All notable changes to this project are documented in this file.
   survey foot and yard are converted to square metres for every area figure,
   and mask output writes the same unit code. An explicitly declared unit that
   the reader does not know is refused instead of being reported as metres.
+- `DeliverableRegistry.verify_archive` re-hashes the archived copy against its
+  manifest, checks the registry sha256, rejects paths outside the archive root,
+  and reports missing or altered files. `GET
+  /api/v1/deliverables/<id>/archive-verification` exposes the same check.
 - `geoops/geotiff.py`: `write_geotiff_mask` writes a real classic GeoTIFF
   (one band, float32, uncompressed, strip layout) with ModelPixelScale,
   ModelTiepoint, one EPSG GeoKey and GDAL_NODATA; CRS/model are required rather

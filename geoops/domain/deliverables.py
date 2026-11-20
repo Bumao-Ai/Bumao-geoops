@@ -182,6 +182,88 @@ class DeliverableRegistry:
             "archived_at": manifest["archived_at"],
         }
 
+    def verify_archive(self, deliverable_id: str) -> Dict[str, Any]:
+        """Re-hash an archived copy and compare it with its manifest."""
+        deliverable = self.get(deliverable_id)
+        if deliverable is None:
+            raise DeliverableError("unknown deliverable_id: %s" % deliverable_id)
+        payload = deliverable.payload
+        problems: List[str] = []
+        files: List[Dict[str, Any]] = []
+        manifest_path = str(payload.get("archive_manifest") or "")
+        manifest: Dict[str, Any] = {}
+        if not manifest_path:
+            problems.append("deliverable has no archive manifest")
+        elif not os.path.isfile(manifest_path):
+            problems.append("archive manifest is missing: %s" % manifest_path)
+        else:
+            manifest_real = os.path.realpath(manifest_path)
+            if self.archive_dir:
+                root_real = os.path.realpath(self.archive_dir)
+                if os.path.commonpath([root_real, manifest_real]) != root_real:
+                    problems.append("archive manifest is outside the archive directory")
+            try:
+                with open(manifest_path, encoding="utf-8-sig") as handle:
+                    manifest = json.load(handle)
+            except (OSError, ValueError) as exc:
+                problems.append("cannot read archive manifest: %s" % exc)
+            if not isinstance(manifest, dict):
+                manifest = {}
+                problems.append("archive manifest is not an object")
+        if manifest:
+            if manifest.get("deliverable_id") != deliverable_id:
+                problems.append("manifest deliverable_id does not match")
+            registered_sha = str(payload.get("sha256") or "")
+            if manifest.get("source_sha256") != registered_sha:
+                problems.append("manifest source_sha256 does not match the registry")
+            if manifest.get("copied_sha256") != registered_sha:
+                problems.append("manifest copied_sha256 does not match the registry")
+            for entry in manifest.get("files") or []:
+                if not isinstance(entry, dict):
+                    problems.append("manifest file entry is not an object")
+                    continue
+                relative = str(entry.get("path") or "")
+                if (
+                    not relative
+                    or os.path.isabs(relative)
+                    or ".." in relative.replace("\\", "/").split("/")
+                ):
+                    problems.append("unsafe archive file path: %r" % relative)
+                    files.append({"path": relative, "ok": False})
+                    continue
+                target = os.path.join(os.path.dirname(manifest_path), relative)
+                exists = os.path.isfile(target)
+                actual_sha = _sha256(target) if exists else ""
+                actual_size = os.path.getsize(target) if exists else 0
+                matches = (
+                    exists
+                    and actual_sha == str(entry.get("sha256") or "")
+                    and actual_size == int(entry.get("size_bytes") or -1)
+                )
+                if not exists:
+                    problems.append("archived file is missing: %s" % relative)
+                elif not matches:
+                    problems.append("archived file does not match the manifest: %s" % relative)
+                files.append({
+                    "path": relative,
+                    "exists": exists,
+                    "sha256": actual_sha,
+                    "size_bytes": actual_size,
+                    "ok": matches,
+                })
+            if not manifest.get("files"):
+                problems.append("manifest lists no archived files")
+        return {
+            "deliverable_id": deliverable_id,
+            "status": deliverable.status,
+            "ok": not problems,
+            "checked_at": _now(),
+            "archive_path": str(payload.get("archive_path") or ""),
+            "manifest": manifest_path.replace("\\", "/"),
+            "files": files,
+            "problems": problems,
+        }
+
     def archive(self, deliverable_id: str, actor: str = "", note: str = "") -> DomainObject:
         deliverable = self.get(deliverable_id)
         if deliverable is None:

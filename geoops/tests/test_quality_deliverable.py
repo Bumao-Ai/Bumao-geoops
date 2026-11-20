@@ -134,6 +134,24 @@ class QualityDeliverableTests(unittest.TestCase):
         self.assertEqual(manifest["files"][0]["sha256"], payload["sha256"])
         self.assertEqual(manifest["archived_by"], "tester")
 
+    def test_archive_verification_detects_a_tampered_copy(self) -> None:
+        ReviewEngine(self.registry).submit(
+            self.task.task_id, self.deliverable.object_id, "reviewer", "APPROVE", "通过"
+        )
+        archive_dir = os.path.join(self.tempdir, "verify-archive")
+        archived = DeliverableRegistry(self.registry, archive_dir=archive_dir).archive(
+            self.deliverable.object_id, actor="tester", note="最终归档"
+        )
+        registry = DeliverableRegistry(self.registry, archive_dir=archive_dir)
+        report = registry.verify_archive(self.deliverable.object_id)
+        self.assertTrue(report["ok"])
+        self.assertEqual(len(report["files"]), 1)
+        with open(archived.payload["archive_file"], "ab") as handle:
+            handle.write(b"\n")
+        tampered = registry.verify_archive(self.deliverable.object_id)
+        self.assertFalse(tampered["ok"])
+        self.assertTrue(any("does not match" in problem for problem in tampered["problems"]))
+
     def test_professional_sample_requires_a_note(self) -> None:
         with self.assertRaises(QualityError):
             self.quality.evaluate(

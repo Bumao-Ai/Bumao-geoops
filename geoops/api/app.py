@@ -26,6 +26,7 @@ Read endpoints:
     GET /api/v1/reviews            review records (optional ?task_id=)
     GET /api/v1/tasks/<id>/trace   structured trace from task to sources
     GET /api/v1/deliverables/<id>/trace  structured trace from deliverable back to task
+    GET /api/v1/deliverables/<id>/archive-verification  re-hash the archived copy
     GET /api/v1/rules              rule pack metadata, from the pack files
     GET /api/v1/artifacts          (token with audit:read; when a store is supplied)
     GET /api/v1/audit              (when a permission policy is supplied)
@@ -94,6 +95,7 @@ DATASET_PROFILE_PATH = re.compile(r"^/api/v1/datasets/([^/]+)/profile$")
 DELIVERABLE_ARCHIVE_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/archive$")
 DELIVERABLE_ARTIFACT_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/artifacts$")
 DELIVERABLE_TRACE_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/trace$")
+DELIVERABLE_VERIFY_PATH = re.compile(r"^/api/v1/deliverables/([^/]+)/archive-verification$")
 WORKFLOW_EXECUTE_PATH = re.compile(r"^/api/v1/workflows/([^/]+)/execute$")
 WORKFLOW_ITEM_PATH = re.compile(r"^/api/v1/workflows/([^/]+)$")
 WORKFLOW_RUN_RESUME_PATH = re.compile(r"^/api/v1/workflow-runs/([^/]+)/resume$")
@@ -489,6 +491,16 @@ def create_server(
                     self._json(404, {"error": str(exc)})
                     return
                 self._json(200, trace)
+                return
+            match = DELIVERABLE_VERIFY_PATH.match(path)
+            if match:
+                deliverable_id = unquote(match.group(1))
+                try:
+                    verification = deliverable_registry.verify_archive(deliverable_id)
+                except DeliverableError as exc:
+                    self._json(404, {"error": str(exc)})
+                    return
+                self._json(200, {"verification": verification})
                 return
             if path == "/api/v1/artifacts":
                 if artifacts is None or policy is None:

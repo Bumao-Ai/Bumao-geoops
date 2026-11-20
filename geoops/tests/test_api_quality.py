@@ -28,7 +28,9 @@ class QualityApiTests(unittest.TestCase):
         self.task = self.tasks.create("PRJ-API-QA", "接口质检任务", "change_detection", actor="test")
         self.datasets = DatasetRegistry(self.registry, ProjectRegistry(self.registry))
         self.quality = QualityService(self.registry, self.datasets)
-        self.deliverables = DeliverableRegistry(self.registry)
+        self.deliverables = DeliverableRegistry(
+            self.registry, archive_dir=os.path.join(self.tempdir, "archive")
+        )
         self.path = os.path.join(self.tempdir, "mask.asc")
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write("ncols 2\nnrows 1\n0 1\n")
@@ -128,6 +130,12 @@ class QualityApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(payload["deliverable"]["status"], "archived")
+        status, payload = self.call(
+            "GET", "/api/v1/deliverables/%s/archive-verification" % deliverable_id
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["verification"]["ok"])
+        self.assertEqual(len(payload["verification"]["files"]), 1)
 
     def test_quality_api_accepts_accuracy_thresholds(self) -> None:
         reference = os.path.join(self.tempdir, "reference.asc")
