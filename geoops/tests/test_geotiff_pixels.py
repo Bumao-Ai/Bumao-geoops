@@ -186,6 +186,40 @@ def _deflate_predictor8_tiff(path: str, values, width: int = 2) -> None:
         handle.write(body)
 
 
+def _deflate_predictor16_tiff(path: str, values, width: int = 2) -> None:
+    encoded = []
+    for start in range(0, len(values), width):
+        row = [int(value) for value in values[start:start + width]]
+        encoded.append(row[0] % 65536)
+        for index in range(1, len(row)):
+            encoded.append((row[index] - row[index - 1]) % 65536)
+    payload = zlib.compress(struct.pack("<%dH" % len(encoded), *encoded))
+    count = 12
+    data_offset = 8 + 2 + count * 12 + 4
+    entries = [
+        (256, 3, 1, width),
+        (257, 3, 1, len(values) // width),
+        (258, 3, 1, 16),
+        (259, 3, 1, 8),
+        (262, 3, 1, 1),
+        (273, 4, 1, data_offset),
+        (277, 3, 1, 1),
+        (278, 3, 1, len(values) // width),
+        (279, 4, 1, len(payload)),
+        (284, 3, 1, 1),
+        (317, 3, 1, 2),
+        (339, 3, 1, 1),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += payload
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _oriented_tiff(path: str, values) -> None:
     raw = bytes(values)
     count = 12
@@ -365,6 +399,12 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(image["height"], 2)
         self.assertEqual(image["bands"], 1)
         self.assertEqual(image["values"], [1.0, 2.0, 3.0, 4.0])
+
+    def test_deflate_predictor_wraps_16bit_rows(self) -> None:
+        path = os.path.join(self.tmp.name, "predictor16.tif")
+        _deflate_predictor16_tiff(path, [40000, 100, 50000, 200])
+        image = read_geotiff_pixels(path)
+        self.assertEqual(image["values"], [40000.0, 100.0, 50000.0, 200.0])
 
     def test_rotated_orientation_is_refused_not_misread(self) -> None:
         path = os.path.join(self.tmp.name, "rotated.tif")
