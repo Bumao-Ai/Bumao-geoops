@@ -10,6 +10,7 @@ the arithmetic itself is never fabricated.
 from __future__ import annotations
 
 import os
+import math
 from typing import Any, Dict, Tuple
 
 from geoops.survey.change import is_nodata
@@ -86,6 +87,12 @@ def compare_masks(
     A cell is positive when its value is greater than ``threshold`` and is not
     NODATA. Cells where either grid is NODATA are excluded and counted.
     """
+    try:
+        threshold = float(threshold)
+    except (TypeError, ValueError) as exc:
+        raise MetricsError("threshold must be a number") from exc
+    if not math.isfinite(threshold):
+        raise MetricsError("threshold must be finite")
     reference = read_mask_grid(reference_path)
     predicted = read_mask_grid(predicted_path)
     if reference["ncols"] != predicted["ncols"] or reference["nrows"] != predicted["nrows"]:

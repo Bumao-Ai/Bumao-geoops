@@ -350,6 +350,13 @@ def detect_changes(
     band: int = 1,
 ) -> Dict[str, Any]:
     """Compare two aligned grids and return a mask plus its statistics."""
+    try:
+        threshold = float(threshold)
+        min_area_m2 = float(min_area_m2)
+    except (TypeError, ValueError) as exc:
+        raise ChangeError("threshold and min_area_m2 must be numbers") from exc
+    if not math.isfinite(threshold) or not math.isfinite(min_area_m2):
+        raise ChangeError("threshold and min_area_m2 must be finite")
     if threshold < 0:
         raise ChangeError("threshold must not be negative")
     if min_area_m2 < 0:

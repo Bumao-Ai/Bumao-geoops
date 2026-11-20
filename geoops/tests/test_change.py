@@ -267,6 +267,12 @@ class ChangeTests(unittest.TestCase):
             write_change_mask(result, os.path.join(self.tempdir, "rect-mask.asc"))
         self.assertIn("non-square", str(caught.exception))
 
+    def test_non_finite_threshold_and_min_area_are_refused(self) -> None:
+        with self.assertRaises(ChangeError):
+            detect_changes(self.baseline, self.comparison, threshold=float("nan"))
+        with self.assertRaises(ChangeError):
+            detect_changes(self.baseline, self.comparison, min_area_m2=float("inf"))
+
     def test_changed_area_on_a_geographic_grid_uses_real_metres(self) -> None:
         baseline = os.path.join(self.tempdir, "geo-base.asc")
         comparison = os.path.join(self.tempdir, "geo-comp.asc")

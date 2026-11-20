@@ -60,6 +60,9 @@ All notable changes to this project are documented in this file.
   survey foot and yard are converted to square metres for every area figure,
   and mask output writes the same unit code. An explicitly declared unit that
   the reader does not know is refused instead of being reported as metres.
+- Change detection and quality comparison refuse a non-finite threshold or
+  minimum area instead of silently writing an empty mask or an all-zero
+  confusion matrix.
 - `ModelTransformationTag` (34264) now supplies the affine georeferencing when
   a GeoTIFF has no PixelScale/Tiepoint pair; the probe reuses the pixel reader's
   metadata instead of keeping a second copy. Rotated or sheared transforms and

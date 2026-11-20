@@ -53,6 +53,10 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["cells"]["skipped_nodata"], 1)
         self.assertEqual(result["cells"]["tp"], 2)
 
+    def test_non_finite_threshold_is_refused(self) -> None:
+        with self.assertRaises(MetricsError):
+            compare_masks(self.reference, self.predicted, threshold=float("nan"))
+
     def test_dimension_mismatch_is_refused(self) -> None:
         other = os.path.join(self.tmp.name, "other.asc")
         with open(other, "w", encoding="utf-8") as handle:
