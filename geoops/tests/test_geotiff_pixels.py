@@ -186,6 +186,34 @@ def _deflate_predictor8_tiff(path: str, values, width: int = 2) -> None:
         handle.write(body)
 
 
+def _oriented_tiff(path: str, values) -> None:
+    raw = bytes(values)
+    count = 12
+    data_offset = 8 + 2 + count * 12 + 4
+    entries = [
+        (256, 3, 1, 2),
+        (257, 3, 1, 2),
+        (258, 3, 1, 8),
+        (259, 3, 1, 1),
+        (262, 3, 1, 1),
+        (273, 4, 1, data_offset),
+        (274, 3, 1, 6),
+        (277, 3, 1, 1),
+        (278, 3, 1, 2),
+        (279, 4, 1, len(raw)),
+        (284, 3, 1, 1),
+        (339, 3, 1, 1),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += raw
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _tiff(path: str, values, compression: int = 1) -> None:
     raw = bytes(values)
     payload = raw
@@ -337,6 +365,13 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(image["height"], 2)
         self.assertEqual(image["bands"], 1)
         self.assertEqual(image["values"], [1.0, 2.0, 3.0, 4.0])
+
+    def test_rotated_orientation_is_refused_not_misread(self) -> None:
+        path = os.path.join(self.tmp.name, "rotated.tif")
+        _oriented_tiff(path, [1, 2, 3, 4])
+        with self.assertRaises(GeoTiffError) as caught:
+            read_geotiff_pixels(path)
+        self.assertIn("Orientation=6", str(caught.exception))
 
     def test_deflate_pixels_are_decoded(self) -> None:
         _tiff(self.path, [9, 8, 7, 6], compression=8)

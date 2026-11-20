@@ -27,6 +27,7 @@ TAG_BITS = 258
 TAG_COMPRESSION = 259
 TAG_PHOTOMETRIC = 262
 TAG_STRIP_OFFSETS = 273
+TAG_ORIENTATION = 274
 TAG_SAMPLES = 277
 TAG_ROWS_PER_STRIP = 278
 TAG_STRIP_BYTE_COUNTS = 279
@@ -391,6 +392,11 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
     sample_format = _first(entries.get(TAG_SAMPLE_FORMAT)) or 1
     if not width or not height:
         raise GeoTiffError("TIFF has no image width/height")
+    orientation = _first(entries.get(TAG_ORIENTATION)) or 1
+    if orientation != 1:
+        raise GeoTiffError(
+            "TIFF Orientation=%s is not supported; pixel order would be wrong" % orientation
+        )
     if bits not in (8, 16, 32):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
     if compression not in (1, 5, 7, 8, 32946, 34712):
