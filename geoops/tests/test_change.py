@@ -219,6 +219,29 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(grid["crs_model"], "projected")
         self.assertEqual(grid["values"], [1, 2, 3, 4])
 
+    def test_projected_cells_in_us_survey_feet_report_square_metres(self) -> None:
+        baseline = os.path.join(self.tempdir, "feet-base.tif")
+        comparison = os.path.join(self.tempdir, "feet-comp.tif")
+        for path, values in (
+            (baseline, [0.0, 0.0, 0.0, 0.0]),
+            (comparison, [5.0, 0.0, 0.0, 0.0]),
+        ):
+            write_geotiff_mask(
+                path, width=2, height=2, cellsize=10.0, cellsize_y=20.0,
+                xllcorner=0.0, yllcorner=0.0, crs="EPSG:2277",
+                crs_model="projected", values=values, linear_unit_code=9003,
+            )
+        result = detect_changes(baseline, comparison, threshold=1)
+        foot = 1200.0 / 3937.0
+        self.assertEqual(result["linear_unit"], "US survey foot")
+        self.assertAlmostEqual(result["cell_area_m2"], 200.0 * foot * foot, delta=1e-6)
+        self.assertAlmostEqual(result["changed_area_m2"], 200.0 * foot * foot, delta=1e-6)
+        mask = os.path.join(self.tempdir, "feet-mask.tif")
+        write_change_mask(result, mask)
+        image = read_geotiff_pixels(mask)
+        self.assertEqual(image["linear_unit_code"], 9003)
+        self.assertEqual(image["linear_unit"], "US survey foot")
+
     def test_non_square_pixels_keep_their_height_and_area(self) -> None:
         baseline = os.path.join(self.tempdir, "rect-base.tif")
         comparison = os.path.join(self.tempdir, "rect-comp.tif")

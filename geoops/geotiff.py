@@ -44,6 +44,12 @@ TAG_ASCII_PARAMS = 34737
 TYPE_SIZES = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 11: 4, 12: 8}
 BIG_TYPE_SIZES = {**TYPE_SIZES, 16: 8, 17: 8, 18: 8}
 EPSG_KEYS = {3072: "projected", 2048: "geographic"}
+LINEAR_UNITS = {
+    9001: ("metre", 1.0),
+    9002: ("foot", 0.3048),
+    9003: ("US survey foot", 1200.0 / 3937.0),
+    9096: ("yard", 0.9144),
+}
 
 
 class GeoTiffError(ValueError):
@@ -168,6 +174,9 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
         "crs": crs,
         "crs_model": geo.get("crs_model", ""),
         "raster_type": geo.get("raster_type", 1),
+        "linear_unit": geo.get("linear_unit", ""),
+        "linear_unit_code": geo.get("linear_unit_code"),
+        "linear_unit_m": geo.get("linear_unit_m", 1.0),
         "bounds": bounds,
         "pixel_size": pixel_size,
     }
@@ -270,9 +279,23 @@ def _undo_predictor(
 def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
     geo_keys = entries.get(TAG_GEOKEYS) or []
     if len(geo_keys) < 4:
-        return {"crs": "", "crs_model": "", "raster_type": 1}
+        return {
+            "crs": "",
+            "crs_model": "",
+            "raster_type": 1,
+            "linear_unit": "",
+            "linear_unit_code": None,
+            "linear_unit_m": 1.0,
+        }
     key_count = int(geo_keys[3])
-    found = {"crs": "", "crs_model": "", "raster_type": 1}
+    found = {
+        "crs": "",
+        "crs_model": "",
+        "raster_type": 1,
+        "linear_unit": "",
+        "linear_unit_code": None,
+        "linear_unit_m": 1.0,
+    }
     for index in range(key_count):
         base = 4 + index * 4
         if base + 3 >= len(geo_keys):
@@ -285,6 +308,14 @@ def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
             found["crs_model"] = EPSG_KEYS[key_id]
         elif key_id == 1025:
             found["raster_type"] = int(value)
+        elif key_id == 3076:
+            unit = LINEAR_UNITS.get(int(value))
+            found["linear_unit_code"] = int(value)
+            if unit:
+                found["linear_unit"], found["linear_unit_m"] = unit
+            else:
+                found["linear_unit"] = "EPSG:%d" % int(value)
+                found["linear_unit_m"] = 0.0
     return found
 
 
@@ -374,6 +405,9 @@ def _pillow_pixels(
         "crs": metadata["crs"],
         "crs_model": metadata["crs_model"],
         "raster_type": metadata.get("raster_type", 1),
+        "linear_unit": metadata.get("linear_unit", ""),
+        "linear_unit_code": metadata.get("linear_unit_code"),
+        "linear_unit_m": metadata.get("linear_unit_m", 1.0),
     }
 
 
@@ -555,6 +589,9 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         "crs": metadata["crs"],
         "crs_model": metadata["crs_model"],
         "raster_type": metadata.get("raster_type", 1),
+        "linear_unit": metadata.get("linear_unit", ""),
+        "linear_unit_code": metadata.get("linear_unit_code"),
+        "linear_unit_m": metadata.get("linear_unit_m", 1.0),
     }
 
 
@@ -584,6 +621,7 @@ def write_geotiff_mask(
     values: List[float],
     nodata: float = -9999.0,
     cellsize_y: Optional[float] = None,
+    linear_unit_code: Optional[int] = None,
 ) -> str:
     """Write a one-band float32, uncompressed classic GeoTIFF mask.
 
@@ -614,6 +652,12 @@ def write_geotiff_mask(
     crs_model = str(crs_model or "").strip().lower()
     if crs_model not in ("geographic", "projected"):
         raise GeoTiffError("GeoTIFF output needs crs_model geographic or projected")
+    if linear_unit_code is not None:
+        if crs_model != "projected":
+            raise GeoTiffError("a linear unit is only valid for a projected CRS")
+        if int(linear_unit_code) not in LINEAR_UNITS:
+            raise GeoTiffError("unsupported linear unit code %r" % linear_unit_code)
+        linear_unit_code = int(linear_unit_code)
     epsg = _crs_number(crs)
     nodata = float(nodata)
 
@@ -649,6 +693,9 @@ def write_geotiff_mask(
         1,
         epsg,
     ]
+    if linear_unit_code is not None:
+        geo_keys[3] += 1
+        geo_keys.extend([3076, 0, 1, linear_unit_code])
     specs = [
         (256, 4, 1, struct.pack("<I", width)),
         (257, 4, 1, struct.pack("<I", height)),
@@ -673,7 +720,7 @@ def write_geotiff_mask(
             6,
             struct.pack("<6d", 0.0, 0.0, 0.0, xllcorner, top, 0.0),
         ),
-        (34735, 3, 16, struct.pack("<16H", *geo_keys)),
+        (34735, 3, len(geo_keys), struct.pack("<%dH" % len(geo_keys), *geo_keys)),
         (
             42113,
             2,

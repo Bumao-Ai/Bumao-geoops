@@ -56,6 +56,10 @@ All notable changes to this project are documented in this file.
   `cellsize_y`, alignment compares both cell dimensions, area is `sx * sy`, and
   the mask writer preserves both scales. ASCII mask output is refused when the
   cell is non-square because the format cannot express the height.
+- Projected GeoTIFF linear units are read from GeoKey 3076: metre, foot, US
+  survey foot and yard are converted to square metres for every area figure,
+  and mask output writes the same unit code. An explicitly declared unit that
+  the reader does not know is refused instead of being reported as metres.
 - `geoops/geotiff.py`: `write_geotiff_mask` writes a real classic GeoTIFF
   (one band, float32, uncompressed, strip layout) with ModelPixelScale,
   ModelTiepoint, one EPSG GeoKey and GDAL_NODATA; CRS/model are required rather

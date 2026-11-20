@@ -81,6 +81,9 @@ here.
   square degrees.
 - Non-square GeoTIFF cells keep their row height through change detection,
   area, dataset profiles and mask output; ASCII masks refuse that geometry.
+- Projected GeoTIFF linear units (GeoKey 3076: metre, foot, US survey foot,
+  yard) are converted to square metres for area and written back on the mask;
+  unknown declared units are refused rather than silently called metres.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
@@ -103,7 +106,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 320 tests in 29.7s`, `OK`.
+- Full suite: `Ran 321 tests in 29.7s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -123,6 +126,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - An automatic shutdown request was blocked by the runtime safety layer; no
   bypass was attempted. Shutdown remains a manual user action.
+
 
 
 

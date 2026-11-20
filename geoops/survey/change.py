@@ -201,12 +201,26 @@ def read_raster_grid(path: str, band: int = 1) -> Dict[str, Any]:
             "band": band,
             "crs": crs,
             "crs_model": crs_model,
+            "linear_unit": str(image.get("linear_unit") or ""),
+            "linear_unit_code": image.get("linear_unit_code"),
+            "linear_unit_m": (
+                float(image["linear_unit_m"])
+                if image.get("linear_unit_m") is not None else 1.0
+            ),
         }
     if band != 1:
         raise ChangeError("ASCII grid %s has one band, not band %d" % (path, band))
     grid = read_ascii_grid(path)
     crs, crs_model = _sidecar_crs(path)
-    return {**grid, "band": 1, "crs": crs, "crs_model": crs_model}
+    return {
+        **grid,
+        "band": 1,
+        "crs": crs,
+        "crs_model": crs_model,
+        "linear_unit": "",
+        "linear_unit_code": None,
+        "linear_unit_m": 1.0,
+    }
 
 
 def _check_alignment(baseline: Dict[str, Any], comparison: Dict[str, Any]) -> None:
@@ -305,6 +319,13 @@ def _row_areas_m2(grid: Dict[str, Any]) -> Tuple[List[float], str]:
     cellsize_y = float(grid.get("cellsize_y") or cellsize)
     nrows = int(grid["nrows"])
     model = str(grid.get("crs_model") or "").strip().lower()
+    raw_unit = grid.get("linear_unit_m")
+    unit_metres = float(raw_unit) if raw_unit is not None else 1.0
+    if model == "projected" and grid.get("linear_unit") and unit_metres <= 0:
+        raise ChangeError(
+            "projected grid declares unsupported linear unit %s; area cannot be "
+            "reported in square metres" % grid.get("linear_unit")
+        )
     if model == "geographic":
         top = float(grid["header"]["yllcorner"]) + nrows * cellsize_y
         areas = [
@@ -312,7 +333,7 @@ def _row_areas_m2(grid: Dict[str, Any]) -> Tuple[List[float], str]:
             for row in range(nrows)
         ]
         return areas, "geographic_wgs84"
-    return [cellsize * cellsize_y] * nrows, (
+    return [cellsize * cellsize_y * unit_metres ** 2] * nrows, (
         "projected" if model == "projected" else "map_units"
     )
 
@@ -397,6 +418,12 @@ def detect_changes(
         "header": dict(baseline["header"]),
         "crs": baseline.get("crs") or "",
         "crs_model": baseline.get("crs_model") or "",
+        "linear_unit": baseline.get("linear_unit") or "",
+        "linear_unit_code": baseline.get("linear_unit_code"),
+        "linear_unit_m": (
+            baseline.get("linear_unit_m")
+            if baseline.get("linear_unit_m") is not None else 1.0
+        ),
     }
 
 
@@ -432,6 +459,7 @@ def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -
                 height=int(result["nrows"]),
                 cellsize=float(result["cellsize"]),
                 cellsize_y=cellsize_y,
+                linear_unit_code=result.get("linear_unit_code"),
                 xllcorner=float(result["header"]["xllcorner"]),
                 yllcorner=float(result["header"]["yllcorner"]),
                 crs=crs,
