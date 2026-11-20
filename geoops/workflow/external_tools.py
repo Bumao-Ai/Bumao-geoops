@@ -10,6 +10,7 @@ stderr and the exit code; a non-zero exit is an error, never a silent pass.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import subprocess
@@ -131,13 +132,15 @@ class ExternalToolRegistry:
             args = row.get("args") or []
             if not tool_id or not isinstance(command, list) or not command:
                 raise ExternalToolError("external tool %d needs tool_id and command" % index)
+            if tool_id in self.tools:
+                raise ExternalToolError("duplicate external tool_id: %s" % tool_id)
             if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
                 raise ExternalToolError("external tool %s args must be strings" % tool_id)
             try:
                 timeout = float(row.get("timeout") or 60)
             except (TypeError, ValueError):
                 raise ExternalToolError("external tool %s timeout must be a number" % tool_id)
-            if timeout <= 0:
+            if not math.isfinite(timeout) or timeout <= 0:
                 raise ExternalToolError("external tool %s timeout must be positive" % tool_id)
             self.tools[tool_id] = ExternalTool(
                 tool_id=tool_id,

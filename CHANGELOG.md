@@ -23,6 +23,8 @@ All notable changes to this project are documented in this file.
   milliseconds; a failed call carries the same details into the node output and
   the Agent's `tool_calls` instead of disappearing with the exception. A failed
   Agent result exposes both `steps` and `tool_calls` for the same evidence.
+  The registry now refuses duplicate `tool_id` entries and non-finite timeouts
+  instead of silently overwriting or passing them to subprocess.
 - `GET /api/v1/execution-events`: flattened run and node events from the real
   run journal, optionally filtered by `task_id`.
 - Survey areas: `SurveyAreaRegistry` with real project linkage and validated

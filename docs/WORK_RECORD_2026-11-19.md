@@ -69,6 +69,9 @@ here.
 - `SurveyAreaRegistry` and `GET/POST /api/v1/survey-areas`: a survey area
   requires a real project, name, type and CRS; optional bounds must be four
   finite numbers with positive extent.
+- External tool configuration refuses duplicate `tool_id` entries and
+  non-finite timeouts instead of overwriting a tool or passing `nan` to
+  `subprocess`.
 - Model runtime also reads `var/model-runtime.env` (`KEY=VALUE`, same four
   keys), while real environment variables win; unknown keys are
   `CONFIG_ERROR`, and `status()` exposes the file path, never the key.
@@ -80,7 +83,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 309 tests in 26.9s`, `OK`.
+- Full suite: `Ran 311 tests in 26.6s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -100,6 +103,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 

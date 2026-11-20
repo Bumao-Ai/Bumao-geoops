@@ -58,6 +58,39 @@ class ExternalToolTests(unittest.TestCase):
         with self.assertRaises(ExternalToolError):
             registry.run("external:echo", {})
 
+    def test_duplicate_tool_id_is_refused(self) -> None:
+        with open(self.config, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "tools": [
+                        {"tool_id": "external:echo", "command": [sys.executable, self.script]},
+                        {"tool_id": "external:echo", "command": [sys.executable, self.script]},
+                    ]
+                },
+                handle,
+            )
+        with self.assertRaises(ExternalToolError) as caught:
+            ExternalToolRegistry(self.config)
+        self.assertIn("duplicate", str(caught.exception))
+
+    def test_non_finite_timeout_is_refused(self) -> None:
+        with open(self.config, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "tools": [
+                        {
+                            "tool_id": "external:echo",
+                            "command": [sys.executable, self.script],
+                            "timeout": "nan",
+                        }
+                    ]
+                },
+                handle,
+            )
+        with self.assertRaises(ExternalToolError) as caught:
+            ExternalToolRegistry(self.config)
+        self.assertIn("timeout", str(caught.exception))
+
     def test_gis_node_runs_configured_external_tool(self) -> None:
         node = ascii_grid_profile_node(
             "g1", "external", tool_id="external:echo", path_key="raster_path"
