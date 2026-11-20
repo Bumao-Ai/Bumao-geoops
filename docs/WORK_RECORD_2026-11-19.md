@@ -92,6 +92,9 @@ here.
   and the probe and pixel reader now share one georeferencing path.
 - A non-finite change threshold, minimum area or quality threshold is refused
   rather than producing a vacuous mask or confusion matrix.
+- Audit rows are hash-chained (`prev_hash`/`row_hash`); a reloaded file with an
+  edited row is refused. Legacy rows without the chain still load, and a test
+  proves both behaviours.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
@@ -114,7 +117,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 326 tests in 29.1s`, `OK`.
+- Full suite: `Ran 328 tests in 29.4s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -134,6 +137,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - An automatic shutdown request was blocked by the runtime safety layer; no
   bypass was attempted. Shutdown remains a manual user action.
+
 
 
 

@@ -60,6 +60,9 @@ All notable changes to this project are documented in this file.
   survey foot and yard are converted to square metres for every area figure,
   and mask output writes the same unit code. An explicitly declared unit that
   the reader does not know is refused instead of being reported as metres.
+- New audit rows carry `prev_hash`/`row_hash`, so reloading a file detects an
+  edited row or a re-linked chain. Legacy rows without the chain still load and
+  become the first chained link; corrupt JSON and missing fields remain errors.
 - Change detection and quality comparison refuse a non-finite threshold or
   minimum area instead of silently writing an empty mask or an all-zero
   confusion matrix.

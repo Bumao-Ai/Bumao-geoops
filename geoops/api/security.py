@@ -252,17 +252,26 @@ class AuditLog:
     Every row is written with ``flush`` and ``fsync`` so a crash cannot lose the
     last decision silently. Loading refuses a corrupt file instead of dropping
     rows, because a gap in an audit trail is the one thing it must not hide.
+    New rows are chained with ``prev_hash``/``row_hash``; a reloaded file whose
+    chain does not line up is refused. Rows written before the chain existed
+    are still accepted and become the first chained link.
     """
 
     REQUIRED_KEYS = ("at", "method", "path", "token_fp", "decision", "reason", "status")
+    CHAIN_START = "0" * 64
 
     def __init__(self, limit: int = 200, path: Optional[str] = None) -> None:
         self._rows: List[Dict[str, Any]] = []
         self._lock = threading.Lock()
         self._limit = max(1, int(limit))
         self._path = os.path.abspath(path) if path else None
+        self._chain_tip = self.CHAIN_START
         if self._path and os.path.exists(self._path):
-            self._rows = self._read_file(self._path)[-self._limit:]
+            loaded = self._read_file(self._path)
+            self._rows = loaded[-self._limit:]
+            if loaded:
+                last = loaded[-1]
+                self._chain_tip = last.get("row_hash") or self.row_digest(last)
 
     @staticmethod
     def fingerprint(token: Any) -> str:
@@ -270,6 +279,17 @@ class AuditLog:
         if not token:
             return ""
         return hashlib.sha256(token.encode("utf-8")).hexdigest()[:8]
+
+    @staticmethod
+    def row_digest(row: Dict[str, Any]) -> str:
+        """Hash the decision fields, excluding the chain fields themselves."""
+        payload = {
+            key: value
+            for key, value in row.items()
+            if key not in ("prev_hash", "row_hash")
+        }
+        text = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     @property
     def path(self) -> Optional[str]:
@@ -294,7 +314,10 @@ class AuditLog:
             "status": int(status),
         }
         with self._lock:
+            row["prev_hash"] = self._chain_tip
+            row["row_hash"] = self.row_digest(row)
             self._rows.append(row)
+            self._chain_tip = row["row_hash"]
             if len(self._rows) > self._limit:
                 del self._rows[0 : len(self._rows) - self._limit]
             if self._path:
@@ -320,6 +343,7 @@ class AuditLog:
     @classmethod
     def _read_file(cls, path: str) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
+        expected = cls.CHAIN_START
         with open(path, encoding="utf-8") as handle:
             for number, line in enumerate(handle, start=1):
                 line = line.strip()
@@ -336,5 +360,16 @@ class AuditLog:
                     raise AuditError(
                         "audit line %d is missing: %s" % (number, ", ".join(missing))
                     )
+                has_chain = "prev_hash" in row or "row_hash" in row
+                if has_chain:
+                    if "prev_hash" not in row or "row_hash" not in row:
+                        raise AuditError("audit line %d has an incomplete hash chain" % number)
+                    if row["prev_hash"] != expected:
+                        raise AuditError("audit line %d does not follow the previous row" % number)
+                    if row["row_hash"] != cls.row_digest(row):
+                        raise AuditError("audit line %d hash does not match its fields" % number)
+                    expected = row["row_hash"]
+                else:
+                    expected = cls.row_digest(row)
                 rows.append(row)
         return rows

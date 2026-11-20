@@ -131,6 +131,34 @@ class AuditFileTests(unittest.TestCase):
         self.assertEqual(len(reloaded.rows()), 2)
         self.assertEqual(reloaded.rows()[-1]["reason"], "row 3")
 
+    def test_rows_are_hash_chained_and_a_tampered_row_is_refused(self) -> None:
+        log = AuditLog(path=self.path)
+        log.record("GET", "/api/v1/health", "", "allow", "first", 200)
+        log.record("GET", "/api/v1/health", "", "allow", "second", 200)
+        reloaded = AuditLog(path=self.path)
+        first, second = reloaded.rows()
+        self.assertEqual(first["prev_hash"], AuditLog.CHAIN_START)
+        self.assertEqual(second["prev_hash"], first["row_hash"])
+        self.assertEqual(first["row_hash"], AuditLog.row_digest(first))
+        with open(self.path, encoding="utf-8") as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+        rows[0]["status"] = 500
+        with open(self.path, "w", encoding="utf-8") as handle:
+            for row in rows:
+                handle.write(json.dumps(row) + "\n")
+        with self.assertRaises(AuditError):
+            AuditLog(path=self.path)
+
+    def test_a_legacy_row_without_a_chain_still_loads(self) -> None:
+        legacy = {
+            "at": "2026-11-16T00:00:00Z", "method": "GET", "path": "/api/v1/health",
+            "token_fp": "", "decision": "allow", "reason": "legacy", "status": 200,
+        }
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(legacy) + "\n")
+        loaded = AuditLog(path=self.path)
+        self.assertEqual(loaded.rows()[0]["reason"], "legacy")
+
     def test_corrupt_line_is_reported_not_dropped(self) -> None:
         log = AuditLog(path=self.path)
         log.record("GET", "/api/v1/health", "", "allow", "ok", 200)
