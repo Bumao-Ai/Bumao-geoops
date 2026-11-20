@@ -18,7 +18,7 @@ import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
-REQUIRED_HEADER = ("ncols", "nrows", "xllcorner", "yllcorner", "cellsize")
+REQUIRED_HEADER = ("ncols", "nrows", "cellsize")
 _NUMBER = re.compile(r"^[-+]?\d+(\.\d+)?([eE][-+]?\d+)?$")
 
 
@@ -61,6 +61,20 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
         raise ChangeError("grid %s has an invalid size: %r x %r" % (path, ncols, nrows))
     if header["cellsize"] <= 0:
         raise ChangeError("grid %s has a non-positive cellsize" % path)
+
+    # ESRI ASCII permits either a corner or a cell-center origin. Normalise to
+    # the corner used everywhere else; if both are present they must agree.
+    for corner_key, center_key in (("xllcorner", "xllcenter"), ("yllcorner", "yllcenter")):
+        if corner_key not in header and center_key not in header:
+            raise ChangeError("grid %s has no %s/%s header" % (path, corner_key, center_key))
+        if corner_key in header and center_key in header:
+            derived = header[center_key] - header["cellsize"] / 2.0
+            if abs(header[corner_key] - derived) > 1e-9:
+                raise ChangeError(
+                    "grid %s declares conflicting %s and %s" % (path, corner_key, center_key)
+                )
+        elif corner_key not in header:
+            header[corner_key] = header[center_key] - header["cellsize"] / 2.0
 
     values: List[float] = []
     for line in lines[index:]:

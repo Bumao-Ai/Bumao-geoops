@@ -95,6 +95,28 @@ class ChangeTests(unittest.TestCase):
         with self.assertRaises(ChangeError):
             read_ascii_grid(broken)
 
+    def test_cell_center_origin_is_normalized_to_corners(self) -> None:
+        centered = os.path.join(self.tempdir, "centered.asc")
+        self._write(
+            centered,
+            "ncols 2\nnrows 2\nxllcenter 5\nyllcenter 5\ncellsize 10\n1 2\n3 4\n",
+        )
+        grid = read_ascii_grid(centered)
+        self.assertEqual(grid["header"]["xllcorner"], 0.0)
+        self.assertEqual(grid["header"]["yllcorner"], 0.0)
+        self.assertEqual(grid["values"], [1.0, 2.0, 3.0, 4.0])
+
+    def test_conflicting_corner_and_center_origins_are_refused(self) -> None:
+        broken = os.path.join(self.tempdir, "origin-conflict.asc")
+        self._write(
+            broken,
+            "ncols 1\nnrows 1\nxllcorner 0\nxllcenter 100\n"
+            "yllcorner 0\ncellsize 10\n1\n",
+        )
+        with self.assertRaises(ChangeError) as caught:
+            read_ascii_grid(broken)
+        self.assertIn("conflicting", str(caught.exception))
+
     def test_detection_counts_match_the_fixture(self) -> None:
         result = detect_changes(self.baseline, self.comparison, threshold=1, min_area_m2=0)
         self.assertEqual(result["changed_cells"], 3)
