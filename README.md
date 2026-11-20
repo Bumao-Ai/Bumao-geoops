@@ -30,7 +30,7 @@ The kernel is vendored at `kernel/bumao_core/`: synced from Bumao Core `v0.2.2` 
 - A workflow engine over `var/workflows.json`: typed nodes, real node actions, an Agent JSON-plan loop with declared-tool whitelist and real builtin tool calls, `inputs` aliases, retry and failure policy, execute/resume with node outputs, run journal and structured trace. See [docs/WORKFLOW_ENGINE.md](docs/WORKFLOW_ENGINE.md).
 - An HTTP API with health, overview, object-by-id, task list, run journal and flattened execution events, projects and validated survey areas, datasets (including `validate` and a real `/profile` pixel summary), catalog, deliverables (and `archive`, plus `POST /deliverables/<id>/artifacts` for real-file binding), quality reports, settings, reviews, task trace, rule packs, artifact index, audit and the HTML console at `/ui/`.
 - `--no-data` smoke mode that runs without any dataset.
-- **Not included today:** a bundled model endpoint (the runtime is real, but you must point it at your own compatible endpoint), an installed GDAL/QGIS/Rasterio binary (the `external:<id>` adapter can run one only when you configure its path in `var/external-tools.json`), map views, a login page, publishing, and workflow-definition CRUD in the console (run history and real execution are present; definitions are still file/API-level). GeoTIFF support is real pixel decoding for uncompressed/LZW/Deflate strip and tile files with chunky or separate-planar bands, plus JPEG/JPEG2000 through optional Pillow; mask output is uncompressed one-band float32 GeoTIFF; BigTIFF and reprojection remain out of scope.
+- **Not included today:** a bundled model endpoint (the runtime is real, but you must point it at your own compatible endpoint), an installed GDAL/QGIS/Rasterio binary (the `external:<id>` adapter can run one only when you configure its path in `var/external-tools.json`), map views, a login page, publishing, and workflow-definition CRUD in the console (run history and real execution are present; definitions are still file/API-level). GeoTIFF support is real pixel decoding for uncompressed/LZW/Deflate strip and tile files with chunky or separate-planar bands, plus JPEG/JPEG2000 through optional Pillow; mask output is uncompressed one-band float32 GeoTIFF; BigTIFF is now read as well; reprojection remains out of scope.
 - Real remote-sensing imagery and model endpoints are not bundled. You supply them.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the current layers, [docs/MODEL_RUNTIME.md](docs/MODEL_RUNTIME.md) for model connection, [docs/WORKFLOW_ENGINE.md](docs/WORKFLOW_ENGINE.md) for definition execution and resume, [docs/USER_INPUT_CHECKLIST.md](docs/USER_INPUT_CHECKLIST.md) for the assets only you can supply, and [docs/ui-preview/](docs/ui-preview/) for screenshots of the console as it actually renders.
@@ -71,7 +71,7 @@ Run the unit tests:
 python -m unittest discover -s geoops\tests -t .
 ```
 
-296 tests; JPEG-TIFF decoding additionally uses Pillow when installed. The smoke run makes 73 assertions.
+297 tests; JPEG-TIFF decoding additionally uses Pillow when installed. The smoke run makes 73 assertions.
 
 ## Version boundary
 
