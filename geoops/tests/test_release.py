@@ -84,6 +84,17 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(result["status"], "FAIL")
         self.assertIn("sha256", [check["name"] for check in result["checks"] if check["status"] == "FAIL"])
 
+    def test_validate_detects_a_changed_sidecar_crs(self) -> None:
+        self._write_sidecar()
+        dataset = self.datasets.register("PRJ-1", self.path)
+        self._write_sidecar("EPSG:3857")
+        result = self.datasets.validate(dataset.object_id)
+        self.assertEqual(result["status"], "FAIL")
+        crs_check = [check for check in result["checks"] if check["name"] == "crs"][0]
+        self.assertEqual(crs_check["status"], "FAIL")
+        self.assertIn("EPSG:4547", crs_check["detail"])
+        self.assertIn("EPSG:3857", crs_check["detail"])
+
     def test_an_unknown_project_is_refused(self) -> None:
         self._write_sidecar()
         with self.assertRaises(DatasetError):

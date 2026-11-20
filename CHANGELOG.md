@@ -46,6 +46,9 @@ All notable changes to this project are documented in this file.
 - `geoops/domain/datasets.py`: a sidecar CRS no longer suppresses the GeoTIFF
   header probe; dimensions, bounds and pixel size are retained, and a header
   without EPSG is accepted only when the sidecar supplies the CRS.
+- `DatasetRegistry.validate`: a re-probe now also fails when the CRS, width,
+  height or band count no longer matches what was registered, not only when
+  the sha256 changes.
 - `geoops/survey/change.py`: change detection accepts ASCII or classic GeoTIFF
   rasters through one raster reader; ASCII headers may declare cell-center
   origins (`xllcenter`/`yllcenter`) which are normalised to corners, and a

@@ -27,6 +27,8 @@ here.
 - ASCII imports accept ESRI cell-center origins (`xllcenter`/`yllcenter`) and
   normalise them to corners for change detection, profiles and quality metrics;
   a contradictory corner/center pair is refused instead of choosing one.
+- Dataset re-validation now fails when a sidecar CRS, width, height or band
+  count differs from the registered values, not only when the file hash changes.
 - GeoTIFF input now reads BigTIFF as well as classic TIFF: 64-bit offsets,
   8-byte IFD counts and LONG8/SLONG8/IFD8 fields are parsed, so a real large
   GeoTIFF can supply dimensions, bounds, CRS and pixels.
@@ -63,7 +65,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 297 tests in 26.3s`, `OK`.
+- Full suite: `Ran 298 tests in 26.4s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -83,6 +85,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 

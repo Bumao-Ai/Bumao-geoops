@@ -107,9 +107,30 @@ class DatasetRegistry:
         else:
             checks.append({"name": "sha256", "status": "PASS", "detail": fresh.sha256})
         if not fresh.crs:
-            checks.append({"name": "crs", "status": "FAIL", "detail": "CRS missing in sidecar"})
+            checks.append({"name": "crs", "status": "FAIL", "detail": "CRS missing after re-probe"})
+        elif payload.get("crs") and fresh.crs != payload.get("crs"):
+            checks.append(
+                {
+                    "name": "crs",
+                    "status": "FAIL",
+                    "detail": "registered %s but re-probe reads %s"
+                    % (payload.get("crs"), fresh.crs),
+                }
+            )
         else:
             checks.append({"name": "crs", "status": "PASS", "detail": fresh.crs})
+        for name in ("width", "height", "bands"):
+            registered_value = payload.get(name)
+            fresh_value = getattr(fresh, name)
+            if registered_value is not None and fresh_value is not None and registered_value != fresh_value:
+                checks.append(
+                    {
+                        "name": name,
+                        "status": "FAIL",
+                        "detail": "registered %s but re-probe reads %s"
+                        % (registered_value, fresh_value),
+                    }
+                )
         status = "PASS" if all(check["status"] == "PASS" for check in checks) else "FAIL"
         return {"dataset_id": dataset_id, "status": status, "checks": checks}
 
