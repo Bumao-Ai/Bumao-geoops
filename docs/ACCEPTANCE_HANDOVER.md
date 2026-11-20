@@ -5,7 +5,7 @@
 
 ## 一、当前可核对的软件基线
 
-- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **314 tests OK**。
+- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **328 tests OK**。
 - 结构自检：`python -m geoops.smoke`，当前 **SMOKE PASS: 73 assertions**。
 - 控制台：`http://127.0.0.1:8790/ui/`；健康接口 `/api/v1/health`。
 - 等级：核心工程（CORE），登记在 `docs/ENGINEERING_TIER.md`。
@@ -76,8 +76,8 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/profile?band=1"
 Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 ```
 
-`profile` 返回真实 `ncols/nrows/bands/cellsize/bounds/crs/valid_cells/min/max/mean`；
-`validate` 会重算 sha256，并比较注册时的 CRS、宽、高、波段数。
+`profile` 返回真实 `ncols/nrows/bands/cellsize/cellsize_y/cell_area_m2/footprint_area_m2/area_basis/bounds/crs/valid_cells/min/max/mean`；
+`validate` 会重算 sha256，并比较注册时的 CRS、宽、高、波段数。地理坐标系面积按逐行 WGS84 椭球计算；投影坐标系按 GeoKey 3076 声明的 metre/foot/yard/US survey foot 换算；未声明 CRS 模型时面积只以 map units 返回，不冒充平方米。
 
 ## 四、真实外部 GIS 工具
 
@@ -134,7 +134,10 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 ```powershell
 Invoke-RestMethod "$b/api/v1/tasks/<task_id>/trace"
 Invoke-RestMethod "$b/api/v1/deliverables/<deliverable_id>/trace"
+Invoke-RestMethod "$b/api/v1/deliverables/<deliverable_id>/archive-verification"
 ```
+
+`archive-verification` 会重新打开归档清单、逐文件重算 sha256、比对登记值与文件大小，并拒绝归档目录之外的清单路径；任何缺失或被改都会返回 `ok=false` 和具体 `problems`。
 
 真实数据环填满后，`complete` 才能由真实记录支撑，而不是靠合成对象凑齐。
 
@@ -155,5 +158,5 @@ Invoke-RestMethod "$b/api/v1/deliverables/<deliverable_id>/trace"
 6. 执行变化检测 workflow，得到真实掩膜与节点日志。
 7. 用真值掩膜生成质量报告并声明阈值。
 8. 提交人工审核，`APPROVE` 必须引用 `PASS` 报告。
-9. 归档，核对归档文件 sha256 与 manifest。
+9. 归档，核对归档文件 sha256 与 manifest，再跑一次 `archive-verification`。
 10. 从任务和成果两个方向各跑一次 trace。
