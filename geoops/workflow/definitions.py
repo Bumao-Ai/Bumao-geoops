@@ -130,7 +130,12 @@ def validate_definition(
             if raw.get("agent_id") is not None:
                 item["agent_id"] = str(raw["agent_id"]).strip()
             if raw.get("max_steps") is not None:
-                item["max_steps"] = int(_number(raw["max_steps"], "node[%d].max_steps" % index, 1))
+                steps = _number(raw["max_steps"], "node[%d].max_steps" % index, 1)
+                if steps != int(steps) or steps > 16:
+                    raise WorkflowDefinitionError(
+                        "node[%d].max_steps must be an integer between 1 and 16" % index
+                    )
+                item["max_steps"] = int(steps)
         elif node_type in ("data_input", "data_check"):
             item["dataset_key"] = _text(raw.get("dataset_key") or "dataset_id", "node[%d].dataset_key" % index)
             if raw.get("dataset_id") is not None:

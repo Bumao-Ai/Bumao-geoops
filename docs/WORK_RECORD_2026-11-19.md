@@ -70,7 +70,8 @@ here.
   requires a real project, name, type and CRS; optional bounds must be four
   finite numbers with positive extent.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
-  that value when it does not declare its own step budget.
+  that value when it does not declare its own step budget; a node override is
+  also restricted to an integer 1–16.
 - External tool configuration refuses duplicate `tool_id` entries and
   non-finite timeouts instead of overwriting a tool or passing `nan` to
   `subprocess`.
