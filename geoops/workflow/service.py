@@ -125,6 +125,7 @@ class WorkflowService:
                         comparison_key=spec.get("comparison_key", "comparison_path"),
                         output_key=spec.get("output_key", "change_output_path"),
                         min_area_m2=spec.get("min_area_m2", 0.0),
+                        band=spec.get("band", 1),
                     )
                 )
             elif node_type in ("artifact_register", "output"):

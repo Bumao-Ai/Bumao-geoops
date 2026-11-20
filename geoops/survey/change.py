@@ -237,14 +237,15 @@ def detect_changes(
     comparison_path: str,
     threshold: float = 1.0,
     min_area_m2: float = 0.0,
+    band: int = 1,
 ) -> Dict[str, Any]:
     """Compare two aligned grids and return a mask plus its statistics."""
     if threshold < 0:
         raise ChangeError("threshold must not be negative")
     if min_area_m2 < 0:
         raise ChangeError("min_area_m2 must not be negative")
-    baseline = read_raster_grid(baseline_path)
-    comparison = read_raster_grid(comparison_path)
+    baseline = read_raster_grid(baseline_path, band=band)
+    comparison = read_raster_grid(comparison_path, band=band)
     _check_alignment(baseline, comparison)
 
     nodata_a = baseline["header"].get("nodata_value")
@@ -286,6 +287,7 @@ def detect_changes(
         "nrows": baseline["nrows"],
         "cellsize": baseline["cellsize"],
         "cell_area_m2": cell_area,
+        "band": int(baseline.get("band") or band),
         "threshold": threshold,
         "min_area_m2": min_area_m2,
         "total_cells": len(mask),

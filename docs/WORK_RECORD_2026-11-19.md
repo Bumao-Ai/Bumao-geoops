@@ -27,7 +27,8 @@ here.
 - ASCII imports accept ESRI cell-center origins (`xllcenter`/`yllcenter`) and
   normalise them to corners for change detection, profiles and quality metrics;
   a contradictory corner/center pair is refused instead of choosing one.
-- Multiband GeoTIFF support: `read_raster_grid(path, band=N)` and
+- Multiband GeoTIFF support: `read_raster_grid(path, band=N)`,
+  `detect_changes(..., band=N)`, a workflow node's declared `band` and
   `GET /api/v1/datasets/<id>/profile?band=N` select a real band and refuse an
   out-of-range one; the test fixture is a chunky two-band georeferenced TIFF.
 - Dataset re-validation now fails when a sidecar CRS, width, height or band
@@ -68,7 +69,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 300 tests in 26.7s`, `OK`.
+- Full suite: `Ran 301 tests in 27.1s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -88,6 +89,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 

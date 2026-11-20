@@ -24,6 +24,8 @@ def change_detect_node(
     output_key: str = "change_output_path",
     min_area_key: str = "min_area_m2",
     min_area_m2: Optional[float] = None,
+    band: int = 1,
+    band_key: str = "band",
 ) -> Node:
     """Build a node that compares two grids and writes the change mask."""
 
@@ -42,8 +44,17 @@ def change_detect_node(
                 area = float(raw_area) if raw_area not in (None, "") else 0.0
             except (TypeError, ValueError):
                 return NodeResult(NodeStatus.FAIL, "%s is not a number: %r" % (min_area_key, raw_area))
+        selected_band = band
+        raw_band = context.get(band_key)
+        if raw_band not in (None, ""):
+            try:
+                selected_band = int(raw_band)
+            except (TypeError, ValueError):
+                return NodeResult(NodeStatus.FAIL, "%s is not an integer: %r" % (band_key, raw_band))
         try:
-            result = detect_changes(baseline, comparison, threshold=threshold, min_area_m2=area)
+            result = detect_changes(
+                baseline, comparison, threshold=threshold, min_area_m2=area, band=selected_band
+            )
             path = write_change_mask(result, output)
         except ChangeError as exc:
             return NodeResult(NodeStatus.FAIL, str(exc), {"baseline": baseline, "comparison": comparison})

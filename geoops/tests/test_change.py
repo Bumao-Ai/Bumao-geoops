@@ -31,7 +31,7 @@ from geoops.survey.change import (
     write_change_mask,
 )
 from geoops.survey.change_node import change_detect_node
-from geoops.tests.test_geotiff_pixels import _georeferenced_tiff
+from geoops.tests.test_geotiff_pixels import _georeferenced_tiff, _georeferenced_multiband_tiff
 from geoops.workflow import NodeStatus, run
 
 BASELINE = """ncols 5
@@ -204,6 +204,19 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(grid["crs"], "EPSG:3857")
         self.assertEqual(grid["crs_model"], "projected")
         self.assertEqual(grid["values"], [1, 2, 3, 4])
+
+    def test_change_detection_selects_a_multiband_band(self) -> None:
+        baseline = os.path.join(self.tempdir, "band-base.tif")
+        comparison = os.path.join(self.tempdir, "band-comp.tif")
+        _georeferenced_multiband_tiff(baseline, [1, 1, 2, 2, 3, 3, 4, 4])
+        _georeferenced_multiband_tiff(comparison, [1, 10, 2, 20, 3, 30, 4, 40])
+        band_two = detect_changes(baseline, comparison, threshold=5, band=2)
+        self.assertEqual(band_two["band"], 2)
+        self.assertEqual(band_two["changed_cells"], 4)
+        band_one = detect_changes(baseline, comparison, threshold=5, band=1)
+        self.assertEqual(band_one["changed_cells"], 0)
+        with self.assertRaises(ChangeError):
+            detect_changes(baseline, comparison, band=3)
 
 
 class ChangeNodeTests(unittest.TestCase):

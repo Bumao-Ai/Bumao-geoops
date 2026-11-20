@@ -75,9 +75,11 @@ class DefinitionTests(unittest.TestCase):
             {"node_id": "R1", "name": "规则", "type": "rule_check"},
             {"node_id": "V1", "name": "审核", "type": "review"},
             {"node_id": "O1", "name": "输出", "type": "output"},
+            {"node_id": "C1", "name": "差分", "type": "change_detection", "band": 2},
         ]
         result = validate_definition("WF-SPEC", "全类型", "change_detection", nodes)
-        self.assertEqual(result["node_count"], 8)
+        self.assertEqual(result["node_count"], 9)
+        self.assertEqual(result["nodes"][-1]["band"], 2)
 
 
 class NodeDataTests(unittest.TestCase):

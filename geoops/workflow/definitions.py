@@ -106,6 +106,10 @@ def validate_definition(
         elif node_type == "change_detection":
             item["threshold"] = _number(raw.get("threshold", 1.0), "node[%d].threshold" % index)
             item["min_area_m2"] = _number(raw.get("min_area_m2", 0.0), "node[%d].min_area_m2" % index)
+            band = _number(raw.get("band", 1), "node[%d].band" % index, 1)
+            if band != int(band):
+                raise WorkflowDefinitionError("node[%d].band must be an integer" % index)
+            item["band"] = int(band)
             for key in ("baseline_key", "comparison_key", "output_key"):
                 if raw.get(key) is not None:
                     item[key] = _text(raw.get(key), "node[%d].%s" % (index, key))
