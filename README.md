@@ -26,7 +26,7 @@ The kernel is vendored at `kernel/bumao_core/`: synced from Bumao Core `v0.2.2` 
 - A three-layer quality service: file/structure checks (existence, hash, size), spatial checks (CRS, dimensions, bounds when recorded), and professional verification that can only pass with a human sample and a written note. Without that note the aggregate is `PARTIAL`, never `PASS`. Reports are written to `var/quality/` and registered as `QualityReport` objects. ASCII or GeoTIFF mask accuracy can add a real TP/FP/FN/TN confusion matrix with pixel accuracy, precision, recall, F1 and IoU; mismatched origin or CRS is refused, and caller-declared minimum thresholds turn a below-threshold metric into `FAIL`; no threshold is invented by the server.
 - Deliverables are real files with a recorded sha256 and size; only an approving review flips them to `accepted`, and only then may they be archived.
 - A real OpenAI-compatible model runtime: any endpoint exposing `POST /chat/completions` can be configured with `GEOOPS_MODEL_BASE_URL`, `GEOOPS_MODEL_API_KEY` and `GEOOPS_MODEL_NAME`. The console shows `READY` / `NOT_CONFIGURED`, can send a real probe and a real prompt, and reports the provider's reply, model, latency and token usage. No endpoint is bundled and no reply is fabricated. See [docs/MODEL_RUNTIME.md](docs/MODEL_RUNTIME.md).
-- Real pixel-level change detection on two aligned rasters: ESRI ASCII (corner or cell-center origin) and classic GeoTIFF (uncompressed, LZW or Deflate, strip or tiled, chunky or separate-planar bands, 8/16/32-bit; JPEG/JPEG2000 via optional Pillow). Threshold, 4-neighbour patches, minimum area, written ASCII or one-band float32 GeoTIFF mask with the source georeferencing.
+- Real pixel-level change detection on two aligned rasters: ESRI ASCII (corner or cell-center origin, optional sidecar CRS) and classic GeoTIFF (uncompressed, LZW or Deflate, strip or tiled, chunky or separate-planar bands, 8/16/32-bit; JPEG/JPEG2000 via optional Pillow). Threshold, 4-neighbour patches, minimum area, written ASCII or one-band float32 GeoTIFF mask with the source georeferencing.
 - A workflow engine over `var/workflows.json`: typed nodes, real node actions, an Agent JSON-plan loop with declared-tool whitelist and real builtin tool calls, `inputs` aliases, retry and failure policy, execute/resume with node outputs, run journal and structured trace. See [docs/WORKFLOW_ENGINE.md](docs/WORKFLOW_ENGINE.md).
 - An HTTP API with health, overview, object-by-id, task list, run journal and flattened execution events, projects and validated survey areas, datasets (including `validate` and a real `/profile` pixel summary), catalog, deliverables (and `archive`, plus `POST /deliverables/<id>/artifacts` for real-file binding), quality reports, settings, reviews, task trace, rule packs, artifact index, audit and the HTML console at `/ui/`.
 - `--no-data` smoke mode that runs without any dataset.
@@ -71,7 +71,7 @@ Run the unit tests:
 python -m unittest discover -s geoops\tests -t .
 ```
 
-288 tests; JPEG-TIFF decoding additionally uses Pillow when installed. The smoke run makes 73 assertions.
+289 tests; JPEG-TIFF decoding additionally uses Pillow when installed. The smoke run makes 73 assertions.
 
 ## Version boundary
 
