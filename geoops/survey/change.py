@@ -15,6 +15,7 @@ is projected in metres — the caller owns that check (R-OR-001 / R-CD-002).
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,6 +26,18 @@ _NUMBER = re.compile(r"^[-+]?\d+(\.\d+)?([eE][-+]?\d+)?$")
 
 class ChangeError(ValueError):
     """Raised when a grid pair cannot be compared; nothing is written."""
+
+
+def is_nodata(value: Any, nodata: Any) -> bool:
+    """Compare a cell with NODATA, including a floating-point NaN sentinel."""
+    if nodata is None:
+        return False
+    try:
+        if math.isnan(float(nodata)):
+            return math.isnan(float(value))
+    except (TypeError, ValueError):
+        return False
+    return value == nodata
 
 
 def read_ascii_grid(path: str) -> Dict[str, Any]:
@@ -256,9 +269,7 @@ def detect_changes(
     nodata_cells = 0
     changed_cells = 0
     for left, right in zip(baseline["values"], comparison["values"]):
-        invalid = (nodata_a is not None and left == nodata_a) or (
-            nodata_b is not None and right == nodata_b
-        )
+        invalid = is_nodata(left, nodata_a) or is_nodata(right, nodata_b)
         if invalid:
             nodata_cells += 1
             mask.append(0)

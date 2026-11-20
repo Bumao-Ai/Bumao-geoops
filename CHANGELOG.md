@@ -50,8 +50,8 @@ All notable changes to this project are documented in this file.
 - `DatasetRegistry.validate`: a re-probe now also fails when the CRS, width,
   height or band count no longer matches what was registered, not only when
   the sha256 changes.
-- `geoops/survey/change.py`: change detection accepts ASCII or classic GeoTIFF
-  rasters through one raster reader; `read_raster_grid(path, band=1)` and
+- `geoops/survey/change.py`: change detection reads ASCII or classic/BigTIFF
+  rasters through one reader; `read_raster_grid(path, band=1)` and
   `detect_changes(..., band=N)` select one band from a multiband GeoTIFF
   (an out-of-range band is refused); workflow `change_detection` nodes accept
   a declared `band`; ASCII headers may declare cell-center origins
@@ -62,6 +62,9 @@ All notable changes to this project are documented in this file.
   a one-band float32 GeoTIFF mask with the source PixelScale, Tiepoint, EPSG
   GeoKey and GDAL_NODATA. Output without a source CRS is refused; `.asc`
   remains ASCII.
+- `geoops/survey/change.py`: a shared `is_nodata` check treats a floating-point
+  NaN sentinel as NODATA in change detection, dataset profiles and quality
+  masks, instead of letting NaN cells count as valid values.
 - `geoops/quality/service.py`: optional `accuracy_thresholds` adds a real
   `professional.accuracy_threshold` check; below-minimum metrics are `FAIL`,
   invalid keys/values or thresholds without a reference mask are refused, and

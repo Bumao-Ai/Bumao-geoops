@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 from geoops.domain import datasets as probe
 from geoops.domain.projects import ProjectRegistry
 from geoops.domain.registry import DomainObject, DomainRegistry, ObjectType
-from geoops.survey.change import ChangeError, read_raster_grid
+from geoops.survey.change import ChangeError, is_nodata, read_raster_grid
 
 
 class DatasetError(ValueError):
@@ -147,7 +147,7 @@ class DatasetRegistry:
         except (ChangeError, TypeError, ValueError) as exc:
             raise DatasetError("cannot profile raster: %s" % exc) from exc
         nodata = grid["header"].get("nodata_value")
-        valid = [value for value in grid["values"] if nodata is None or value != nodata]
+        valid = [value for value in grid["values"] if not is_nodata(value, nodata)]
         if not valid:
             raise DatasetError("raster %s has no valid cells after NODATA removal" % dataset_id)
         ncols = int(grid["ncols"])

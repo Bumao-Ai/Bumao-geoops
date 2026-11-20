@@ -26,6 +26,7 @@ from geoops.geotiff import read_geotiff_pixels, write_geotiff_mask
 from geoops.survey.change import (
     ChangeError,
     detect_changes,
+    is_nodata,
     read_ascii_grid,
     read_raster_grid,
     write_change_mask,
@@ -217,6 +218,11 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(band_one["changed_cells"], 0)
         with self.assertRaises(ChangeError):
             detect_changes(baseline, comparison, band=3)
+
+    def test_a_nan_sentinel_is_compared_as_nodata(self) -> None:
+        self.assertTrue(is_nodata(float("nan"), float("nan")))
+        self.assertFalse(is_nodata(1.0, float("nan")))
+        self.assertTrue(is_nodata(-9999.0, -9999.0))
 
 
 class ChangeNodeTests(unittest.TestCase):

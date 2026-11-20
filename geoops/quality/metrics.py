@@ -12,6 +12,8 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Tuple
 
+from geoops.survey.change import is_nodata
+
 
 class MetricsError(ValueError):
     """The two grids cannot be compared."""
@@ -112,7 +114,7 @@ def compare_masks(
 
     tp = fp = fn = tn = skipped = 0
     for ref_value, pred_value in zip(reference["values"], predicted["values"]):
-        if ref_value == reference["nodata"] or pred_value == predicted["nodata"]:
+        if is_nodata(ref_value, reference["nodata"]) or is_nodata(pred_value, predicted["nodata"]):
             skipped += 1
             continue
         ref_positive = ref_value > threshold
