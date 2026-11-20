@@ -219,6 +219,31 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(grid["crs_model"], "projected")
         self.assertEqual(grid["values"], [1, 2, 3, 4])
 
+    def test_non_square_pixels_keep_their_height_and_area(self) -> None:
+        baseline = os.path.join(self.tempdir, "rect-base.tif")
+        comparison = os.path.join(self.tempdir, "rect-comp.tif")
+        write_geotiff_mask(
+            baseline, width=2, height=2, cellsize=10.0, cellsize_y=20.0,
+            xllcorner=500000.0, yllcorner=4500000.0, crs="EPSG:3857",
+            crs_model="projected", values=[0.0, 0.0, 0.0, 0.0],
+        )
+        write_geotiff_mask(
+            comparison, width=2, height=2, cellsize=10.0, cellsize_y=20.0,
+            xllcorner=500000.0, yllcorner=4500000.0, crs="EPSG:3857",
+            crs_model="projected", values=[5.0, 0.0, 0.0, 0.0],
+        )
+        result = detect_changes(baseline, comparison, threshold=1)
+        self.assertEqual(result["cellsize_y"], 20.0)
+        self.assertEqual(result["cell_area_m2"], 200.0)
+        self.assertEqual(result["changed_area_m2"], 200.0)
+        mask = os.path.join(self.tempdir, "rect-mask.tif")
+        write_change_mask(result, mask)
+        image = read_geotiff_pixels(mask)
+        self.assertEqual(image["pixel_size"][:2], [10.0, 20.0])
+        with self.assertRaises(ChangeError) as caught:
+            write_change_mask(result, os.path.join(self.tempdir, "rect-mask.asc"))
+        self.assertIn("non-square", str(caught.exception))
+
     def test_changed_area_on_a_geographic_grid_uses_real_metres(self) -> None:
         baseline = os.path.join(self.tempdir, "geo-base.asc")
         comparison = os.path.join(self.tempdir, "geo-comp.asc")

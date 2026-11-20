@@ -583,6 +583,7 @@ def write_geotiff_mask(
     crs_model: str,
     values: List[float],
     nodata: float = -9999.0,
+    cellsize_y: Optional[float] = None,
 ) -> str:
     """Write a one-band float32, uncompressed classic GeoTIFF mask.
 
@@ -603,10 +604,11 @@ def write_geotiff_mask(
             "GeoTIFF has %d values for %dx%d pixels" % (len(values), width, height)
         )
     cellsize = float(cellsize)
+    cellsize_y = float(cellsize_y) if cellsize_y is not None else cellsize
     xllcorner, yllcorner = float(xllcorner), float(yllcorner)
-    if cellsize <= 0 or not all(
+    if cellsize <= 0 or cellsize_y <= 0 or not all(
         value == value and abs(value) != float("inf")
-        for value in (cellsize, xllcorner, yllcorner)
+        for value in (cellsize, cellsize_y, xllcorner, yllcorner)
     ):
         raise GeoTiffError("GeoTIFF georeferencing contains a non-finite value")
     crs_model = str(crs_model or "").strip().lower()
@@ -628,7 +630,7 @@ def write_geotiff_mask(
         pixel_data.append(0)
         ifd_offset += 1
 
-    top = yllcorner + height * cellsize
+    top = yllcorner + height * cellsize_y
     geo_keys = [
         1,
         1,
@@ -663,7 +665,7 @@ def write_geotiff_mask(
             33550,
             12,
             3,
-            struct.pack("<3d", cellsize, cellsize, 0.0),
+            struct.pack("<3d", cellsize, cellsize_y, 0.0),
         ),
         (
             33922,

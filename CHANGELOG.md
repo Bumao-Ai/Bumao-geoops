@@ -52,6 +52,10 @@ All notable changes to this project are documented in this file.
 - Change detection reports real square metres for a geographic grid: each row's
   cell area is evaluated at its own latitude on the WGS84 ellipsoid, so a
   one-degree cell is about 12.3 billion m2 instead of one.
+- A GeoTIFF with non-square pixels keeps its row height: grids carry
+  `cellsize_y`, alignment compares both cell dimensions, area is `sx * sy`, and
+  the mask writer preserves both scales. ASCII mask output is refused when the
+  cell is non-square because the format cannot express the height.
 - `geoops/geotiff.py`: `write_geotiff_mask` writes a real classic GeoTIFF
   (one band, float32, uncompressed, strip layout) with ModelPixelScale,
   ModelTiepoint, one EPSG GeoKey and GDAL_NODATA; CRS/model are required rather

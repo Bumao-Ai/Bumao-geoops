@@ -33,6 +33,7 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
         "ncols": grid["ncols"],
         "nrows": grid["nrows"],
         "cellsize": grid["cellsize"],
+        "cellsize_y": grid.get("cellsize_y") or grid["cellsize"],
         "nodata": float(grid["header"].get("nodata_value", -9999.0)),
         "crs": grid.get("crs") or "",
         "crs_model": grid.get("crs_model") or "",
@@ -56,6 +57,7 @@ def read_mask_grid(path: str) -> Dict[str, Any]:
             "ncols": grid["ncols"],
             "nrows": grid["nrows"],
             "cellsize": grid["cellsize"],
+            "cellsize_y": grid.get("cellsize_y") or grid["cellsize"],
             "xllcorner": grid["header"].get("xllcorner"),
             "yllcorner": grid["header"].get("yllcorner"),
             "crs": grid.get("crs") or "",
@@ -100,6 +102,11 @@ def compare_masks(
         raise MetricsError(
             "grid cell sizes differ: %s vs %s"
             % (reference["cellsize"], predicted["cellsize"])
+        )
+    if abs(float(reference["cellsize_y"]) - float(predicted["cellsize_y"])) > 1e-9:
+        raise MetricsError(
+            "grid cell heights differ: %s vs %s"
+            % (reference["cellsize_y"], predicted["cellsize_y"])
         )
     for key in ("xllcorner", "yllcorner"):
         ref_origin, pred_origin = reference.get(key), predicted.get(key)

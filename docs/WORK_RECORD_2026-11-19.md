@@ -79,6 +79,8 @@ here.
 - Change area on a geographic grid is computed per row on the WGS84 ellipsoid,
   so `changed_area_m2` and `min_area_m2` are real square metres rather than
   square degrees.
+- Non-square GeoTIFF cells keep their row height through change detection,
+  area, dataset profiles and mask output; ASCII masks refuse that geometry.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
@@ -101,7 +103,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 319 tests in 27.7s`, `OK`.
+- Full suite: `Ran 320 tests in 29.7s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -121,6 +123,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - An automatic shutdown request was blocked by the runtime safety layer; no
   bypass was attempted. Shutdown remains a manual user action.
+
 
 
 

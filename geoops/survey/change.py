@@ -108,6 +108,7 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
         "ncols": int(ncols),
         "nrows": int(nrows),
         "cellsize": header["cellsize"],
+        "cellsize_y": header["cellsize"],
         "values": values,
     }
 
@@ -164,6 +165,10 @@ def read_raster_grid(path: str, band: int = 1) -> Dict[str, Any]:
         if band > bands:
             raise ChangeError("GeoTIFF %s has %d band(s), not band %d" % (path, bands, band))
         values = image["values"][band - 1::bands]
+        sx = float(pixel_size[0])
+        sy = float(pixel_size[1]) if len(pixel_size) > 1 else sx
+        if sx <= 0 or sy <= 0:
+            raise ChangeError("GeoTIFF %s has a non-positive pixel size" % path)
         crs = str(image.get("crs") or "")
         crs_model = str(image.get("crs_model") or "")
         if not crs or not crs_model:
@@ -182,12 +187,14 @@ def read_raster_grid(path: str, band: int = 1) -> Dict[str, Any]:
                 "nrows": image["height"],
                 "xllcorner": bounds[0],
                 "yllcorner": bounds[1],
-                "cellsize": pixel_size[0],
+                "cellsize": sx,
+                "cellsize_y": sy,
                 "nodata_value": image.get("nodata"),
             },
             "ncols": int(image["width"]),
             "nrows": int(image["height"]),
-            "cellsize": float(pixel_size[0]),
+            "cellsize": sx,
+            "cellsize_y": sy,
             "values": values,
             "source_format": "geotiff",
             "bands": bands,
@@ -209,6 +216,13 @@ def _check_alignment(baseline: Dict[str, Any], comparison: Dict[str, Any]) -> No
                 "grids are not aligned: %s differs (%r vs %r)"
                 % (key, baseline["header"][key], comparison["header"][key])
             )
+    left_cell_y = float(baseline["header"].get("cellsize_y", baseline["header"]["cellsize"]))
+    right_cell_y = float(comparison["header"].get("cellsize_y", comparison["header"]["cellsize"]))
+    if abs(left_cell_y - right_cell_y) > 1e-9:
+        raise ChangeError(
+            "grids are not aligned: cell height differs (%r vs %r)"
+            % (left_cell_y, right_cell_y)
+        )
     if baseline["ncols"] != comparison["ncols"] or baseline["nrows"] != comparison["nrows"]:
         raise ChangeError(
             "grids are not aligned: size %dx%d vs %dx%d"
@@ -263,7 +277,9 @@ def _patches(mask: List[int], ncols: int, nrows: int) -> List[Dict[str, Any]]:
     return found
 
 
-def _geographic_cell_area_m2(cellsize_deg: float, latitude_deg: float) -> float:
+def _geographic_cell_area_m2(
+    cellsize_x_deg: float, cellsize_y_deg: float, latitude_deg: float
+) -> float:
     """Area of a degree cell at a latitude, on the WGS84 ellipsoid."""
     phi = math.radians(max(-90.0, min(90.0, latitude_deg)))
     metres_per_degree_lat = (
@@ -278,24 +294,27 @@ def _geographic_cell_area_m2(cellsize_deg: float, latitude_deg: float) -> float:
         + 0.118 * math.cos(5 * phi)
     )
     return abs(
-        cellsize_deg * metres_per_degree_lat
-        * cellsize_deg * metres_per_degree_lon
+        cellsize_x_deg * metres_per_degree_lon
+        * cellsize_y_deg * metres_per_degree_lat
     )
 
 
 def _row_areas_m2(grid: Dict[str, Any]) -> Tuple[List[float], str]:
     """Return one cell area per row and the basis used to compute it."""
     cellsize = float(grid["cellsize"])
+    cellsize_y = float(grid.get("cellsize_y") or cellsize)
     nrows = int(grid["nrows"])
     model = str(grid.get("crs_model") or "").strip().lower()
     if model == "geographic":
-        top = float(grid["header"]["yllcorner"]) + nrows * cellsize
+        top = float(grid["header"]["yllcorner"]) + nrows * cellsize_y
         areas = [
-            _geographic_cell_area_m2(cellsize, top - (row + 0.5) * cellsize)
+            _geographic_cell_area_m2(cellsize, cellsize_y, top - (row + 0.5) * cellsize_y)
             for row in range(nrows)
         ]
         return areas, "geographic_wgs84"
-    return [cellsize * cellsize] * nrows, "projected" if model == "projected" else "map_units"
+    return [cellsize * cellsize_y] * nrows, (
+        "projected" if model == "projected" else "map_units"
+    )
 
 
 def _patch_area_m2(cells: List[int], ncols: int, row_areas: List[float]) -> float:
@@ -356,6 +375,7 @@ def detect_changes(
         "ncols": baseline["ncols"],
         "nrows": baseline["nrows"],
         "cellsize": baseline["cellsize"],
+        "cellsize_y": baseline["cellsize_y"],
         "cell_area_m2": cell_area,
         "area_basis": area_basis,
         "band": int(baseline.get("band") or band),
@@ -385,7 +405,13 @@ def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -
     path = str(path or "").strip()
     if not path:
         raise ChangeError("output path must not be empty")
-    if path.lower().endswith((".tif", ".tiff")):
+    cellsize_y = float(result.get("cellsize_y") or result["cellsize"])
+    is_tiff = path.lower().endswith((".tif", ".tiff"))
+    if not is_tiff and abs(cellsize_y - float(result["cellsize"])) > 1e-9:
+        raise ChangeError(
+            "ASCII masks cannot carry a non-square cell; write the mask as .tif"
+        )
+    if is_tiff:
         from geoops.geotiff import GeoTiffError, write_geotiff_mask
 
         crs = str(result.get("crs") or "").strip()
@@ -405,6 +431,7 @@ def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -
                 width=int(result["ncols"]),
                 height=int(result["nrows"]),
                 cellsize=float(result["cellsize"]),
+                cellsize_y=cellsize_y,
                 xllcorner=float(result["header"]["xllcorner"]),
                 yllcorner=float(result["header"]["yllcorner"]),
                 crs=crs,

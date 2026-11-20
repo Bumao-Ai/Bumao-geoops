@@ -153,6 +153,7 @@ class DatasetRegistry:
         ncols = int(grid["ncols"])
         nrows = int(grid["nrows"])
         cellsize = float(grid["cellsize"])
+        cellsize_y = float(grid.get("cellsize_y") or cellsize)
         xll = grid["header"].get("xllcorner")
         yll = grid["header"].get("yllcorner")
         bounds = None
@@ -161,7 +162,7 @@ class DatasetRegistry:
                 float(xll),
                 float(yll),
                 float(xll) + ncols * cellsize,
-                float(yll) + nrows * cellsize,
+                float(yll) + nrows * cellsize_y,
             ]
         return {
             "dataset_id": dataset_id,
@@ -172,6 +173,7 @@ class DatasetRegistry:
             "ncols": ncols,
             "nrows": nrows,
             "cellsize": cellsize,
+            "cellsize_y": cellsize_y,
             "xllcorner": xll,
             "yllcorner": yll,
             "bounds": bounds,
