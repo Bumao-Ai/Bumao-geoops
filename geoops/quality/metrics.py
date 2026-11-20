@@ -178,6 +178,7 @@ def compare_masks(
             "ncols": reference["ncols"],
             "nrows": reference["nrows"],
             "cellsize": reference["cellsize"],
+            "cellsize_y": reference["cellsize_y"],
             "total": valid + skipped,
         },
         "cells": {
