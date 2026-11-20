@@ -129,6 +129,40 @@ class QualityApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["deliverable"]["status"], "archived")
 
+    def test_quality_api_accepts_accuracy_thresholds(self) -> None:
+        reference = os.path.join(self.tempdir, "reference.asc")
+        predicted = os.path.join(self.tempdir, "predicted.asc")
+        grid = "ncols 2\nnrows 1\nxllcorner 0\nyllcorner 0\ncellsize 1\n1 0\n"
+        for path in (reference, predicted):
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(grid)
+        status, payload = self.call(
+            "POST", "/api/v1/deliverables",
+            {"task_id": self.task.task_id, "name": "阈值成果", "path": predicted},
+            token="admin",
+        )
+        self.assertEqual(status, 201)
+        deliverable_id = payload["deliverable"]["object_id"]
+        status, payload = self.call(
+            "POST", "/api/v1/quality-reports",
+            {
+                "target_type": "deliverable",
+                "target_id": deliverable_id,
+                "task_id": self.task.task_id,
+                "professional_sample": True,
+                "sample_note": "阈值接口测试",
+                "reference_path": reference,
+                "predicted_path": predicted,
+                "accuracy_thresholds": {"pixel_accuracy": 1.0},
+            },
+            token="admin",
+        )
+        self.assertEqual(status, 201)
+        report = payload["report"]["payload"]
+        self.assertEqual(report["accuracy"]["thresholds"]["pixel_accuracy"], 1.0)
+        checks = {row["name"]: row["status"] for row in report["checks"]}
+        self.assertEqual(checks["professional.accuracy_threshold"], "PASS")
+
     def test_settings_exposes_role_matrix_and_caller_grants(self) -> None:
         status, payload = self.call("GET", "/api/v1/settings", token="admin")
         self.assertEqual(status, 200)

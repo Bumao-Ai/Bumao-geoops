@@ -882,6 +882,7 @@ def create_server(
                         reference_path=str(payload.get("reference_path") or ""),
                         predicted_path=str(payload.get("predicted_path") or ""),
                         synthetic_reference=bool(payload.get("synthetic_reference")),
+                        accuracy_thresholds=payload.get("accuracy_thresholds"),
                     )
                 except (QualityError, ValueError) as exc:
                     self._deny(400, str(exc), path)

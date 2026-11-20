@@ -118,14 +118,53 @@ class QualityDeliverableTests(unittest.TestCase):
             reference_path=self.dataset_path,
             predicted_path=self.deliverable_path,
             synthetic_reference=True,
+            accuracy_thresholds={"pixel_accuracy": 1.0, "precision": 1.0},
         )
         accuracy = report.payload["accuracy"]
         self.assertTrue(accuracy["synthetic_reference"])
         self.assertEqual(accuracy["cells"]["tp"], 1)
         self.assertEqual(accuracy["cells"]["tn"], 1)
         self.assertEqual(accuracy["metrics"]["pixel_accuracy"], 1.0)
+        self.assertEqual(accuracy["thresholds"]["precision"], 1.0)
         checks = {row["name"]: row["status"] for row in report.payload["checks"]}
         self.assertEqual(checks["professional.accuracy"], "PASS")
+        self.assertEqual(checks["professional.accuracy_threshold"], "PASS")
+
+    def test_accuracy_below_a_declared_threshold_fails(self) -> None:
+        reference = os.path.join(self.tempdir, "ref_threshold.asc")
+        predicted = os.path.join(self.tempdir, "pred_threshold.asc")
+        with open(reference, "w", encoding="utf-8") as handle:
+            handle.write("ncols 2\nnrows 1\nxllcorner 0\nyllcorner 0\ncellsize 1\n1 0\n")
+        with open(predicted, "w", encoding="utf-8") as handle:
+            handle.write("ncols 2\nnrows 1\nxllcorner 0\nyllcorner 0\ncellsize 1\n1 1\n")
+        report = self.quality.evaluate(
+            "deliverable",
+            self.deliverable.object_id,
+            task_id=self.task.task_id,
+            professional_sample=True,
+            sample_note="阈值失败路径",
+            reference_path=reference,
+            predicted_path=predicted,
+            accuracy_thresholds={"pixel_accuracy": 0.9},
+        )
+        checks = {row["name"]: row["status"] for row in report.payload["checks"]}
+        self.assertEqual(checks["professional.accuracy_threshold"], "FAIL")
+        self.assertEqual(report.payload["status"], "FAIL")
+
+    def test_an_invalid_accuracy_threshold_is_refused(self) -> None:
+        with self.assertRaises(QualityError):
+            self.quality.evaluate(
+                "deliverable",
+                self.deliverable.object_id,
+                reference_path=self.dataset_path,
+                accuracy_thresholds={"pixel_accuracy": 1.5},
+            )
+        with self.assertRaises(QualityError):
+            self.quality.evaluate(
+                "deliverable",
+                self.deliverable.object_id,
+                accuracy_thresholds={"pixel_accuracy": 0.9},
+            )
 
     def test_synthetic_deliverable_cannot_be_finally_approved(self) -> None:
         path = os.path.join(self.tempdir, "synthetic.asc")

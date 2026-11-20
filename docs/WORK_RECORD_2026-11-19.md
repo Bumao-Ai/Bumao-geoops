@@ -24,6 +24,10 @@ here.
 - Quality metrics now require matching origins and CRS, not only dimensions and
   cell size; a shifted mask or a CRS mismatch is a refusal before any confusion
   matrix is computed. GeoTIFF masks written by this repo are accepted directly.
+- Caller-declared accuracy thresholds: `accuracy_thresholds` is validated (known
+  metric, 0..1) and a below-minimum metric becomes `professional.accuracy_threshold`
+  `FAIL`; no default threshold is invented. API and service tests cover pass and
+  fail paths.
 - `GET /api/v1/datasets/<id>/profile`: reads real ASCII or GeoTIFF pixels and
   returns dimensions, band count, cell size, origin, bounds, CRS, valid/NODATA
   counts, min/max/mean. An empty raster is a refusal, never a fabricated
@@ -39,7 +43,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 283 tests in 26.3s`, `OK`.
+- Full suite: `Ran 286 tests in 27.1s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -59,6 +63,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 

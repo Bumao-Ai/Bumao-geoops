@@ -29,10 +29,62 @@ from geoops.domain.registry import DomainObject, DomainRegistry, ObjectType
 FORMAT = "geoops-quality-report"
 VERSION = 1
 PROGRAM = "geoops-quality/0.1.0"
+ACCURACY_THRESHOLD_KEYS = (
+    "pixel_accuracy",
+    "precision",
+    "recall",
+    "f1",
+    "iou",
+)
 
 
 class QualityError(ValueError):
     """A quality check was refused or the target is unknown."""
+
+
+def _normalize_thresholds(raw: Any) -> Dict[str, float]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise QualityError("accuracy_thresholds must be an object")
+    result: Dict[str, float] = {}
+    for raw_key, raw_value in raw.items():
+        key = str(raw_key).strip()
+        if key not in ACCURACY_THRESHOLD_KEYS:
+            raise QualityError("unknown accuracy threshold: %s" % key)
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise QualityError("accuracy threshold %s is not a number" % key) from exc
+        if not 0.0 <= value <= 1.0:
+            raise QualityError("accuracy threshold %s must be between 0 and 1" % key)
+        result[key] = value
+    return result
+
+
+def _threshold_check(thresholds: Dict[str, float], accuracy: Dict[str, Any]) -> Dict[str, Any]:
+    metrics = accuracy.get("metrics") if isinstance(accuracy, dict) else {}
+    failures = []
+    for key, minimum in thresholds.items():
+        value = metrics.get(key) if isinstance(metrics, dict) else None
+        if value is None:
+            failures.append("%s is not computed" % key)
+        elif float(value) + 1e-12 < minimum:
+            failures.append("%s %.6f < %.6f" % (key, float(value), minimum))
+    if failures:
+        return _check(
+            "professional.accuracy_threshold",
+            "FAIL",
+            "accuracy below threshold: " + "; ".join(failures),
+            "professional",
+        )
+    return _check(
+        "professional.accuracy_threshold",
+        "PASS",
+        "accuracy thresholds met: "
+        + ", ".join("%s>=%.6f" % (key, minimum) for key, minimum in thresholds.items()),
+        "professional",
+    )
 
 
 def _now() -> str:
@@ -217,11 +269,15 @@ class QualityService:
         reference_path: str = "",
         predicted_path: str = "",
         synthetic_reference: bool = False,
+        accuracy_thresholds: Optional[Dict[str, float]] = None,
     ) -> DomainObject:
         target_type = str(target_type or "").strip().lower()
         target_id = str(target_id or "").strip()
         if not target_id:
             raise QualityError("target_id is required")
+        thresholds = _normalize_thresholds(accuracy_thresholds)
+        if thresholds and not str(reference_path or "").strip():
+            raise QualityError("accuracy thresholds require reference_path")
         accuracy = None
         if target_type == "dataset":
             checks, target = self._dataset_checks(target_id)
@@ -258,6 +314,10 @@ class QualityService:
             except (MetricsError, ValueError) as exc:
                 checks.append(_check("professional.accuracy", "ERROR", str(exc), "professional"))
                 accuracy = {"status": "ERROR", "error": str(exc)}
+
+        if thresholds and accuracy and accuracy.get("status") != "ERROR":
+            accuracy["thresholds"] = dict(thresholds)
+            checks.append(_threshold_check(thresholds, accuracy))
 
         if professional_sample:
             note = str(sample_note or "").strip()
@@ -323,6 +383,7 @@ class QualityService:
                 else "",
                 "check_count": len(checks),
                 "accuracy_computed": accuracy is not None,
+                "accuracy_thresholds": dict(thresholds),
             },
             "generated_at": _now(),
             "program": PROGRAM,
