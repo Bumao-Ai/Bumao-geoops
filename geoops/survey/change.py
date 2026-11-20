@@ -398,4 +398,14 @@ def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temp_path, path)
+    crs = str(result.get("crs") or "").strip()
+    crs_model = str(result.get("crs_model") or "").strip()
+    if crs and crs_model:
+        sidecar = path + ".json"
+        sidecar_tmp = sidecar + ".tmp"
+        with open(sidecar_tmp, "w", encoding="utf-8") as handle:
+            json.dump({"crs": crs, "crs_model": crs_model}, handle, ensure_ascii=False)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(sidecar_tmp, sidecar)
     return path

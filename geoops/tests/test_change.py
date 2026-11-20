@@ -197,6 +197,18 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(image["crs"], "EPSG:3857")
         self.assertEqual(image["crs_model"], "projected")
 
+    def test_ascii_mask_keeps_source_crs_in_a_sidecar(self) -> None:
+        for path in (self.baseline, self.comparison):
+            with open(path + ".json", "w", encoding="utf-8") as handle:
+                json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
+        result = detect_changes(self.baseline, self.comparison, threshold=1, min_area_m2=150)
+        mask_path = write_change_mask(result, os.path.join(self.tempdir, "sidecar-mask.asc"))
+        sidecar = mask_path + ".json"
+        self.assertTrue(os.path.isfile(sidecar))
+        grid = read_raster_grid(mask_path)
+        self.assertEqual(grid["crs"], "EPSG:4547")
+        self.assertEqual(grid["crs_model"], "projected")
+
     def test_geotiff_sidecar_crs_fills_a_header_without_epsg(self) -> None:
         path = os.path.join(self.tempdir, "plain-georef.tif")
         _georeferenced_tiff(path, bytes([1, 2, 3, 4]))

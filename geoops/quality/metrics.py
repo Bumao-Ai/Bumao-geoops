@@ -35,6 +35,7 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
         "cellsize": grid["cellsize"],
         "nodata": float(grid["header"].get("nodata_value", -9999.0)),
         "crs": grid.get("crs") or "",
+        "crs_model": grid.get("crs_model") or "",
         "values": grid["values"],
     }
 
@@ -58,6 +59,7 @@ def read_mask_grid(path: str) -> Dict[str, Any]:
             "xllcorner": grid["header"].get("xllcorner"),
             "yllcorner": grid["header"].get("yllcorner"),
             "crs": grid.get("crs") or "",
+            "crs_model": grid.get("crs_model") or "",
             "nodata": float(nodata) if nodata is not None else -9999.0,
             "values": grid["values"],
         }
@@ -67,6 +69,7 @@ def read_mask_grid(path: str) -> Dict[str, Any]:
         "xllcorner": ascii_grid["header"].get("xllcorner"),
         "yllcorner": ascii_grid["header"].get("yllcorner"),
         "crs": ascii_grid.get("crs") or "",
+        "crs_model": ascii_grid.get("crs_model") or "",
     }
 
 
@@ -107,9 +110,19 @@ def compare_masks(
                 "grid origins differ at %s: %s vs %s"
                 % (key, ref_origin, pred_origin)
             )
-    if reference.get("crs") and predicted.get("crs") and reference["crs"] != predicted["crs"]:
+    left_crs = str(reference.get("crs") or "").strip().upper().replace(" ", "")
+    right_crs = str(predicted.get("crs") or "").strip().upper().replace(" ", "")
+    left_model = str(reference.get("crs_model") or "").strip().lower()
+    right_model = str(predicted.get("crs_model") or "").strip().lower()
+    if bool(left_crs) != bool(right_crs):
+        raise MetricsError("grid CRS is present in only one mask")
+    if left_crs and left_crs != right_crs:
+        raise MetricsError("grid CRS differ: %s vs %s" % (left_crs, right_crs))
+    if left_crs and bool(left_model) != bool(right_model):
+        raise MetricsError("grid CRS model is present in only one mask")
+    if left_model and left_model != right_model:
         raise MetricsError(
-            "grid CRS differ: %s vs %s" % (reference["crs"], predicted["crs"])
+            "grid CRS model differ: %s vs %s" % (left_model, right_model)
         )
 
     tp = fp = fn = tn = skipped = 0

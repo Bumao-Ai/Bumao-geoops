@@ -63,7 +63,8 @@ All notable changes to this project are documented in this file.
   a one-band float32 GeoTIFF mask with the source PixelScale, Tiepoint, EPSG
   GeoKey and GDAL_NODATA. Output without a source CRS is refused; `.asc`
   remains ASCII; two grids whose CRS or CRS model differ, or where only one
-  grid declares a CRS, are refused before any comparison.
+  grid declares a CRS, are refused before any comparison. An ASCII mask also
+  writes its source CRS/model into a sibling `.json` sidecar.
 - `geoops/survey/change.py`: a shared `is_nodata` check treats a floating-point
   NaN sentinel as NODATA in change detection, dataset profiles and quality
   masks, instead of letting NaN cells count as valid values.
@@ -71,6 +72,9 @@ All notable changes to this project are documented in this file.
   `professional.accuracy_threshold` check; below-minimum metrics are `FAIL`,
   invalid keys/values or thresholds without a reference mask are refused, and
   no default threshold is assumed.
+- `geoops/quality/metrics.py`: mask comparison now refuses a CRS or CRS model
+  that differs between reference and predicted, including a CRS present on
+  only one side, before reporting a confusion matrix.
 - `geoops/quality/metrics.py`: ASCII or GeoTIFF mask confusion matrix with
   TP/FP/FN/TN, pixel accuracy, precision, recall, F1 and IoU; NODATA excluded;
   mismatched dimensions, cell size, origin or CRS refused. ASCII masks go

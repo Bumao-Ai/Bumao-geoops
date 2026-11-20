@@ -42,6 +42,8 @@ class QualityDeliverableTests(unittest.TestCase):
             handle.write(
                 "ncols 2\nnrows 1\nxllcorner 0\nyllcorner 0\ncellsize 1\nNODATA_value -9999\n1 0\n"
             )
+        with open(self.deliverable_path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547"}, handle)
         self.deliverable = self.deliverables.register(
             self.task.task_id, "变化掩膜", self.deliverable_path, kind="change_mask"
         )

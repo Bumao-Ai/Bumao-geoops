@@ -63,6 +63,9 @@ here.
 - Change detection now refuses grids whose CRS or CRS model differ, and grids
   where only one side declares a CRS; the Agent profile/change tools accept a
   selected band.
+- ASCII change masks write their source CRS/model into a sibling `.json`
+  sidecar; quality comparison refuses the same CRS mismatch on reference vs
+  predicted masks.
 - `SurveyAreaRegistry` and `GET/POST /api/v1/survey-areas`: a survey area
   requires a real project, name, type and CRS; optional bounds must be four
   finite numbers with positive extent.
@@ -77,7 +80,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 308 tests in 26.9s`, `OK`.
+- Full suite: `Ran 309 tests in 26.9s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -97,6 +100,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 
