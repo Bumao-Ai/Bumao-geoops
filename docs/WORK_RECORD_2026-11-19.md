@@ -27,6 +27,9 @@ here.
 - ASCII imports accept ESRI cell-center origins (`xllcenter`/`yllcenter`) and
   normalise them to corners for change detection, profiles and quality metrics;
   a contradictory corner/center pair is refused instead of choosing one.
+- ASCII sidecar CRS: `read_raster_grid` reads `<path>.json` for `crs` and
+  optional `crs_model`; EPSG:4326/3857 are inferred when the model is omitted,
+  so ASCII input with a sidecar can write a georeferenced GeoTIFF mask.
 - Caller-declared accuracy thresholds: `accuracy_thresholds` is validated (known
   metric, 0..1) and a below-minimum metric becomes `professional.accuracy_threshold`
   `FAIL`; no default threshold is invented. API and service tests cover pass and
@@ -46,7 +49,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 288 tests in 27.2s`, `OK`.
+- Full suite: `Ran 289 tests in 26.8s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -66,6 +69,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 

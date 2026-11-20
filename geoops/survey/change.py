@@ -14,6 +14,7 @@ is projected in metres — the caller owns that check (R-OR-001 / R-CD-002).
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -97,6 +98,32 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
     }
 
 
+def _sidecar_crs(path: str) -> Tuple[str, str]:
+    sidecar = path + ".json"
+    if not os.path.isfile(sidecar):
+        return "", ""
+    try:
+        if os.path.getsize(sidecar) > 1024 * 1024:
+            return "", ""
+        with open(sidecar, encoding="utf-8-sig") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return "", ""
+    if not isinstance(data, dict):
+        return "", ""
+    crs = str(data.get("crs") or "").strip()
+    model = str(data.get("crs_model") or "").strip().lower()
+    if model not in ("geographic", "projected"):
+        model = ""
+    if crs and not model:
+        normalized = crs.upper().replace(" ", "")
+        if normalized == "EPSG:4326":
+            model = "geographic"
+        elif normalized == "EPSG:3857":
+            model = "projected"
+    return crs, model
+
+
 def read_raster_grid(path: str) -> Dict[str, Any]:
     """Read an ASCII grid or a classic GeoTIFF (first band for multiband)."""
     suffix = os.path.splitext(str(path or ""))[1].lower()
@@ -134,7 +161,9 @@ def read_raster_grid(path: str) -> Dict[str, Any]:
             "crs": image.get("crs") or "",
             "crs_model": image.get("crs_model") or "",
         }
-    return read_ascii_grid(path)
+    grid = read_ascii_grid(path)
+    crs, crs_model = _sidecar_crs(path)
+    return {**grid, "crs": crs, "crs_model": crs_model}
 
 
 def _check_alignment(baseline: Dict[str, Any], comparison: Dict[str, Any]) -> None:

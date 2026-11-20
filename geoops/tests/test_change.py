@@ -16,6 +16,7 @@ Standard library only: run with
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -179,6 +180,18 @@ class ChangeTests(unittest.TestCase):
         with self.assertRaises(ChangeError) as caught:
             write_change_mask(result, os.path.join(self.tempdir, "mask.tif"))
         self.assertIn("source CRS", str(caught.exception))
+
+    def test_ascii_sidecar_crs_enables_a_geotiff_mask(self) -> None:
+        for path in (self.baseline, self.comparison):
+            with open(path + ".json", "w", encoding="utf-8") as handle:
+                json.dump({"crs": "EPSG:3857"}, handle)
+        result = detect_changes(self.baseline, self.comparison, threshold=1, min_area_m2=150)
+        self.assertEqual(result["crs"], "EPSG:3857")
+        self.assertEqual(result["crs_model"], "projected")
+        mask_path = write_change_mask(result, os.path.join(self.tempdir, "mask-from-ascii.tif"))
+        image = read_geotiff_pixels(mask_path)
+        self.assertEqual(image["crs"], "EPSG:3857")
+        self.assertEqual(image["crs_model"], "projected")
 
 
 class ChangeNodeTests(unittest.TestCase):
