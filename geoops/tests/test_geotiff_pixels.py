@@ -152,6 +152,40 @@ def _tiled_tiff(path: str, values) -> None:
         handle.write(body)
 
 
+def _deflate_predictor8_tiff(path: str, values, width: int = 2) -> None:
+    encoded = []
+    for start in range(0, len(values), width):
+        row = [int(value) for value in values[start:start + width]]
+        encoded.append(row[0] % 256)
+        for index in range(1, len(row)):
+            encoded.append((row[index] - row[index - 1]) % 256)
+    payload = zlib.compress(bytes(encoded))
+    count = 12
+    data_offset = 8 + 2 + count * 12 + 4
+    entries = [
+        (256, 3, 1, width),
+        (257, 3, 1, len(values) // width),
+        (258, 3, 1, 8),
+        (259, 3, 1, 8),
+        (262, 3, 1, 1),
+        (273, 4, 1, data_offset),
+        (277, 3, 1, 1),
+        (278, 3, 1, len(values) // width),
+        (279, 4, 1, len(payload)),
+        (284, 3, 1, 1),
+        (317, 3, 1, 2),
+        (339, 3, 1, 1),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += payload
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _tiff(path: str, values, compression: int = 1) -> None:
     raw = bytes(values)
     payload = raw
@@ -308,6 +342,12 @@ class GeoTiffPixelTests(unittest.TestCase):
         _tiff(self.path, [9, 8, 7, 6], compression=8)
         image = read_geotiff_pixels(self.path)
         self.assertEqual(image["values"], [9.0, 8.0, 7.0, 6.0])
+
+    def test_deflate_predictor_wraps_8bit_rows(self) -> None:
+        path = os.path.join(self.tmp.name, "predictor.tif")
+        _deflate_predictor8_tiff(path, [200, 10, 50, 5])
+        image = read_geotiff_pixels(path)
+        self.assertEqual(image["values"], [200.0, 10.0, 50.0, 5.0])
 
     def test_bigtiff_header_and_pixels_are_read(self) -> None:
         path = os.path.join(self.tmp.name, "big.tif")

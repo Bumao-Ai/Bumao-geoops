@@ -248,12 +248,26 @@ def _decode_samples(raw: bytes, endian: str, bits: int, sample_format: int) -> L
         raise GeoTiffError("TIFF strip or tile is truncated: %s" % exc) from exc
 
 
-def _undo_predictor(values: List[float], row_values: int, samples: int) -> None:
+def _undo_predictor(
+    values: List[float],
+    row_values: int,
+    samples: int,
+    bits: int = 8,
+    sample_format: int = 1,
+) -> None:
+    """Undo horizontal differencing with the sample's modular arithmetic."""
     if row_values <= 0 or len(values) % row_values:
         return
+    modulus = 1 << int(bits)
+    signed = sample_format == 2
     for start in range(0, len(values), row_values):
         for index in range(start + samples, start + row_values):
-            values[index] = values[index] + values[index - samples]
+            total = int(values[index]) + int(values[index - samples])
+            if signed:
+                total = (total + modulus // 2) % modulus - modulus // 2
+            else:
+                total %= modulus
+            values[index] = float(total)
 
 
 def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, str]:
@@ -390,6 +404,8 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         raise GeoTiffError("unsupported PlanarConfiguration: %s" % planar)
     if predictor not in (1, 2):
         raise GeoTiffError("unsupported TIFF predictor: %s" % predictor)
+    if predictor == 2 and sample_format == 3:
+        raise GeoTiffError("integer predictor is not defined for float samples")
     if sample_format not in (1, 2, 3):
         raise GeoTiffError("unsupported SampleFormat: %s" % sample_format)
     total = int(width) * int(height) * int(samples)
@@ -446,6 +462,8 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
                         tile_values,
                         int(tile_width) * samples_per_block,
                         samples_per_block,
+                        bits,
+                        sample_format,
                     )
                 tile_row = tile_index // columns
                 tile_col = tile_index % columns
@@ -486,7 +504,7 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
                         )
                     )
                 if predictor == 2:
-                    _undo_predictor(plane_values, int(width), 1)
+                    _undo_predictor(plane_values, int(width), 1, bits, sample_format)
                 expected_plane = int(width) * int(height)
                 if len(plane_values) < expected_plane:
                     raise GeoTiffError(
@@ -502,7 +520,9 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
     if predictor == 2 and planar == 1 and not (322 in entries or 324 in entries):
         # Strip horizontal differencing is per image row; tile predictor was
         # reversed per tile above.
-        _undo_predictor(values, int(width) * int(samples), int(samples))
+        _undo_predictor(
+            values, int(width) * int(samples), int(samples), bits, sample_format
+        )
 
     if len(values) < total:
         raise GeoTiffError(

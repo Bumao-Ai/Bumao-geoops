@@ -70,6 +70,8 @@ here.
 - `SurveyAreaRegistry` and `GET/POST /api/v1/survey-areas`: a survey area
   requires a real project, name, type and CRS; optional bounds must be four
   finite numbers with positive extent.
+- GeoTIFF Predictor=2 now wraps at the sample bit width for 8/16/32-bit
+  signed or unsigned rows; a wrapped 8-bit row previously decoded above 255.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
@@ -92,7 +94,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 314 tests in 27.0s`, `OK`.
+- Full suite: `Ran 315 tests in 26.5s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -110,8 +112,9 @@ here.
   was supplied.
 - Real imagery, ground-truth samples, GDAL/QGIS and formal review accounts are
   still required for the remaining 0.1 acceptance items.
-- The requested 23:25 shutdown was not executed; run it manually at the
-  requested time.
+- An automatic shutdown request was blocked by the runtime safety layer; no
+  bypass was attempted. Shutdown remains a manual user action.
+
 
 
 

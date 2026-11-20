@@ -43,7 +43,9 @@ All notable changes to this project are documented in this file.
 - `geoops/geotiff.py`: classic TIFF pixel decoding for uncompressed, LZW and
   Deflate images, striped or tiled, 8/16/32-bit chunky or separate-planar
   bands; JPEG/JPEG2000 decode through optional Pillow. Other codecs are
-  explicit errors.
+  explicit errors. Predictor=2 is undone per row with the sample's bit-width
+  modulo (8/16/32-bit, signed or unsigned), so a wrapped 8-bit row no longer
+  decodes above 255; the integer predictor is refused for float samples.
 - `geoops/geotiff.py`: `write_geotiff_mask` writes a real classic GeoTIFF
   (one band, float32, uncompressed, strip layout) with ModelPixelScale,
   ModelTiepoint, one EPSG GeoKey and GDAL_NODATA; CRS/model are required rather
