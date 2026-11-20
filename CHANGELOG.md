@@ -137,7 +137,8 @@ All notable changes to this project are documented in this file.
 
 - Deliverable registry (`geoops/domain/deliverables.py`): real-file registration
   with sha256/size, version, task binding; archive is refused until a review
-  marks the deliverable `accepted`.
+  marks the deliverable `accepted`, and also if the file is missing or no
+  longer matches its registered sha256.
 - Three-layer quality service (`geoops/quality/service.py`): file/structure,
   spatial data and professional verification. A missing professional sample is
   `NOT_RECORDED` and the aggregate is `PARTIAL`; a changed file fails the sha256

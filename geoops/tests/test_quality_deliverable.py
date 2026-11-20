@@ -7,7 +7,7 @@ import os
 import tempfile
 import unittest
 
-from geoops.domain import DeliverableRegistry, DomainRegistry, TaskEngine
+from geoops.domain import DeliverableError, DeliverableRegistry, DomainRegistry, TaskEngine
 from geoops.domain.datasets_store import DatasetRegistry
 from geoops.domain.projects import ProjectRegistry
 from geoops.quality.service import QualityError, QualityService
@@ -103,6 +103,17 @@ class QualityDeliverableTests(unittest.TestCase):
         )
         archived = self.deliverables.archive(self.deliverable.object_id, actor="tester")
         self.assertEqual(archived.status, "archived")
+
+    def test_archive_refuses_a_file_changed_after_review(self) -> None:
+        ReviewEngine(self.registry).submit(
+            self.task.task_id, self.deliverable.object_id, "reviewer", "APPROVE", "通过"
+        )
+        with open(self.deliverable_path, "a", encoding="utf-8") as handle:
+            handle.write("0 1\n")
+        with self.assertRaises(DeliverableError) as caught:
+            self.deliverables.archive(self.deliverable.object_id, actor="tester")
+        self.assertIn("changed since registration", str(caught.exception))
+        self.assertEqual(self.deliverables.get(self.deliverable.object_id).status, "accepted")
 
     def test_professional_sample_requires_a_note(self) -> None:
         with self.assertRaises(QualityError):

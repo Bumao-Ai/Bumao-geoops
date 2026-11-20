@@ -127,6 +127,15 @@ class DeliverableRegistry:
             )
         if deliverable.payload.get("archived_at"):
             raise DeliverableError("deliverable is already archived: %s" % deliverable_id)
+        source = str(deliverable.payload.get("path") or "").strip()
+        if not source or not os.path.isfile(source):
+            raise DeliverableError(
+                "deliverable file is missing; cannot archive: %s" % (source or deliverable_id)
+            )
+        if _sha256(source) != str(deliverable.payload.get("sha256") or ""):
+            raise DeliverableError(
+                "deliverable file changed since registration; re-register before archiving"
+            )
         return self.registry.update(
             deliverable_id,
             payload={
