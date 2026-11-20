@@ -71,7 +71,7 @@ Run the unit tests:
 python -m unittest discover -s geoops\tests -t .
 ```
 
-290 tests; JPEG-TIFF decoding additionally uses Pillow when installed. The smoke run makes 73 assertions.
+291 tests; JPEG-TIFF decoding additionally uses Pillow when installed. The smoke run makes 73 assertions.
 
 ## Version boundary
 
