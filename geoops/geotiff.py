@@ -37,6 +37,7 @@ TAG_SAMPLE_FORMAT = 339
 TAG_GDAL_NODATA = 42113
 TAG_PIXEL_SCALE = 33550
 TAG_TIEPOINT = 33922
+TAG_MODEL_TRANSFORMATION = 34264
 TAG_GEOKEYS = 34735
 TAG_DOUBLE_PARAMS = 34736
 TAG_ASCII_PARAMS = 34737
@@ -142,28 +143,10 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
     if not width or not height:
         raise GeoTiffError("GeoTIFF has no image width/height")
 
-    crs = ""
-    geo = _epsg_metadata(entries)
-    crs = str(geo.get("crs") or "")
-    if not crs:
-        if require_crs:
-            raise GeoTiffError("GeoTIFF has no EPSG GeoKey")
-        crs = ""
-
-    scale = entries.get(TAG_PIXEL_SCALE) or []
-    tie = entries.get(TAG_TIEPOINT) or []
-    bounds = None
-    pixel_size = None
-    if len(scale) >= 2 and len(tie) >= 6:
-        sx, sy = float(scale[0]), float(scale[1])
-        i, j, _k, x, y, _z = [float(value) for value in tie[:6]]
-        left = x - i * sx
-        top = y + j * sy
-        if geo.get("raster_type") == 2:
-            left -= 0.5 * sx
-            top += 0.5 * sy
-        bounds = [left, top - height * sy, left + width * sx, top]
-        pixel_size = [sx, sy]
+    metadata = _raster_metadata(entries, int(width), int(height))
+    crs = str(metadata.get("crs") or "")
+    if not crs and require_crs:
+        raise GeoTiffError("GeoTIFF has no EPSG GeoKey")
 
     return {
         "driver": "GTiff",
@@ -172,13 +155,13 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
         "bands": int(samples),
         "bits_per_sample": int(bits) if bits else None,
         "crs": crs,
-        "crs_model": geo.get("crs_model", ""),
-        "raster_type": geo.get("raster_type", 1),
-        "linear_unit": geo.get("linear_unit", ""),
-        "linear_unit_code": geo.get("linear_unit_code"),
-        "linear_unit_m": geo.get("linear_unit_m", 1.0),
-        "bounds": bounds,
-        "pixel_size": pixel_size,
+        "crs_model": metadata.get("crs_model", ""),
+        "raster_type": metadata.get("raster_type", 1),
+        "linear_unit": metadata.get("linear_unit", ""),
+        "linear_unit_code": metadata.get("linear_unit_code"),
+        "linear_unit_m": metadata.get("linear_unit_m", 1.0),
+        "bounds": metadata["bounds"],
+        "pixel_size": metadata["pixel_size"],
     }
 
 
@@ -322,6 +305,7 @@ def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
 def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[str, Any]:
     scale = entries.get(TAG_PIXEL_SCALE) or []
     tie = entries.get(TAG_TIEPOINT) or []
+    transform = entries.get(TAG_MODEL_TRANSFORMATION) or []
     nodata = None
     raw_nodata = entries.get(TAG_GDAL_NODATA)
     if isinstance(raw_nodata, str) and raw_nodata.strip().strip("\x00"):
@@ -332,8 +316,26 @@ def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[s
     pixel_size = None
     bounds = None
     geo = _epsg_metadata(entries)
-    if len(scale) >= 2 and len(tie) >= 6:
+    if len(transform) >= 16:
+        a, b, _c, d, e, f, _g, h = [float(value) for value in transform[:8]]
+        span = max(abs(a), abs(f), 1.0)
+        if abs(b) > span * 1e-12 or abs(e) > span * 1e-12:
+            raise GeoTiffError(
+                "GeoTIFF ModelTransformation is rotated or sheared; only north-up is supported"
+            )
+        sx, sy = a, -f
+        if sx <= 0 or sy <= 0:
+            raise GeoTiffError("GeoTIFF ModelTransformation is not north-up")
+        left, top = d, h
+        if geo.get("raster_type") == 2:
+            left -= 0.5 * sx
+            top += 0.5 * sy
+        bounds = [left, top - height * sy, left + width * sx, top]
+        pixel_size = [sx, sy]
+    elif len(scale) >= 2 and len(tie) >= 6:
         sx, sy = float(scale[0]), float(scale[1])
+        if sx <= 0 or sy <= 0:
+            raise GeoTiffError("GeoTIFF pixel scale must be positive and north-up")
         i, j, _k, x, y, _z = [float(value) for value in tie[:6]]
         left = x - i * sx
         top = y + j * sy
