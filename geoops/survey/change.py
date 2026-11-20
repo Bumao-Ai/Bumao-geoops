@@ -8,8 +8,9 @@ files; nothing is invented.
 
 The output is an ESRI ASCII grid by default, or a one-band float32 GeoTIFF when
 the output ends in ``.tif``/``.tiff`` and the source carries a CRS. Cell area is
-``cellsize ** 2`` in map units, which is square metres only when the grid's CRS
-is projected in metres — the caller owns that check (R-OR-001 / R-CD-002).
+``cellsize ** 2`` for a projected grid in metres; a geographic grid is measured
+row by row on the WGS84 ellipsoid so the reported square metres are real rather
+than square degrees.
 """
 
 from __future__ import annotations
@@ -262,6 +263,45 @@ def _patches(mask: List[int], ncols: int, nrows: int) -> List[Dict[str, Any]]:
     return found
 
 
+def _geographic_cell_area_m2(cellsize_deg: float, latitude_deg: float) -> float:
+    """Area of a degree cell at a latitude, on the WGS84 ellipsoid."""
+    phi = math.radians(max(-90.0, min(90.0, latitude_deg)))
+    metres_per_degree_lat = (
+        111132.92
+        - 559.82 * math.cos(2 * phi)
+        + 1.175 * math.cos(4 * phi)
+        - 0.0023 * math.cos(6 * phi)
+    )
+    metres_per_degree_lon = (
+        111412.84 * math.cos(phi)
+        - 93.5 * math.cos(3 * phi)
+        + 0.118 * math.cos(5 * phi)
+    )
+    return abs(
+        cellsize_deg * metres_per_degree_lat
+        * cellsize_deg * metres_per_degree_lon
+    )
+
+
+def _row_areas_m2(grid: Dict[str, Any]) -> Tuple[List[float], str]:
+    """Return one cell area per row and the basis used to compute it."""
+    cellsize = float(grid["cellsize"])
+    nrows = int(grid["nrows"])
+    model = str(grid.get("crs_model") or "").strip().lower()
+    if model == "geographic":
+        top = float(grid["header"]["yllcorner"]) + nrows * cellsize
+        areas = [
+            _geographic_cell_area_m2(cellsize, top - (row + 0.5) * cellsize)
+            for row in range(nrows)
+        ]
+        return areas, "geographic_wgs84"
+    return [cellsize * cellsize] * nrows, "projected" if model == "projected" else "map_units"
+
+
+def _patch_area_m2(cells: List[int], ncols: int, row_areas: List[float]) -> float:
+    return sum(row_areas[cell // ncols] for cell in cells)
+
+
 def detect_changes(
     baseline_path: str,
     comparison_path: str,
@@ -280,7 +320,8 @@ def detect_changes(
 
     nodata_a = baseline["header"].get("nodata_value")
     nodata_b = comparison["header"].get("nodata_value")
-    cell_area = baseline["cellsize"] ** 2
+    row_areas, area_basis = _row_areas_m2(baseline)
+    cell_area = sum(row_areas) / len(row_areas)
     mask: List[int] = []
     invalid_mask: List[bool] = []
     nodata_cells = 0
@@ -300,7 +341,7 @@ def detect_changes(
 
     patches = _patches(mask, baseline["ncols"], baseline["nrows"])
     for patch in patches:
-        patch["area_m2"] = patch["count"] * cell_area
+        patch["area_m2"] = _patch_area_m2(patch["cells"], baseline["ncols"], row_areas)
     dropped = [patch for patch in patches if patch["area_m2"] < min_area_m2]
     for patch in dropped:
         for cell in patch["cells"]:
@@ -310,11 +351,13 @@ def detect_changes(
         patch["patch_id"] = number
 
     kept_cells = sum(patch["count"] for patch in kept)
+    changed_area = sum(patch["area_m2"] for patch in kept)
     return {
         "ncols": baseline["ncols"],
         "nrows": baseline["nrows"],
         "cellsize": baseline["cellsize"],
         "cell_area_m2": cell_area,
+        "area_basis": area_basis,
         "band": int(baseline.get("band") or band),
         "threshold": threshold,
         "min_area_m2": min_area_m2,
@@ -323,7 +366,7 @@ def detect_changes(
         "kept_cells": kept_cells,
         "dropped_cells": changed_cells - kept_cells,
         "nodata_cells": nodata_cells,
-        "changed_area_m2": kept_cells * cell_area,
+        "changed_area_m2": changed_area,
         "patches": [
             {"patch_id": patch["patch_id"], "cells": patch["count"], "area_m2": patch["area_m2"]}
             for patch in kept

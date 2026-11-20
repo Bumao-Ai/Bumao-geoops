@@ -219,6 +219,35 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(grid["crs_model"], "projected")
         self.assertEqual(grid["values"], [1, 2, 3, 4])
 
+    def test_changed_area_on_a_geographic_grid_uses_real_metres(self) -> None:
+        baseline = os.path.join(self.tempdir, "geo-base.asc")
+        comparison = os.path.join(self.tempdir, "geo-comp.asc")
+        self._write(
+            baseline,
+            "ncols 4\nnrows 4\nxllcorner 0\nyllcorner 0\ncellsize 1\n"
+            + " ".join(["0"] * 16) + "\n",
+        )
+        values = ["0"] * 16
+        values[0] = "5"
+        values[15] = "5"
+        self._write(
+            comparison,
+            "ncols 4\nnrows 4\nxllcorner 0\nyllcorner 0\ncellsize 1\n"
+            + " ".join(values) + "\n",
+        )
+        for path in (baseline, comparison):
+            with open(path + ".json", "w", encoding="utf-8") as handle:
+                json.dump({"crs": "EPSG:4326", "crs_model": "geographic"}, handle)
+        result = detect_changes(baseline, comparison, threshold=1, min_area_m2=0)
+        self.assertEqual(result["area_basis"], "geographic_wgs84")
+        self.assertGreater(result["cell_area_m2"], 1.2e10)
+        self.assertEqual(len(result["patches"]), 2)
+        north, south = result["patches"]
+        self.assertLess(north["area_m2"], south["area_m2"])
+        self.assertAlmostEqual(
+            north["area_m2"] + south["area_m2"], result["changed_area_m2"], places=3
+        )
+
     def test_change_detection_refuses_a_crs_mismatch(self) -> None:
         baseline = os.path.join(self.tempdir, "crs-3857.tif")
         comparison = os.path.join(self.tempdir, "crs-4326.tif")
