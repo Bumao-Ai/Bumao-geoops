@@ -47,7 +47,8 @@ All notable changes to this project are documented in this file.
   modulo (8/16/32-bit, signed or unsigned), so a wrapped 8-bit row no longer
   decodes above 255; the integer predictor is refused for float samples.
   A non-default TIFF Orientation is refused instead of silently returning
-  rotated pixels as if they were north-up.
+  rotated pixels as if they were north-up. A PixelIsPoint GeoTIFF has its
+  bounds shifted half a cell from the pixel-centre tiepoint to the footprint.
 - `geoops/geotiff.py`: `write_geotiff_mask` writes a real classic GeoTIFF
   (one band, float32, uncompressed, strip layout) with ModelPixelScale,
   ModelTiepoint, one EPSG GeoKey and GDAL_NODATA; CRS/model are required rather

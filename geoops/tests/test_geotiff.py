@@ -12,9 +12,11 @@ from geoops.domain.datasets import register
 from geoops.geotiff import GeoTiffError, probe_geotiff
 
 
-def make_geotiff(path: str, epsg: int = 32650) -> str:
+def make_geotiff(path: str, epsg: int = 32650, pixel_is_point: bool = False) -> str:
     width, height = 4, 4
     count = 7
+    key_count = 2 if pixel_is_point else 1
+    key_words = 4 + key_count * 4
     ifd_offset = 8
     data_start = ifd_offset + 2 + count * 12 + 4
     scale_offset = data_start
@@ -34,11 +36,14 @@ def make_geotiff(path: str, epsg: int = 32650) -> str:
     out += entry(277, 3, 1, 1)
     out += entry(33550, 12, 3, scale_offset)
     out += entry(33922, 12, 6, tie_offset)
-    out += entry(34735, 3, 8, keys_offset)
+    out += entry(34735, 3, key_words, keys_offset)
     out += struct.pack("<I", 0)
     out += struct.pack("<3d", 1.0, 1.0, 0.0)
     out += struct.pack("<6d", 0.0, 0.0, 0.0, 0.0, 4.0, 0.0)
-    out += struct.pack("<8H", 1, 1, 0, 1, 3072, 0, 1, epsg)
+    out += struct.pack("<4H", 1, 1, 0, key_count)
+    out += struct.pack("<4H", 3072, 0, 1, epsg)
+    if pixel_is_point:
+        out += struct.pack("<4H", 1025, 0, 1, 2)
     with open(path, "wb") as handle:
         handle.write(out)
     return path
@@ -63,6 +68,14 @@ class GeoTiffTests(unittest.TestCase):
             handle.write(b"II" + struct.pack("<H", 42) + struct.pack("<I", 8) + struct.pack("<H", 0) + struct.pack("<I", 0))
         with self.assertRaises(GeoTiffError):
             probe_geotiff(path)
+
+    def test_pixel_is_point_shifts_bounds_by_half_a_cell(self) -> None:
+        path = make_geotiff(os.path.join(self.tempdir, "point.tif"), pixel_is_point=True)
+        info = probe_geotiff(path)
+        self.assertEqual(info["raster_type"], 2)
+        self.assertEqual(info["bounds"], [-0.5, 0.5, 3.5, 4.5])
+        record = register(path)
+        self.assertEqual(record.bounds, [-0.5, 0.5, 3.5, 4.5])
 
     def test_dataset_intake_uses_the_header_without_a_sidecar(self) -> None:
         path = make_geotiff(os.path.join(self.tempdir, "b.tif"))

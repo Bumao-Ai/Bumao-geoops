@@ -137,17 +137,8 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
         raise GeoTiffError("GeoTIFF has no image width/height")
 
     crs = ""
-    geo_keys = entries.get(TAG_GEOKEYS) or []
-    if len(geo_keys) >= 4:
-        key_count = geo_keys[3]
-        for index in range(key_count):
-            base = 4 + index * 4
-            if base + 3 >= len(geo_keys):
-                break
-            key_id, location, key_count_value, value = geo_keys[base:base + 4]
-            if key_id in EPSG_KEYS and location == 0 and value:
-                crs = "EPSG:%d" % value
-                break
+    geo = _epsg_metadata(entries)
+    crs = str(geo.get("crs") or "")
     if not crs:
         if require_crs:
             raise GeoTiffError("GeoTIFF has no EPSG GeoKey")
@@ -162,6 +153,9 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
         i, j, _k, x, y, _z = [float(value) for value in tie[:6]]
         left = x - i * sx
         top = y + j * sy
+        if geo.get("raster_type") == 2:
+            left -= 0.5 * sx
+            top += 0.5 * sy
         bounds = [left, top - height * sy, left + width * sx, top]
         pixel_size = [sx, sy]
 
@@ -172,6 +166,8 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
         "bands": int(samples),
         "bits_per_sample": int(bits) if bits else None,
         "crs": crs,
+        "crs_model": geo.get("crs_model", ""),
+        "raster_type": geo.get("raster_type", 1),
         "bounds": bounds,
         "pixel_size": pixel_size,
     }
@@ -271,22 +267,25 @@ def _undo_predictor(
             values[index] = float(total)
 
 
-def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, str]:
+def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
     geo_keys = entries.get(TAG_GEOKEYS) or []
     if len(geo_keys) < 4:
-        return {"crs": "", "crs_model": ""}
+        return {"crs": "", "crs_model": "", "raster_type": 1}
     key_count = int(geo_keys[3])
+    found = {"crs": "", "crs_model": "", "raster_type": 1}
     for index in range(key_count):
         base = 4 + index * 4
         if base + 3 >= len(geo_keys):
             break
         key_id, location, _count, value = geo_keys[base:base + 4]
-        if key_id in EPSG_KEYS and location == 0 and value:
-            return {
-                "crs": "EPSG:%d" % int(value),
-                "crs_model": EPSG_KEYS[key_id],
-            }
-    return {"crs": "", "crs_model": ""}
+        if location != 0 or not value:
+            continue
+        if key_id in EPSG_KEYS:
+            found["crs"] = "EPSG:%d" % int(value)
+            found["crs_model"] = EPSG_KEYS[key_id]
+        elif key_id == 1025:
+            found["raster_type"] = int(value)
+    return found
 
 
 def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[str, Any]:
@@ -301,14 +300,18 @@ def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[s
             nodata = None
     pixel_size = None
     bounds = None
+    geo = _epsg_metadata(entries)
     if len(scale) >= 2 and len(tie) >= 6:
         sx, sy = float(scale[0]), float(scale[1])
         i, j, _k, x, y, _z = [float(value) for value in tie[:6]]
         left = x - i * sx
         top = y + j * sy
+        if geo.get("raster_type") == 2:
+            left -= 0.5 * sx
+            top += 0.5 * sy
         bounds = [left, top - height * sy, left + width * sx, top]
         pixel_size = [sx, sy]
-    return {"nodata": nodata, "pixel_size": pixel_size, "bounds": bounds, **_epsg_metadata(entries)}
+    return {"nodata": nodata, "pixel_size": pixel_size, "bounds": bounds, **geo}
 
 
 def _pillow_pixels(
@@ -370,6 +373,7 @@ def _pillow_pixels(
         "bounds": metadata["bounds"],
         "crs": metadata["crs"],
         "crs_model": metadata["crs_model"],
+        "raster_type": metadata.get("raster_type", 1),
     }
 
 
@@ -550,6 +554,7 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         "bounds": metadata["bounds"],
         "crs": metadata["crs"],
         "crs_model": metadata["crs_model"],
+        "raster_type": metadata.get("raster_type", 1),
     }
 
 
