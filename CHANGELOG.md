@@ -56,7 +56,10 @@ All notable changes to this project are documented in this file.
   no default threshold is assumed.
 - `geoops/quality/metrics.py`: ASCII or GeoTIFF mask confusion matrix with
   TP/FP/FN/TN, pixel accuracy, precision, recall, F1 and IoU; NODATA excluded;
-  mismatched dimensions, cell size, origin or CRS refused.
+  mismatched dimensions, cell size, origin or CRS refused. ASCII masks go
+  through the same validated reader as change detection, so a BOM, a
+  cell-center origin or a sidecar CRS is handled identically instead of being
+  silently dropped.
 - Quality API accepts `reference_path`, `predicted_path`, `synthetic_reference`
   and writes an `accuracy` object into the report.
 - Quality reports now carry `basis`, `method`, `data` and `evidence` alongside

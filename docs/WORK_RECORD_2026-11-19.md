@@ -27,6 +27,9 @@ here.
 - ASCII imports accept ESRI cell-center origins (`xllcenter`/`yllcenter`) and
   normalise them to corners for change detection, profiles and quality metrics;
   a contradictory corner/center pair is refused instead of choosing one.
+- Quality metrics now use the same validated raster reader for ASCII masks:
+  BOM, `xllcenter`/`yllcenter` and sidecar CRS are handled consistently, and a
+  sidecar CRS mismatch between reference and prediction is refused.
 - External tool calls now keep the rendered command, exit code, stdout/stderr,
   timeout and elapsed milliseconds; failed calls remain in the node output and
   Agent `tool_calls` instead of vanishing with the exception.
@@ -57,7 +60,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 294 tests in 27.0s`, `OK`.
+- Full suite: `Ran 296 tests in 26.1s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -77,6 +80,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 

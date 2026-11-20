@@ -17,61 +17,23 @@ class MetricsError(ValueError):
     """The two grids cannot be compared."""
 
 
-HEADER_KEYS = {
-    "ncols",
-    "nrows",
-    "xllcorner",
-    "yllcorner",
-    "xllcenter",
-    "yllcenter",
-    "cellsize",
-    "nodata_value",
-}
-
-
 def read_ascii_grid(path: str) -> Dict[str, Any]:
-    path = str(path or "").strip()
-    if not path:
-        raise MetricsError("grid path is required")
-    if not os.path.exists(path):
-        raise MetricsError("grid does not exist: %s" % path)
-    if not os.path.isfile(path):
-        raise MetricsError("grid is not a regular file: %s" % path)
-    header: Dict[str, float] = {}
-    values: list[float] = []
-    try:
-        with open(path, encoding="utf-8") as handle:
-            for line in handle:
-                parts = line.split()
-                if not parts:
-                    continue
-                key = parts[0].lower()
-                if key in HEADER_KEYS and len(parts) == 2:
-                    header[key] = float(parts[1])
-                else:
-                    values.extend(float(part) for part in parts)
-    except (OSError, ValueError) as exc:
-        raise MetricsError("cannot read ASCII grid %s: %s" % (path, exc)) from exc
+    """Read an ASCII mask through the same validated grid reader as change."""
+    from geoops.survey.change import ChangeError, read_raster_grid
 
-    for key in ("ncols", "nrows", "cellsize"):
-        if key not in header:
-            raise MetricsError("grid %s has no %s header" % (path, key))
-    ncols = int(header["ncols"])
-    nrows = int(header["nrows"])
-    if ncols <= 0 or nrows <= 0:
-        raise MetricsError("grid %s has invalid dimensions %dx%d" % (path, ncols, nrows))
-    if len(values) != ncols * nrows:
-        raise MetricsError(
-            "grid %s has %d values, expected %d" % (path, len(values), ncols * nrows)
-        )
+    try:
+        grid = read_raster_grid(path)
+    except ChangeError as exc:
+        raise MetricsError(str(exc)) from exc
     return {
-        "path": os.path.abspath(path),
-        "header": header,
-        "ncols": ncols,
-        "nrows": nrows,
-        "cellsize": float(header["cellsize"]),
-        "nodata": float(header.get("nodata_value", -9999.0)),
-        "values": values,
+        "path": grid["path"],
+        "header": grid["header"],
+        "ncols": grid["ncols"],
+        "nrows": grid["nrows"],
+        "cellsize": grid["cellsize"],
+        "nodata": float(grid["header"].get("nodata_value", -9999.0)),
+        "crs": grid.get("crs") or "",
+        "values": grid["values"],
     }
 
 
@@ -102,7 +64,7 @@ def read_mask_grid(path: str) -> Dict[str, Any]:
         **ascii_grid,
         "xllcorner": ascii_grid["header"].get("xllcorner"),
         "yllcorner": ascii_grid["header"].get("yllcorner"),
-        "crs": "",
+        "crs": ascii_grid.get("crs") or "",
     }
 
 

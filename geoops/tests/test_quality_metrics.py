@@ -67,6 +67,24 @@ class MetricsTests(unittest.TestCase):
         with self.assertRaises(MetricsError):
             read_ascii_grid(broken)
 
+    def test_center_origin_masks_are_normalised(self) -> None:
+        center = os.path.join(self.tmp.name, "center.asc")
+        with open(center, "w", encoding="utf-8") as handle:
+            handle.write("ncols 2\nnrows 1\nxllcenter 5\nyllcenter 5\ncellsize 10\n1 0\n")
+        grid = read_ascii_grid(center)
+        self.assertEqual(grid["header"]["xllcorner"], 0.0)
+        self.assertEqual(grid["header"]["yllcorner"], 0.0)
+
+    def test_sidecar_crs_mismatch_is_refused(self) -> None:
+        with open(self.reference + ".json", "w", encoding="utf-8") as handle:
+            handle.write('{"crs": "EPSG:3857"}')
+        with open(self.predicted + ".json", "w", encoding="utf-8") as handle:
+            handle.write('{"crs": "EPSG:4547"}')
+        with self.assertRaises(MetricsError) as caught:
+            compare_masks(self.reference, self.predicted)
+        self.assertIn("CRS differ", str(caught.exception))
+
+
     def test_geotiff_mask_without_georeferencing_is_refused(self) -> None:
         tiff = os.path.join(self.tmp.name, "mask.tif")
         _tiff(tiff, [1, 0, 0, 1])
