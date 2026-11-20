@@ -42,10 +42,11 @@ All notable changes to this project are documented in this file.
   rasters through one raster reader; ASCII headers may declare cell-center
   origins (`xllcenter`/`yllcenter`) which are normalised to corners, and a
   contradictory corner/center pair is refused; a sidecar `crs` (with optional
-  `crs_model`) lets ASCII input write a georeferenced output; a `.tif`/`.tiff`
-  output writes a one-band float32 GeoTIFF mask with the source PixelScale,
-  Tiepoint, EPSG GeoKey and GDAL_NODATA. Output without a source CRS is refused;
-  `.asc` remains ASCII.
+  `crs_model`) supplies a missing GeoTIFF header CRS as well as ASCII CRS, so
+  either input can write a georeferenced output; a `.tif`/`.tiff` output writes
+  a one-band float32 GeoTIFF mask with the source PixelScale, Tiepoint, EPSG
+  GeoKey and GDAL_NODATA. Output without a source CRS is refused; `.asc`
+  remains ASCII.
 - `geoops/quality/service.py`: optional `accuracy_thresholds` adds a real
   `professional.accuracy_threshold` check; below-minimum metrics are `FAIL`,
   invalid keys/values or thresholds without a reference mask are refused, and

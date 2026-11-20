@@ -142,6 +142,17 @@ def read_raster_grid(path: str) -> Dict[str, Any]:
             )
         bands = int(image.get("bands") or 1)
         values = image["values"][0::bands]
+        crs = str(image.get("crs") or "")
+        crs_model = str(image.get("crs_model") or "")
+        if not crs or not crs_model:
+            try:
+                side_crs, side_model = _sidecar_crs(path)
+            except ChangeError:
+                if not crs:
+                    raise
+            else:
+                crs = crs or side_crs
+                crs_model = crs_model or side_model
         return {
             "path": path,
             "header": {
@@ -158,8 +169,8 @@ def read_raster_grid(path: str) -> Dict[str, Any]:
             "values": values,
             "source_format": "geotiff",
             "bands": bands,
-            "crs": image.get("crs") or "",
-            "crs_model": image.get("crs_model") or "",
+            "crs": crs,
+            "crs_model": crs_model,
         }
     grid = read_ascii_grid(path)
     crs, crs_model = _sidecar_crs(path)

@@ -27,9 +27,11 @@ from geoops.survey.change import (
     ChangeError,
     detect_changes,
     read_ascii_grid,
+    read_raster_grid,
     write_change_mask,
 )
 from geoops.survey.change_node import change_detect_node
+from geoops.tests.test_geotiff_pixels import _georeferenced_tiff
 from geoops.workflow import NodeStatus, run
 
 BASELINE = """ncols 5
@@ -192,6 +194,16 @@ class ChangeTests(unittest.TestCase):
         image = read_geotiff_pixels(mask_path)
         self.assertEqual(image["crs"], "EPSG:3857")
         self.assertEqual(image["crs_model"], "projected")
+
+    def test_geotiff_sidecar_crs_fills_a_header_without_epsg(self) -> None:
+        path = os.path.join(self.tempdir, "plain-georef.tif")
+        _georeferenced_tiff(path, bytes([1, 2, 3, 4]))
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:3857"}, handle)
+        grid = read_raster_grid(path)
+        self.assertEqual(grid["crs"], "EPSG:3857")
+        self.assertEqual(grid["crs_model"], "projected")
+        self.assertEqual(grid["values"], [1, 2, 3, 4])
 
 
 class ChangeNodeTests(unittest.TestCase):
