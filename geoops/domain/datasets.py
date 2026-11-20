@@ -104,16 +104,18 @@ def register(path: Optional[str]) -> DatasetRecord:
     crs = str(sidecar.get("crs") or "").strip()
     extra: Dict[str, Any] = {}
     reason = "" if crs else "CRS field is empty in sidecar metadata"
-    if not crs and os.path.splitext(absolute)[1].lower() in (".tif", ".tiff"):
+    if os.path.splitext(absolute)[1].lower() in (".tif", ".tiff"):
         try:
-            info = probe_geotiff(absolute)
+            info = probe_geotiff(absolute, require_crs=False)
         except GeoTiffError as exc:
-            reason = "GeoTIFF header unreadable: %s" % exc
+            if not crs:
+                reason = "GeoTIFF header unreadable: %s" % exc
         else:
-            crs = info["crs"]
-            source = "geotiff-header"
             extra = info
-            reason = ""
+            if not crs:
+                crs = info["crs"]
+                source = "geotiff-header"
+                reason = "" if crs else "GeoTIFF header has no EPSG GeoKey"
     return DatasetRecord(
         dataset_id="DS-" + digest[:12],
         path=absolute,

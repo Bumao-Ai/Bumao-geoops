@@ -35,6 +35,9 @@ All notable changes to this project are documented in this file.
   (one band, float32, uncompressed, strip layout) with ModelPixelScale,
   ModelTiepoint, one EPSG GeoKey and GDAL_NODATA; CRS/model are required rather
   than guessed.
+- `geoops/domain/datasets.py`: a sidecar CRS no longer suppresses the GeoTIFF
+  header probe; dimensions, bounds and pixel size are retained, and a header
+  without EPSG is accepted only when the sidecar supplies the CRS.
 - `geoops/survey/change.py`: change detection accepts ASCII or classic GeoTIFF
   rasters through one raster reader; ASCII headers may declare cell-center
   origins (`xllcenter`/`yllcenter`) which are normalised to corners, and a

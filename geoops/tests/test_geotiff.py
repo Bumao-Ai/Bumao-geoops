@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import struct
 import tempfile
@@ -70,6 +71,19 @@ class GeoTiffTests(unittest.TestCase):
         self.assertEqual(record.crs, "EPSG:32650")
         self.assertEqual(record.metadata_source, "geotiff-header")
         self.assertEqual(record.width, 4)
+
+    def test_sidecar_crs_does_not_drop_geotiff_dimensions(self) -> None:
+        path = make_geotiff(os.path.join(self.tempdir, "c.tif"))
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547"}, handle)
+        record = register(path)
+        self.assertEqual(record.status, "READY")
+        self.assertEqual(record.crs, "EPSG:4547")
+        self.assertTrue(record.metadata_source.endswith(".tif.json"))
+        self.assertEqual(record.width, 4)
+        self.assertEqual(record.height, 4)
+        self.assertEqual(record.bounds, [0.0, 0.0, 4.0, 4.0])
+        self.assertEqual(record.pixel_size, [1.0, 1.0])
 
 
 if __name__ == "__main__":

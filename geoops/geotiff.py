@@ -108,7 +108,7 @@ def _read_entries(path: str):
     return endian, raw_file, entries
 
 
-def probe_geotiff(path: str) -> Dict[str, Any]:
+def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
     endian, raw_file, entries = _read_entries(path)
 
     width = _first(entries.get(TAG_WIDTH))
@@ -131,7 +131,9 @@ def probe_geotiff(path: str) -> Dict[str, Any]:
                 crs = "EPSG:%d" % value
                 break
     if not crs:
-        raise GeoTiffError("GeoTIFF has no EPSG GeoKey")
+        if require_crs:
+            raise GeoTiffError("GeoTIFF has no EPSG GeoKey")
+        crs = ""
 
     scale = entries.get(TAG_PIXEL_SCALE) or []
     tie = entries.get(TAG_TIEPOINT) or []
