@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import tempfile
 import threading
 import unittest
@@ -209,6 +210,56 @@ class NodeDataTests(unittest.TestCase):
         self.assertEqual(result.output["mean"], 2.0)
         unknown = ascii_grid_profile_node("G2", "profile", tool_id="gdal").action({"raster_path": path})
         self.assertEqual(unknown.status, NodeStatus.ERROR)
+
+    def test_agent_executor_records_a_failed_external_tool_call(self):
+        directory = tempfile.mkdtemp(prefix="geoops-agent-fail-")
+        script = os.path.join(directory, "fail.py")
+        with open(script, "w", encoding="utf-8") as handle:
+            handle.write("import sys\nsys.exit(2)\n")
+        config = os.path.join(directory, "tools.json")
+        with open(config, "w", encoding="utf-8") as handle:
+            json.dump({"tools": [{"tool_id": "external:fail", "command": [sys.executable, script], "args": [], "timeout": 10}]}, handle)
+        old = os.environ.get("GEOOPS_EXTERNAL_TOOLS")
+        os.environ["GEOOPS_EXTERNAL_TOOLS"] = config
+        try:
+            registry = DomainRegistry()
+            tool = registry.register(
+                ObjectType.TOOL,
+                "TOOL-FAIL",
+                {"tool_id": "TOOL-FAIL", "name": "failing tool", "version": "1.0",
+                 "category": "gis", "adapter": "external:fail", "available": True},
+            )
+            agent = registry.register(
+                ObjectType.AGENT,
+                "AGT-FAIL",
+                {"name": "failing agent", "version": "1.0", "strategy": "react",
+                 "model_ids": [], "tool_ids": ["TOOL-FAIL"], "available": True},
+            )
+
+            class Catalog:
+                def get(self, kind, object_id):
+                    return {"TOOL-FAIL": tool, "AGT-FAIL": agent}.get(object_id)
+
+            class Runtime:
+                def invoke(self, prompt, system="", max_tokens=512, temperature=None):
+                    return {"text": json.dumps({"tool": "TOOL-FAIL", "args": {}}),
+                            "model": "test-model", "usage": {}, "elapsed_ms": 1}
+
+            from geoops.ai.agent_node import agent_execute_node
+            result = agent_execute_node(
+                "A1", "Agent", Runtime(), Catalog(), agent_id="AGT-FAIL", prompt="fail"
+            ).action({})
+        finally:
+            if old is None:
+                os.environ.pop("GEOOPS_EXTERNAL_TOOLS", None)
+            else:
+                os.environ["GEOOPS_EXTERNAL_TOOLS"] = old
+        self.assertEqual(result.status, NodeStatus.ERROR)
+        self.assertEqual(len(result.output["steps"]), 1)
+        step = result.output["steps"][0]
+        self.assertEqual(step["status"], "ERROR")
+        self.assertEqual(step["failure"]["returncode"], 2)
+        self.assertIn("ExternalToolError", step["error"])
 
 
 class ResumeTests(unittest.TestCase):

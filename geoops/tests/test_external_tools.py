@@ -44,6 +44,9 @@ class ExternalToolTests(unittest.TestCase):
         result = registry.run("external:echo", {"path": "D:/data/a.tif"})
         self.assertEqual(result["returncode"], 0)
         self.assertIn("GOT D:/data/a.tif", result["stdout"])
+        self.assertGreaterEqual(result["elapsed_ms"], 0)
+        self.assertFalse(result["shell"])
+        self.assertEqual(result["command"][-1], "D:/data/a.tif")
 
     def test_unconfigured_tool_is_refused(self) -> None:
         registry = ExternalToolRegistry(self.config)
@@ -92,6 +95,38 @@ class ExternalToolTests(unittest.TestCase):
         with self.assertRaises(ExternalToolError) as caught:
             registry.run("external:bad", {})
         self.assertIn("exited 3", str(caught.exception))
+        details = caught.exception.details
+        self.assertEqual(details["returncode"], 3)
+        self.assertFalse(details["shell"])
+        self.assertEqual(details["command"][-1], bad)
+        self.assertGreaterEqual(details["elapsed_ms"], 0)
+
+    def test_gis_node_records_a_failed_command(self) -> None:
+        bad = os.path.join(self.tmp.name, "bad-node.py")
+        with open(bad, "w", encoding="utf-8") as handle:
+            handle.write("import sys\nprint('no', file=sys.stderr)\nsys.exit(4)\n")
+        with open(self.config, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "tools": [
+                        {
+                            "tool_id": "external:bad",
+                            "command": [sys.executable, bad],
+                            "args": [],
+                            "timeout": 10,
+                        }
+                    ]
+                },
+                handle,
+            )
+        node = ascii_grid_profile_node(
+            "g1", "external", tool_id="external:bad", path_key="raster_path"
+        )
+        result = node.action({"raster_path": "D:/data/a.tif"})
+        self.assertEqual(result.status.value, "ERROR")
+        self.assertEqual(result.output["returncode"], 4)
+        self.assertIn("no", result.output["stderr"])
+        self.assertFalse(result.output["shell"])
 
 
 if __name__ == "__main__":

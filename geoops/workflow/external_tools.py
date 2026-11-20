@@ -13,6 +13,7 @@ import json
 import os
 import re
 import subprocess
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -21,6 +22,10 @@ PLACEHOLDER = re.compile(r"\{([A-Za-z0-9_.-]+)\}")
 
 class ExternalToolError(ValueError):
     """The external tool is not configured, cannot run, or failed."""
+
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message)
+        self.details = dict(details or {})
 
 
 def _default_path() -> str:
@@ -56,18 +61,39 @@ class ExternalTool:
             )
         if not self.command:
             raise ExternalToolError("external tool %s has an empty command" % self.tool_id)
+        argv = self.command + rendered
+        started = time.monotonic()
         try:
             completed = subprocess.run(
-                self.command + rendered,
+                argv,
                 capture_output=True,
                 text=True,
                 timeout=self.timeout,
                 shell=False,
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
+            elapsed_ms = int((time.monotonic() - started) * 1000)
             raise ExternalToolError(
-                "external tool %s could not run: %s" % (self.tool_id, exc)
+                "external tool %s could not run: %s" % (self.tool_id, exc),
+                {
+                    "tool_id": self.tool_id,
+                    "command": argv,
+                    "timeout_s": self.timeout,
+                    "elapsed_ms": elapsed_ms,
+                    "shell": False,
+                },
             ) from exc
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        base = {
+            "tool_id": self.tool_id,
+            "command": argv,
+            "returncode": completed.returncode,
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
+            "elapsed_ms": elapsed_ms,
+            "timeout_s": self.timeout,
+            "shell": False,
+        }
         if completed.returncode != 0:
             raise ExternalToolError(
                 "external tool %s exited %d: %s"
@@ -75,15 +101,10 @@ class ExternalTool:
                     self.tool_id,
                     completed.returncode,
                     (completed.stderr or completed.stdout or "").strip()[:500],
-                )
+                ),
+                base,
             )
-        return {
-            "tool_id": self.tool_id,
-            "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
-            "command": self.command + rendered,
-        }
+        return base
 
 
 class ExternalToolRegistry:

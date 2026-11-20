@@ -37,11 +37,11 @@
 | 成果物可登记可复核 | `geoops/artifacts.py`；sha256+size+路径+所属任务+绑定成果，改/删即判失败，未登记成果拒绑；smoke 12 段 8 条；`test_artifacts` 16 条 |
 | 规则可核到字段 | 两包 11 条规则（分类/正射/变化检测），每条给证据字段；地理坐标系拒作成果 CRS；smoke 14 段 4 条；`test_rule_packs` 12 条 |
 | 判定与登记同一跑 | 规则门 → `artifact_register_node`；CRS 不对即停，登记未发生；smoke 15 段 5 条；`test_delivery` 7 条 |
-| 像元级也是真算 | 两期 ASCII 栅格逐格差分 + 4 邻域连通块 + 最小面积过滤，面积按 `cellsize²` 计；smoke 16 段 4 条；`test_change` 13 条 |
+| 像元级也是真算 | 两期 ASCII 栅格逐格差分 + 4 邻域连通块 + 最小面积过滤，面积按 `cellsize²` 计；smoke 16 段 4 条；`test_change` 20 条 |
 | 看得见且不造假 | `/ui/` 六段控制台（概览/任务/流程/规则/成果/审计），书香纸色 + 深空夜纸；流程页接运行日志（节点判定 + 跳过数 + 恢复来源）；缺接口写「未开放」、缺令牌写「需令牌」；smoke 17 段 4 条；`test_ui` 9 条、`test_journal` 11 条；`docs/ui-preview/` 六张真实截图；桌面快捷方式一键起服务 |
 | 并发纪律已验 | 唯一临时名 + 进程内锁 + 读占用时读写双侧重试；旧/新版本各自拒绝；`test_concurrency` 8 条（连跑 5 次全绿）；全量连跑 5 次全绿 |
 | 变更可追溯 | 提交 `22f3fc4`、`9f80d77`、`43d2c03`、`ef76fab`、`66a86a2`、`8e3d12a`、`4ae7bdc`、`4b6e6e5`、`4790816`、`ac4e9d4`、`785fdb2`、`9a4a187`、`3a611ab`、`7308af0`、`986faf8`、`ed95c9e` 及本轮提交 |
-| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 292 tests, OK` |
+| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 294 tests, OK` |
 
 ## 四、升级为核心工程后，仍未达成的门槛（不粉饰）
 
@@ -69,7 +69,7 @@
 | 6 | 用 Agent 组织执行过程 | 部分 | Agent 目录、依赖校验、JSON 计划循环、声明工具白名单、内置工具真实执行与 `tool_calls` 记录已做；外部工具可经 `external:<id>` 配置执行，真实模型端点仍缺 |
 | 7 | 调用至少一种真实地理空间处理工具 | 通过（内置工具） | `gis_tool_call` 真实调用 `builtin:ascii_grid_profile`（读 ASCII/GeoTIFF 栅格、校验像元、算有效格数/最值/均值）；`external:<id>` 可按 `var/external-tools.json` 调用真实可执行程序，未配置或退出非零即 `ERROR`；GDAL/QGIS/Rasterio 本体未安装 |
 | 8 | 执行测绘专业规则 | 通过 | 规则包 11 条、五态结果、闸门节点；异常不判 PASS |
-| 9 | 记录整个 AI 作业过程 | 部分 | 工作流定义、节点输出、运行日志、审计、任务历史、结构化追溯均有；Agent `tool_calls` 已逐步记录，外部工具调用仍不完整 |
+| 9 | 记录整个 AI 作业过程 | 部分 | 工作流定义、节点输出、运行日志、审计、任务历史、结构化追溯均有；Agent `tool_calls` 现记录成功与失败调用，外部工具调用带渲染命令、退出码、stdout/stderr、超时与耗时；仍无真实外部 GIS 工具在用户环境执行 |
 | 10 | 对成果自动质量检查 | 部分 | 三层检查已实现；混淆矩阵（TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU）支持 ASCII 与 GeoTIFF 掩膜，并校验尺寸、像元大小、原点与 CRS；调用方可声明最低精度阈值，低于阈值即 FAIL，不预设默认阈值；真实影像分类/几何精度样本仍缺 |
 | 11 | 输出质检报告 | 通过（软件路径） | `QualityService` 原子写 `var/quality/QR-*.json` 并登记 `QualityReport`；报告含 `basis`/`method`/`data`/`evidence`/`program`；审核引用报告时 `APPROVE` 必须是 `PASS` |
 | 12 | 人工审核 | 通过 | `ReviewEngine` + `POST /api/v1/reviews` + 审核页；通过才 accepted，驳回/返工必须写意见；`review` 流程节点只查真实 APPROVE，不自动批准；合成成果禁止最终验收 |
@@ -79,6 +79,7 @@
 
 结论：**十五项未全过，0.1 不能宣称正式完成。** 软件层（1/2/4/7/8/11/12/13/15）已可跑；
 3/5/6/9/10/14 的代码执行路径已实现（GeoTIFF 条带像素、Agent 工具循环与 `tool_calls`、节点策略、外部工具配置、GeoTIFF 掩膜精度入口），但真实影像、真实模型端点、真实审核样本和完整真实验收环仍未提供，因此这些项仍按“部分”记录，缺口已写进 README 与 CHANGELOG。
+
 
 
 

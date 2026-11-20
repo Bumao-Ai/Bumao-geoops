@@ -17,7 +17,10 @@ All notable changes to this project are documented in this file.
   `artifact_register`, `output`.
 - `geoops/workflow/external_tools.py`: explicit `external:<id>` tools from
   `var/external-tools.json` (or `GEOOPS_EXTERNAL_TOOLS`), argument templates,
-  no-shell subprocess execution, and non-zero exit as an error.
+  no-shell subprocess execution, and non-zero exit as an error. Every call
+  records the rendered command, exit code, stdout/stderr, timeout and elapsed
+  milliseconds; a failed call carries the same details into the node output and
+  the Agent's `tool_calls` instead of disappearing with the exception.
 - `GET /api/v1/execution-events`: flattened run and node events from the real
   run journal, optionally filtered by `task_id`.
 - Survey areas: `SurveyAreaRegistry` with real project linkage and validated

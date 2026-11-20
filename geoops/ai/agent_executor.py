@@ -29,6 +29,10 @@ Never invent a tool or claim an unlisted capability.
 class AgentExecutionError(RuntimeError):
     """An Agent step failed; no output is fabricated."""
 
+    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None) -> None:
+        super().__init__(message)
+        self.details = dict(details or {})
+
 
 def _usage_add(total: Dict[str, Any], usage: Dict[str, Any]) -> None:
     for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
@@ -156,7 +160,9 @@ def execute_tool(
         try:
             result = ExternalToolRegistry().run(adapter, dict(args or {}))
         except ExternalToolError as exc:
-            raise AgentExecutionError(str(exc)) from exc
+            raise AgentExecutionError(
+                "%s: %s" % (type(exc).__name__, exc), details=exc.details
+            ) from exc
         return result
     raise AgentExecutionError("no executable adapter for tool %s" % adapter)
 
@@ -277,6 +283,20 @@ def agent_execute_node(
                     tool_status = "PASS"
                     detail = "tool executed"
                 except Exception as exc:
+                    failed = {
+                        "step": step,
+                        "tool_id": tool,
+                        "args": args,
+                        "status": "ERROR",
+                        "detail": "tool failed",
+                        "result": None,
+                        "error": "%s: %s" % (type(exc).__name__, exc),
+                    }
+                    details = getattr(exc, "details", None)
+                    if isinstance(details, dict) and details:
+                        failed["failure"] = details
+                    steps.append(failed)
+                    context.setdefault("agent_tool_calls", []).append(failed)
                     raise AgentExecutionError(
                         "tool %s failed: %s: %s" % (tool, type(exc).__name__, exc)
                     ) from exc

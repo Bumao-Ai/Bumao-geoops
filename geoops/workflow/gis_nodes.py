@@ -37,7 +37,9 @@ def ascii_grid_profile_node(
                 params.update(context)
                 output = registry.run(resolved_tool, params)
             except ExternalToolError as exc:
-                return NodeResult(NodeStatus.ERROR, str(exc), {"path": path})
+                details = {"path": path, **getattr(exc, "details", {})}
+                context.setdefault("node_outputs", {})[node_id] = details
+                return NodeResult(NodeStatus.ERROR, str(exc), details)
             output["path"] = path
             context.setdefault("node_outputs", {})[node_id] = output
             return NodeResult(
