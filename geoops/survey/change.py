@@ -342,6 +342,17 @@ def _patch_area_m2(cells: List[int], ncols: int, row_areas: List[float]) -> floa
     return sum(row_areas[cell // ncols] for cell in cells)
 
 
+def measure_raster_area(grid: Dict[str, Any]) -> Dict[str, Any]:
+    """Return the raster footprint and mean cell area in square metres."""
+    row_areas, basis = _row_areas_m2(grid)
+    ncols = int(grid["ncols"])
+    return {
+        "cell_area_m2": sum(row_areas) / len(row_areas),
+        "footprint_area_m2": sum(row_areas) * ncols,
+        "area_basis": basis,
+    }
+
+
 def detect_changes(
     baseline_path: str,
     comparison_path: str,

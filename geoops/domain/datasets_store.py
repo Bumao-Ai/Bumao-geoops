@@ -14,7 +14,12 @@ from typing import Any, Dict, List, Optional
 from geoops.domain import datasets as probe
 from geoops.domain.projects import ProjectRegistry
 from geoops.domain.registry import DomainObject, DomainRegistry, ObjectType
-from geoops.survey.change import ChangeError, is_nodata, read_raster_grid
+from geoops.survey.change import (
+    ChangeError,
+    is_nodata,
+    measure_raster_area,
+    read_raster_grid,
+)
 
 
 class DatasetError(ValueError):
@@ -154,6 +159,7 @@ class DatasetRegistry:
         nrows = int(grid["nrows"])
         cellsize = float(grid["cellsize"])
         cellsize_y = float(grid.get("cellsize_y") or cellsize)
+        area = measure_raster_area(grid)
         xll = grid["header"].get("xllcorner")
         yll = grid["header"].get("yllcorner")
         bounds = None
@@ -174,6 +180,16 @@ class DatasetRegistry:
             "nrows": nrows,
             "cellsize": cellsize,
             "cellsize_y": cellsize_y,
+            "cell_area_m2": (
+                area["cell_area_m2"] if area["area_basis"] != "map_units" else None
+            ),
+            "footprint_area_m2": (
+                area["footprint_area_m2"] if area["area_basis"] != "map_units" else None
+            ),
+            "footprint_area_map_units": (
+                area["footprint_area_m2"] if area["area_basis"] == "map_units" else None
+            ),
+            "area_basis": area["area_basis"],
             "xllcorner": xll,
             "yllcorner": yll,
             "bounds": bounds,

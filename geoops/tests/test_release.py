@@ -127,7 +127,7 @@ class DatasetTests(unittest.TestCase):
         path = os.path.join(self.tempdir, "tile.tif")
         _georeferenced_tiff(path, [1, 2, 3, 4])
         with open(path + ".json", "w", encoding="utf-8") as handle:
-            json.dump({"crs": "EPSG:4547"}, handle)
+            json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
         dataset = self.datasets.register("PRJ-1", path)
         profile = self.datasets.profile(dataset.object_id)
         self.assertEqual(profile["format"], "geotiff")
@@ -135,6 +135,8 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(profile["nrows"], 2)
         self.assertEqual(profile["valid_cells"], 4)
         self.assertEqual(profile["mean"], 2.5)
+        self.assertEqual(profile["cell_area_m2"], 100.0)
+        self.assertEqual(profile["footprint_area_m2"], 400.0)
         self.assertEqual(profile["bounds"], [0.0, -20.0, 20.0, 0.0])
         self.assertEqual(profile["crs"], "EPSG:4547")
 

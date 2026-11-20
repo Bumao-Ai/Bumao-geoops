@@ -95,6 +95,9 @@ here.
 - Audit rows are hash-chained (`prev_hash`/`row_hash`); a reloaded file with an
   edited row is refused. Legacy rows without the chain still load, and a test
   proves both behaviours.
+- Dataset profiles report cell and footprint area through the same geographic
+  and linear-unit rules as change detection; unknown map units stay separate
+  from square metres.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
@@ -117,7 +120,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 328 tests in 29.4s`, `OK`.
+- Full suite: `Ran 328 tests in 28.6s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -137,6 +140,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - An automatic shutdown request was blocked by the runtime safety layer; no
   bypass was attempted. Shutdown remains a manual user action.
+
 
 
 
