@@ -80,6 +80,7 @@ class GeoTiffTests(unittest.TestCase):
         self.assertEqual(record.status, "READY")
         self.assertEqual(record.crs, "EPSG:4547")
         self.assertTrue(record.metadata_source.endswith(".tif.json"))
+        self.assertIn("overrides GeoTIFF header EPSG:32650", record.reason)
         self.assertEqual(record.width, 4)
         self.assertEqual(record.height, 4)
         self.assertEqual(record.bounds, [0.0, 0.0, 4.0, 4.0])

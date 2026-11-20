@@ -50,7 +50,9 @@ All notable changes to this project are documented in this file.
   than guessed.
 - `geoops/domain/datasets.py`: a sidecar CRS no longer suppresses the GeoTIFF
   header probe; dimensions, bounds and pixel size are retained, and a header
-  without EPSG is accepted only when the sidecar supplies the CRS.
+  without EPSG is accepted only when the sidecar supplies the CRS. When both
+  declare different CRSs, the sidecar still wins but the override and its
+  header CRS are recorded in `reason` instead of disappearing.
 - `DatasetRegistry.validate`: a re-probe now also fails when the CRS, width,
   height or band count no longer matches what was registered, not only when
   the sha256 changes.

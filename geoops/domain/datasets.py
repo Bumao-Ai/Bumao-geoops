@@ -112,10 +112,13 @@ def register(path: Optional[str]) -> DatasetRecord:
                 reason = "GeoTIFF header unreadable: %s" % exc
         else:
             extra = info
+            header_crs = str(info.get("crs") or "").strip()
             if not crs:
-                crs = info["crs"]
+                crs = header_crs
                 source = "geotiff-header"
                 reason = "" if crs else "GeoTIFF header has no EPSG GeoKey"
+            elif header_crs and header_crs.upper().replace(" ", "") != crs.upper().replace(" ", ""):
+                reason = "sidecar CRS overrides GeoTIFF header %s" % header_crs
     return DatasetRecord(
         dataset_id="DS-" + digest[:12],
         path=absolute,

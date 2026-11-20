@@ -46,7 +46,8 @@ here.
   header has no EPSG GeoKey, so change masks and profiles keep real georeferencing.
 - Dataset intake now probes a classic GeoTIFF header even when a sidecar
   supplies the CRS, so width/height/bounds/pixel size are not dropped; a
-  header without EPSG is accepted only when the sidecar provides one.
+  header without EPSG is accepted only when the sidecar provides one; when both
+  declare different CRSs, the sidecar priority is now visible in `reason`.
 - ASCII sidecar CRS: `read_raster_grid` reads `<path>.json` for `crs` and
   optional `crs_model`; EPSG:4326/3857 are inferred when the model is omitted,
   so ASCII input with a sidecar can write a georeferenced GeoTIFF mask.
