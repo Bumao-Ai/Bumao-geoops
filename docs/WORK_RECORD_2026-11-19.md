@@ -60,6 +60,9 @@ here.
   profile.
 - A floating-point NaN `GDAL_NODATA` sentinel is excluded consistently by
   profiles, change detection and quality masks instead of counting as valid.
+- Change detection now refuses grids whose CRS or CRS model differ, and grids
+  where only one side declares a CRS; the Agent profile/change tools accept a
+  selected band.
 - `SurveyAreaRegistry` and `GET/POST /api/v1/survey-areas`: a survey area
   requires a real project, name, type and CRS; optional bounds must be four
   finite numbers with positive extent.
@@ -71,7 +74,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 303 tests in 27.2s`, `OK`.
+- Full suite: `Ran 305 tests in 26.5s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

@@ -21,6 +21,7 @@ import os
 import tempfile
 import unittest
 
+from geoops.ai.agent_executor import execute_tool
 from geoops.artifacts import ArtifactStore
 from geoops.geotiff import read_geotiff_pixels, write_geotiff_mask
 from geoops.survey.change import (
@@ -206,6 +207,23 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(grid["crs_model"], "projected")
         self.assertEqual(grid["values"], [1, 2, 3, 4])
 
+    def test_change_detection_refuses_a_crs_mismatch(self) -> None:
+        baseline = os.path.join(self.tempdir, "crs-3857.tif")
+        comparison = os.path.join(self.tempdir, "crs-4326.tif")
+        write_geotiff_mask(
+            baseline, width=2, height=2, cellsize=10.0, xllcorner=500000.0,
+            yllcorner=4500000.0, crs="EPSG:3857", crs_model="projected",
+            values=[1.0, 2.0, 3.0, 4.0],
+        )
+        write_geotiff_mask(
+            comparison, width=2, height=2, cellsize=10.0, xllcorner=500000.0,
+            yllcorner=4500000.0, crs="EPSG:4326", crs_model="geographic",
+            values=[1.0, 9.0, 3.0, 4.0],
+        )
+        with self.assertRaises(ChangeError) as caught:
+            detect_changes(baseline, comparison, threshold=1)
+        self.assertIn("CRS differs", str(caught.exception))
+
     def test_change_detection_selects_a_multiband_band(self) -> None:
         baseline = os.path.join(self.tempdir, "band-base.tif")
         comparison = os.path.join(self.tempdir, "band-comp.tif")
@@ -218,6 +236,19 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(band_one["changed_cells"], 0)
         with self.assertRaises(ChangeError):
             detect_changes(baseline, comparison, band=3)
+
+    def test_agent_profile_tool_selects_a_band(self) -> None:
+        path = os.path.join(self.tempdir, "agent-multiband.tif")
+        _georeferenced_multiband_tiff(path, [1, 5, 2, 6, 3, 7, 4, 8])
+        result = execute_tool(
+            "builtin:ascii_grid_profile",
+            {"adapter": "builtin:ascii_grid_profile"},
+            {"path": path, "band": 2},
+        )
+        self.assertEqual(result["band"], 2)
+        self.assertEqual(result["valid_cells"], 4)
+        self.assertEqual(result["min"], 5.0)
+        self.assertEqual(result["max"], 8.0)
 
     def test_a_nan_sentinel_is_compared_as_nodata(self) -> None:
         self.assertTrue(is_nodata(float("nan"), float("nan")))

@@ -213,6 +213,23 @@ def _check_alignment(baseline: Dict[str, Any], comparison: Dict[str, Any]) -> No
             "grids are not aligned: size %dx%d vs %dx%d"
             % (baseline["ncols"], baseline["nrows"], comparison["ncols"], comparison["nrows"])
         )
+    left_crs = str(baseline.get("crs") or "").strip().upper().replace(" ", "")
+    right_crs = str(comparison.get("crs") or "").strip().upper().replace(" ", "")
+    left_model = str(baseline.get("crs_model") or "").strip().lower()
+    right_model = str(comparison.get("crs_model") or "").strip().lower()
+    if bool(left_crs) != bool(right_crs):
+        raise ChangeError("grids are not aligned: CRS is present in only one grid")
+    if left_crs and left_crs != right_crs:
+        raise ChangeError(
+            "grids are not aligned: CRS differs (%s vs %s)" % (left_crs, right_crs)
+        )
+    if left_crs and bool(left_model) != bool(right_model):
+        raise ChangeError("grids are not aligned: CRS model is present in only one grid")
+    if left_model and left_model != right_model:
+        raise ChangeError(
+            "grids are not aligned: CRS model differs (%s vs %s)"
+            % (left_model, right_model)
+        )
 
 
 def _patches(mask: List[int], ncols: int, nrows: int) -> List[Dict[str, Any]]:

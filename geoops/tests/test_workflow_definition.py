@@ -279,8 +279,9 @@ class ResumeTests(unittest.TestCase):
             with open(path, "w", encoding="utf-8") as handle:
                 handle.write("ncols 2\nnrows 2\nxllcorner 0\nyllcorner 0\ncellsize 10\n")
                 handle.write(values)
-        with open(baseline + ".json", "w", encoding="utf-8") as handle:
-            json.dump({"crs": "EPSG:4547"}, handle)
+        for path in (baseline, comparison):
+            with open(path + ".json", "w", encoding="utf-8") as handle:
+                json.dump({"crs": "EPSG:4547"}, handle)
         dataset = datasets.register("PRJ-R", baseline)
 
         defs = WorkflowDefinitionRegistry(registry)

@@ -10,8 +10,9 @@ All notable changes to this project are documented in this file.
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,
   per-node `attempts`, execute and resume APIs.
 - `geoops/ai/agent_executor.py`: Agent JSON plan loop, declared-tool whitelist,
-  real builtin tool execution, per-step `tool_calls` and bounded steps; no
-  scripted fallback.
+  real builtin tool execution, per-step `tool_calls` and bounded steps; both
+  builtin profile and change tools accept a selected `band` and treat NaN as
+  NODATA; no scripted fallback.
 - Real nodes: `data_input` / `data_check`, `review`, builtin ASCII
   `gis_tool_call`, `agent_execute`, `change_detection`,
   `artifact_register`, `output`.
@@ -61,7 +62,8 @@ All notable changes to this project are documented in this file.
   either input can write a georeferenced output; a `.tif`/`.tiff` output writes
   a one-band float32 GeoTIFF mask with the source PixelScale, Tiepoint, EPSG
   GeoKey and GDAL_NODATA. Output without a source CRS is refused; `.asc`
-  remains ASCII.
+  remains ASCII; two grids whose CRS or CRS model differ, or where only one
+  grid declares a CRS, are refused before any comparison.
 - `geoops/survey/change.py`: a shared `is_nodata` check treats a floating-point
   NaN sentinel as NODATA in change detection, dataset profiles and quality
   masks, instead of letting NaN cells count as valid values.

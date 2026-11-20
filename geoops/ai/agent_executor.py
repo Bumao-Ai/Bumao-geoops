@@ -14,7 +14,13 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from geoops.domain.registry import ObjectType
-from geoops.survey.change import ChangeError, detect_changes, read_raster_grid, write_change_mask
+from geoops.survey.change import (
+    ChangeError,
+    detect_changes,
+    is_nodata,
+    read_raster_grid,
+    write_change_mask,
+)
 from geoops.workflow.external_tools import ExternalToolError, ExternalToolRegistry
 from geoops.workflow import Node, NodeResult, NodeStatus
 
@@ -79,13 +85,18 @@ def _profile(args: Dict[str, Any]) -> Dict[str, Any]:
     path = str(args.get("path") or args.get("raster_path") or "").strip()
     if not path:
         raise AgentExecutionError("ascii_grid_profile needs path")
-    grid = read_raster_grid(path)
+    try:
+        band = int(args.get("band", 1))
+    except (TypeError, ValueError) as exc:
+        raise AgentExecutionError("band must be an integer") from exc
+    grid = read_raster_grid(path, band=band)
     nodata = grid["header"].get("nodata_value")
-    valid = [value for value in grid["values"] if nodata is None or value != nodata]
+    valid = [value for value in grid["values"] if not is_nodata(value, nodata)]
     if not valid:
         raise AgentExecutionError("grid has no valid cells after NODATA removal")
     return {
         "path": path,
+        "band": band,
         "ncols": grid["ncols"],
         "nrows": grid["nrows"],
         "cellsize": grid["cellsize"],
@@ -105,10 +116,11 @@ def _change(args: Dict[str, Any]) -> Dict[str, Any]:
     try:
         threshold = float(args.get("threshold", 1.0))
         min_area = float(args.get("min_area_m2", 0.0))
+        band = int(args.get("band", 1))
     except (TypeError, ValueError) as exc:
-        raise AgentExecutionError("threshold/min_area_m2 must be numbers") from exc
+        raise AgentExecutionError("threshold/min_area_m2/band must be numbers") from exc
     result = detect_changes(
-        baseline, comparison, threshold=threshold, min_area_m2=min_area
+        baseline, comparison, threshold=threshold, min_area_m2=min_area, band=band
     )
     output = str(args.get("output") or args.get("change_output_path") or "").strip()
     mask_path = write_change_mask(result, output) if output else None
