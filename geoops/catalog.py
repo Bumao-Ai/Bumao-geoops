@@ -147,9 +147,12 @@ class Catalog:
             raise CatalogError("agent references unknown ids: %s" % ", ".join(missing))
         if max_steps is not None:
             try:
-                max_steps = int(max_steps)
+                steps = float(max_steps)
             except (TypeError, ValueError) as exc:
                 raise CatalogError("max_steps must be an integer") from exc
+            if steps != int(steps):
+                raise CatalogError("max_steps must be an integer")
+            max_steps = int(steps)
             if not 1 <= max_steps <= 16:
                 raise CatalogError("max_steps must be between 1 and 16")
         unavailable = [
