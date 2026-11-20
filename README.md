@@ -23,7 +23,7 @@ The kernel is vendored at `kernel/bumao_core/`: synced from Bumao Core `v0.2.2` 
 ## What exists today
 
 - A console with twelve real sections and the HX 书香 v2.0 visual system: overview, projects, tasks, AI resources, data, workflow runs, rules, quality, deliverables, reviews, trace/audit and settings. Project registration, dataset re-validation, catalog registration, deliverable registration/archive, quality checks and review submission are backed by permission-gated endpoints with an audit trail.
-- A three-layer quality service: file/structure checks (existence, hash, size), spatial checks (CRS, dimensions, bounds when recorded), and professional verification that can only pass with a human sample and a written note. Without that note the aggregate is `PARTIAL`, never `PASS`. Reports are written to `var/quality/` and registered as `QualityReport` objects. ASCII mask accuracy can add a real TP/FP/FN/TN confusion matrix with pixel accuracy, precision, recall, F1 and IoU.
+- A three-layer quality service: file/structure checks (existence, hash, size), spatial checks (CRS, dimensions, bounds when recorded), and professional verification that can only pass with a human sample and a written note. Without that note the aggregate is `PARTIAL`, never `PASS`. Reports are written to `var/quality/` and registered as `QualityReport` objects. ASCII or GeoTIFF mask accuracy can add a real TP/FP/FN/TN confusion matrix with pixel accuracy, precision, recall, F1 and IoU; mismatched origin or CRS is refused.
 - Deliverables are real files with a recorded sha256 and size; only an approving review flips them to `accepted`, and only then may they be archived.
 - A real OpenAI-compatible model runtime: any endpoint exposing `POST /chat/completions` can be configured with `GEOOPS_MODEL_BASE_URL`, `GEOOPS_MODEL_API_KEY` and `GEOOPS_MODEL_NAME`. The console shows `READY` / `NOT_CONFIGURED`, can send a real probe and a real prompt, and reports the provider's reply, model, latency and token usage. No endpoint is bundled and no reply is fabricated. See [docs/MODEL_RUNTIME.md](docs/MODEL_RUNTIME.md).
 - Real pixel-level change detection on two aligned rasters: ESRI ASCII and classic GeoTIFF (uncompressed, LZW or Deflate, strip or tiled, chunky or separate-planar bands, 8/16/32-bit; JPEG/JPEG2000 via optional Pillow). Threshold, 4-neighbour patches, minimum area, written ASCII or one-band float32 GeoTIFF mask with the source georeferencing.
@@ -71,7 +71,7 @@ Run the unit tests:
 python -m unittest discover -s geoops\tests -t .
 ```
 
-281 tests; JPEG-TIFF decoding additionally uses Pillow when installed. The smoke run makes 73 assertions.
+283 tests; JPEG-TIFF decoding additionally uses Pillow when installed. The smoke run makes 73 assertions.
 
 ## Version boundary
 
