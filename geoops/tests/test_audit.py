@@ -156,8 +156,12 @@ class AuditFileTests(unittest.TestCase):
         }
         with open(self.path, "w", encoding="utf-8") as handle:
             handle.write(json.dumps(legacy) + "\n")
-        loaded = AuditLog(path=self.path)
-        self.assertEqual(loaded.rows()[0]["reason"], "legacy")
+        log = AuditLog(path=self.path)
+        log.record("GET", "/api/v1/health", "", "allow", "after legacy", 200)
+        reloaded = AuditLog(path=self.path)
+        first, second = reloaded.rows()
+        self.assertEqual(first["reason"], "legacy")
+        self.assertEqual(second["prev_hash"], AuditLog.row_digest(first))
 
     def test_corrupt_line_is_reported_not_dropped(self) -> None:
         log = AuditLog(path=self.path)
