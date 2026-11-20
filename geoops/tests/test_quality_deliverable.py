@@ -115,6 +115,25 @@ class QualityDeliverableTests(unittest.TestCase):
         self.assertIn("changed since registration", str(caught.exception))
         self.assertEqual(self.deliverables.get(self.deliverable.object_id).status, "accepted")
 
+    def test_archive_copies_the_verified_file_and_writes_a_manifest(self) -> None:
+        ReviewEngine(self.registry).submit(
+            self.task.task_id, self.deliverable.object_id, "reviewer", "APPROVE", "通过"
+        )
+        archive_dir = os.path.join(self.tempdir, "archive")
+        archived = DeliverableRegistry(self.registry, archive_dir=archive_dir).archive(
+            self.deliverable.object_id, actor="tester", note="最终归档"
+        )
+        self.assertEqual(archived.status, "archived")
+        payload = archived.payload
+        self.assertTrue(os.path.isfile(payload["archive_file"]))
+        self.assertTrue(os.path.isfile(payload["archive_manifest"]))
+        self.assertEqual(payload["archive_sha256"], payload["sha256"])
+        with open(payload["archive_manifest"], encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        self.assertEqual(manifest["deliverable_id"], self.deliverable.object_id)
+        self.assertEqual(manifest["files"][0]["sha256"], payload["sha256"])
+        self.assertEqual(manifest["archived_by"], "tester")
+
     def test_professional_sample_requires_a_note(self) -> None:
         with self.assertRaises(QualityError):
             self.quality.evaluate(

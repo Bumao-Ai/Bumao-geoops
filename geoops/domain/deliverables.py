@@ -10,7 +10,10 @@ that is allowed only after acceptance.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
+import shutil
+import tempfile
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -38,8 +41,9 @@ def _sha256(path: str) -> str:
 
 
 class DeliverableRegistry:
-    def __init__(self, registry: DomainRegistry) -> None:
+    def __init__(self, registry: DomainRegistry, archive_dir: str = "") -> None:
         self.registry = registry
+        self.archive_dir = os.path.abspath(archive_dir) if str(archive_dir or "").strip() else ""
 
     def register(
         self,
@@ -116,6 +120,68 @@ class DeliverableRegistry:
             rows = [row for row in rows if row.payload.get("task_id") == task_id]
         return rows
 
+    def _copy_to_archive(
+        self, deliverable: DomainObject, source: str, actor: str, note: str
+    ) -> Dict[str, Any]:
+        """Copy the verified source into an immutable per-deliverable folder."""
+        root = self.archive_dir
+        target = os.path.join(root, deliverable.object_id)
+        if os.path.exists(target):
+            raise DeliverableError("archive target already exists: %s" % target)
+        try:
+            os.makedirs(root, exist_ok=True)
+            temp = tempfile.mkdtemp(prefix=deliverable.object_id + "-", dir=root)
+        except OSError as exc:
+            raise DeliverableError("cannot create archive folder: %s" % exc) from exc
+        try:
+            files_dir = os.path.join(temp, "files")
+            os.makedirs(files_dir)
+            name = os.path.basename(source)
+            copied = os.path.join(files_dir, name)
+            shutil.copyfile(source, copied)
+            copied_sha = _sha256(copied)
+            registered_sha = str(deliverable.payload.get("sha256") or "")
+            if copied_sha != registered_sha:
+                raise DeliverableError("archive copy does not match the registered sha256")
+            archived_at = _now()
+            manifest = {
+                "deliverable_id": deliverable.object_id,
+                "task_id": deliverable.payload.get("task_id"),
+                "project_id": deliverable.payload.get("project_id"),
+                "source_path": source.replace("\\", "/"),
+                "source_sha256": registered_sha,
+                "copied_sha256": copied_sha,
+                "size_bytes": os.path.getsize(copied),
+                "files": [
+                    {
+                        "name": name,
+                        "path": "files/" + name,
+                        "sha256": copied_sha,
+                        "size_bytes": os.path.getsize(copied),
+                    }
+                ],
+                "archived_at": archived_at,
+                "archived_by": str(actor or "").strip(),
+                "archive_note": str(note or "").strip(),
+            }
+            manifest_path = os.path.join(temp, "manifest.json")
+            with open(manifest_path, "w", encoding="utf-8") as handle:
+                json.dump(manifest, handle, ensure_ascii=False, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp, target)
+        except Exception:
+            shutil.rmtree(temp, ignore_errors=True)
+            raise
+        return {
+            "archive_path": target.replace("\\", "/"),
+            "archive_file": os.path.join(target, "files", name).replace("\\", "/"),
+            "archive_manifest": os.path.join(target, "manifest.json").replace("\\", "/"),
+            "archive_sha256": copied_sha,
+            "archive_size_bytes": os.path.getsize(os.path.join(target, "files", name)),
+            "archived_at": manifest["archived_at"],
+        }
+
     def archive(self, deliverable_id: str, actor: str = "", note: str = "") -> DomainObject:
         deliverable = self.get(deliverable_id)
         if deliverable is None:
@@ -136,12 +202,15 @@ class DeliverableRegistry:
             raise DeliverableError(
                 "deliverable file changed since registration; re-register before archiving"
             )
+        payload = {
+            "archived_at": _now(),
+            "archived_by": str(actor or "").strip(),
+            "archive_note": str(note or "").strip(),
+        }
+        if self.archive_dir:
+            payload.update(self._copy_to_archive(deliverable, source, actor, note))
         return self.registry.update(
             deliverable_id,
-            payload={
-                "archived_at": _now(),
-                "archived_by": str(actor or "").strip(),
-                "archive_note": str(note or "").strip(),
-            },
+            payload=payload,
             status="archived",
         )

@@ -131,7 +131,11 @@ def main(argv=None) -> int:
     projects = ProjectRegistry(registry)
     datasets = DatasetRegistry(registry, projects)
     catalog = Catalog(registry)
-    deliverables = DeliverableRegistry(registry)
+    deliverables = DeliverableRegistry(
+        registry,
+        archive_dir=os.environ.get("GEOOPS_ARCHIVE_DIR")
+        or os.path.join(PROJECT_ROOT, "var", "archive"),
+    )
     quality = QualityService(
         registry,
         datasets,

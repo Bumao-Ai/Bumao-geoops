@@ -72,6 +72,9 @@ here.
   finite numbers with positive extent.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
+  When an archive directory is configured (the console uses `var/archive`),
+  archival copies the verified file into its own folder and writes a
+  `manifest.json` with hashes and provenance.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
   that value when it does not declare its own step budget; a node override is
   also restricted to an integer 1–16.
@@ -89,7 +92,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 313 tests in 26.9s`, `OK`.
+- Full suite: `Ran 314 tests in 27.0s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -109,6 +112,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 

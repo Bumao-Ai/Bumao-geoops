@@ -41,7 +41,7 @@
 | 看得见且不造假 | `/ui/` 六段控制台（概览/任务/流程/规则/成果/审计），书香纸色 + 深空夜纸；流程页接运行日志（节点判定 + 跳过数 + 恢复来源）；缺接口写「未开放」、缺令牌写「需令牌」；smoke 17 段 4 条；`test_ui` 9 条、`test_journal` 11 条；`docs/ui-preview/` 六张真实截图；桌面快捷方式一键起服务 |
 | 并发纪律已验 | 唯一临时名 + 进程内锁 + 读占用时读写双侧重试；旧/新版本各自拒绝；`test_concurrency` 8 条（连跑 5 次全绿）；全量连跑 5 次全绿 |
 | 变更可追溯 | 提交 `22f3fc4`、`9f80d77`、`43d2c03`、`ef76fab`、`66a86a2`、`8e3d12a`、`4ae7bdc`、`4b6e6e5`、`4790816`、`ac4e9d4`、`785fdb2`、`9a4a187`、`3a611ab`、`7308af0`、`986faf8`、`ed95c9e` 及本轮提交 |
-| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 313 tests, OK` |
+| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 314 tests, OK` |
 
 ## 四、升级为核心工程后，仍未达成的门槛（不粉饰）
 
@@ -73,12 +73,13 @@
 | 10 | 对成果自动质量检查 | 部分 | 三层检查已实现；混淆矩阵（TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU）支持 ASCII 与 GeoTIFF 掩膜，并校验尺寸、像元大小、原点与 CRS；调用方可声明最低精度阈值，低于阈值即 FAIL，不预设默认阈值；真实影像分类/几何精度样本仍缺 |
 | 11 | 输出质检报告 | 通过（软件路径） | `QualityService` 原子写 `var/quality/QR-*.json` 并登记 `QualityReport`；报告含 `basis`/`method`/`data`/`evidence`/`program`；审核引用报告时 `APPROVE` 必须是 `PASS` |
 | 12 | 人工审核 | 通过 | `ReviewEngine` + `POST /api/v1/reviews` + 审核页；通过才 accepted，驳回/返工必须写意见；`review` 流程节点只查真实 APPROVE，不自动批准；合成成果禁止最终验收 |
-| 13 | 归档最终成果 | 通过（软件路径） | `DeliverableRegistry` 真文件登记 sha256/大小/版本；accepted 后 `POST /api/v1/deliverables/{id}/archive` 归档并留人/时间 |
+| 13 | 归档最终成果 | 通过（软件路径） | `DeliverableRegistry` 真文件登记 sha256/大小/版本；归档前重算哈希，缺文件或被改即拒；控制台归档到 `var/archive/<成果编号>/` 并写 `manifest.json`；accepted 后 `POST /api/v1/deliverables/{id}/archive` 归档并留人/时间 |
 | 14 | 从成果反向追溯 | 部分 | `/api/v1/tasks/{id}/trace` 与 `/api/v1/deliverables/{id}/trace` 出结构化链；已用合成数据集、成果文件、artifacts、审核记录跑出 `complete=True`，真实数据环仍需填满 |
 | 15 | 证明正确调用 Core 不复制内核 | 通过 | vendored kernel 只读导入，CoreAdapter 调真实注册/闸门；smoke 1 段 |
 
 结论：**十五项未全过，0.1 不能宣称正式完成。** 软件层（1/2/4/7/8/11/12/13/15）已可跑；
 3/5/6/9/10/14 的代码执行路径已实现（GeoTIFF 条带像素、Agent 工具循环与 `tool_calls`、节点策略、外部工具配置、GeoTIFF 掩膜精度入口），但真实影像、真实模型端点、真实审核样本和完整真实验收环仍未提供，因此这些项仍按“部分”记录，缺口已写进 README 与 CHANGELOG。
+
 
 
 
