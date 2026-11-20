@@ -20,7 +20,8 @@ All notable changes to this project are documented in this file.
   no-shell subprocess execution, and non-zero exit as an error. Every call
   records the rendered command, exit code, stdout/stderr, timeout and elapsed
   milliseconds; a failed call carries the same details into the node output and
-  the Agent's `tool_calls` instead of disappearing with the exception.
+  the Agent's `tool_calls` instead of disappearing with the exception. A failed
+  Agent result exposes both `steps` and `tool_calls` for the same evidence.
 - `GET /api/v1/execution-events`: flattened run and node events from the real
   run journal, optionally filtered by `task_id`.
 - Survey areas: `SurveyAreaRegistry` with real project linkage and validated

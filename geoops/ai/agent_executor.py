@@ -319,13 +319,14 @@ def agent_execute_node(
             return NodeResult(
                 NodeStatus.ERROR,
                 "agent %s failed: %s: %s" % (resolved_id, type(exc).__name__, exc),
-                {"agent_id": resolved_id, "steps": steps},
+                {"agent_id": resolved_id, "steps": steps, "tool_calls": steps},
             )
 
         return NodeResult(
             NodeStatus.ERROR,
             "agent %s reached the step budget without a final answer" % resolved_id,
-            {"agent_id": resolved_id, "steps": steps, "elapsed_ms": int((time.monotonic() - started) * 1000)},
+            {"agent_id": resolved_id, "steps": steps, "tool_calls": steps,
+             "elapsed_ms": int((time.monotonic() - started) * 1000)},
         )
 
     return Node(node_id, name, action)

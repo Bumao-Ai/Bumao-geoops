@@ -256,6 +256,7 @@ class NodeDataTests(unittest.TestCase):
                 os.environ["GEOOPS_EXTERNAL_TOOLS"] = old
         self.assertEqual(result.status, NodeStatus.ERROR)
         self.assertEqual(len(result.output["steps"]), 1)
+        self.assertEqual(result.output["tool_calls"], result.output["steps"])
         step = result.output["steps"][0]
         self.assertEqual(step["status"], "ERROR")
         self.assertEqual(step["failure"]["returncode"], 2)
