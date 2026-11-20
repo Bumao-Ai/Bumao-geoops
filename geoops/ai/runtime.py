@@ -14,6 +14,10 @@ If the base URL or model name is missing, ``invoke`` raises ``NOT_CONFIGURED``
 with the missing variable names. There is no canned answer and no placeholder
 completion: a caller either reaches a real endpoint or receives an explicit
 failure.
+
+A local operator may instead keep the same keys in ``var/model-runtime.env``
+(KEY=VALUE, one per line) so the launcher does not have to inject environment
+variables; a real environment variable still wins over the file.
 """
 
 from __future__ import annotations
@@ -26,6 +30,13 @@ import urllib.request
 from typing import Any, Dict, Optional
 from urllib.parse import urlsplit
 
+MODEL_ENV_KEYS = (
+    "GEOOPS_MODEL_BASE_URL",
+    "GEOOPS_MODEL_API_KEY",
+    "GEOOPS_MODEL_NAME",
+    "GEOOPS_MODEL_TIMEOUT",
+)
+
 
 class ModelRuntimeError(RuntimeError):
     """A model call failed; ``code`` is stable and safe to show in a UI."""
@@ -34,6 +45,41 @@ class ModelRuntimeError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.status = status
+
+
+def default_env_file() -> str:
+    """The launcher's optional local model configuration."""
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    return os.path.join(root, "var", "model-runtime.env")
+
+
+def read_env_file(path: str) -> Dict[str, str]:
+    """Read KEY=VALUE lines; unknown keys are refused, comments are allowed."""
+    values: Dict[str, str] = {}
+    if not path:
+        return values
+    if not os.path.isfile(path):
+        return values
+    try:
+        with open(path, encoding="utf-8-sig") as handle:
+            lines = handle.readlines()
+    except OSError as exc:
+        raise ValueError("cannot read model config %s: %s" % (path, exc)) from exc
+    for number, raw in enumerate(lines, start=1):
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            raise ValueError("model config line %d is not KEY=VALUE" % number)
+        key, value = line.split("=", 1)
+        key = key.strip().upper()
+        if key not in MODEL_ENV_KEYS:
+            raise ValueError("model config line %d has unknown key %s" % (number, key))
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        values[key] = value
+    return values
 
 
 class ModelRuntime:
@@ -45,6 +91,8 @@ class ModelRuntime:
         api_key: str = "",
         model: str = "",
         timeout_s: float = 60.0,
+        config_file: str = "",
+        config_error: str = "",
     ) -> None:
         self.base_url = str(base_url or "").strip().rstrip("/")
         self.api_key = str(api_key or "").strip()
@@ -53,14 +101,29 @@ class ModelRuntime:
             self.timeout_s = max(1.0, min(300.0, float(timeout_s)))
         except (TypeError, ValueError):
             self.timeout_s = 60.0
+        self.config_file = str(config_file or "").strip()
+        self.config_error = str(config_error or "").strip()
 
     @classmethod
-    def from_env(cls) -> "ModelRuntime":
+    def from_env(cls, env_file: Optional[str] = None) -> "ModelRuntime":
+        path = default_env_file() if env_file is None else str(env_file)
+        config_error = ""
+        try:
+            file_values = read_env_file(path)
+        except ValueError as exc:
+            file_values = {}
+            config_error = str(exc)
+        values = {
+            key: os.environ.get(key) or file_values.get(key, "")
+            for key in MODEL_ENV_KEYS
+        }
         return cls(
-            base_url=os.environ.get("GEOOPS_MODEL_BASE_URL", ""),
-            api_key=os.environ.get("GEOOPS_MODEL_API_KEY", ""),
-            model=os.environ.get("GEOOPS_MODEL_NAME", ""),
-            timeout_s=os.environ.get("GEOOPS_MODEL_TIMEOUT", "60"),
+            base_url=values["GEOOPS_MODEL_BASE_URL"],
+            api_key=values["GEOOPS_MODEL_API_KEY"],
+            model=values["GEOOPS_MODEL_NAME"],
+            timeout_s=values["GEOOPS_MODEL_TIMEOUT"] or "60",
+            config_file=path if os.path.isfile(path) else "",
+            config_error=config_error,
         )
 
     # ------------------------------------------------------------ status
@@ -95,20 +158,26 @@ class ModelRuntime:
         ]
         configured = not missing and self._valid_base()
         reason = ""
-        if missing:
+        state = "READY" if configured else "NOT_CONFIGURED"
+        if self.config_error:
+            configured = False
+            state = "CONFIG_ERROR"
+            reason = self.config_error
+        elif missing:
             reason = "missing: " + ", ".join(missing)
         elif not self._valid_base():
             reason = "GEOOPS_MODEL_BASE_URL must be an http(s) URL"
         return {
             "provider": self.PROVIDER,
             "configured": configured,
-            "state": "READY" if configured else "NOT_CONFIGURED",
+            "state": state,
             "reason": reason,
             "endpoint": self._display_endpoint(),
             "model": self.model,
             "authentication": "bearer" if self.api_key else "none",
             "api_key_configured": bool(self.api_key),
             "timeout_s": self.timeout_s,
+            "config_file": self.config_file,
         }
 
     # ----------------------------------------------------------- request

@@ -8,11 +8,14 @@ reply. No test asserts a canned completion from the product itself.
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import threading
 import unittest
 import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import patch
 
 from geoops.ai import ModelRuntime, ModelRuntimeError, model_chat_node
 from geoops.api import AuditLog, PermissionPolicy, create_server
@@ -94,6 +97,56 @@ class ModelRuntimeTests(unittest.TestCase):
         with self.assertRaises(ModelRuntimeError) as caught:
             runtime.invoke("hello")
         self.assertEqual(caught.exception.code, "NOT_CONFIGURED")
+
+    def test_env_file_configures_a_real_endpoint(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "model.env")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("# local operator file\n")
+                handle.write("GEOOPS_MODEL_BASE_URL=http://127.0.0.1:%d/v1\n" % _Provider.port)
+                handle.write("GEOOPS_MODEL_NAME=file-model\n")
+                handle.write('GEOOPS_MODEL_API_KEY="file-secret"\n')
+            with patch.dict(os.environ, {}, clear=True):
+                runtime = ModelRuntime.from_env(path)
+                status = runtime.status()
+            self.assertTrue(status["configured"])
+            self.assertEqual(status["state"], "READY")
+            self.assertEqual(status["model"], "file-model")
+            self.assertEqual(status["authentication"], "bearer")
+            self.assertEqual(status["config_file"], path)
+            self.assertNotIn("file-secret", json.dumps(status))
+
+    def test_environment_wins_over_the_env_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "model.env")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("GEOOPS_MODEL_BASE_URL=http://file-host/v1\n")
+                handle.write("GEOOPS_MODEL_NAME=file-model\n")
+            with patch.dict(
+                os.environ,
+                {
+                    "GEOOPS_MODEL_BASE_URL": "http://127.0.0.1:%d/v1" % _Provider.port,
+                    "GEOOPS_MODEL_NAME": "environment-model",
+                },
+                clear=True,
+            ):
+                runtime = ModelRuntime.from_env(path)
+                status = runtime.status()
+            self.assertTrue(status["configured"])
+            self.assertEqual(status["model"], "environment-model")
+            self.assertEqual(status["endpoint"], "http://127.0.0.1:%d/v1" % _Provider.port)
+
+    def test_bad_env_file_is_reported_not_guessed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "model.env")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("GEOOPS_UNKNOWN_SETTING=oops\n")
+            with patch.dict(os.environ, {}, clear=True):
+                runtime = ModelRuntime.from_env(path)
+                status = runtime.status()
+            self.assertFalse(status["configured"])
+            self.assertEqual(status["state"], "CONFIG_ERROR")
+            self.assertIn("unknown key", status["reason"])
 
     def test_invoke_sends_real_http_request(self):
         result = self.runtime.invoke("请回答 OK", system="你是测试助手", max_tokens=16)

@@ -66,6 +66,9 @@ here.
 - `SurveyAreaRegistry` and `GET/POST /api/v1/survey-areas`: a survey area
   requires a real project, name, type and CRS; optional bounds must be four
   finite numbers with positive extent.
+- Model runtime also reads `var/model-runtime.env` (`KEY=VALUE`, same four
+  keys), while real environment variables win; unknown keys are
+  `CONFIG_ERROR`, and `status()` exposes the file path, never the key.
 - `GET /api/v1/models`, `/api/v1/agents`, `/api/v1/tools` catalog slices.
 - `GET /api/v1/execution-events`: flattened run/node events from the real run
   journal, optionally filtered by `task_id`.
@@ -74,7 +77,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 305 tests in 26.5s`, `OK`.
+- Full suite: `Ran 308 tests in 26.9s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

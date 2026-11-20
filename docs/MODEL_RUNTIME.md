@@ -3,7 +3,7 @@
 GeoOps 现在有一个真实的 OpenAI-compatible 模型运行时，不是页面上的假回复。
 
 - 端点：任意兼容 `POST /chat/completions` 的服务。
-- 配置：只从服务进程的环境变量读取。
+- 配置：服务进程的环境变量，或本机 `var/model-runtime.env`（环境变量优先）。
 - 密钥：不下发浏览器、不写进仓库、不在日志中打印。
 - 未配置：`NOT_CONFIGURED`，直接失败；不会生成占位文本。
 - 调用记录：通过 API 调用会写入 audit trail。
@@ -37,6 +37,25 @@ model runtime: READY (qwen2.5:7b @ http://127.0.0.1:11434/v1)
 ```
 
 如果仍是 `NOT_CONFIGURED`，检查变量是否设在启动服务的那一个进程里；`setx` 只影响新开的进程。
+
+### 2.1 用本机配置文件（适合桌面快捷方式）
+
+在 `var\model-runtime.env` 写四行 `KEY=VALUE`，然后直接启动服务；服务会读取它：
+
+```text
+GEOOPS_MODEL_BASE_URL=http://127.0.0.1:11434/v1
+GEOOPS_MODEL_NAME=qwen2.5:7b
+GEOOPS_MODEL_API_KEY=ollama
+GEOOPS_MODEL_TIMEOUT=60
+```
+
+规则：
+
+- 只需要 `BASE_URL` 和 `NAME`；`API_KEY` 本地服务可留空，`TIMEOUT` 可省略。
+- 只接受上表四个键，未知键或没有 `=` 的行会让状态变成 `CONFIG_ERROR`，不会被猜成别的配置。
+- 同名的真实环境变量优先于文件，便于临时覆盖。
+- 该文件在 `var\` 下，已被 `.gitignore` 忽略；不要把密钥提交到 Git。
+- 状态接口返回 `config_file`，表示当前读到的文件路径；密钥值永远不会返回。
 
 ## 3. 四种常见的兼容端点
 
@@ -112,6 +131,7 @@ Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8790/api/v1/model-runtime/
 | 错误码 | 含义 | 处理 |
 |---|---|---|
 | `NOT_CONFIGURED` | 缺少 `GEOOPS_MODEL_BASE_URL` 或 `GEOOPS_MODEL_NAME`，或地址不是 http(s) | 补变量并重启服务 |
+| `CONFIG_ERROR` | `var/model-runtime.env` 有未知键或不是 `KEY=VALUE` | 按 2.1 节修正文件，或删除该文件 |
 | `PROVIDER_HTTP_ERROR` | 上游返回非 2xx | 看 HTTP 状态和上游 message；401 多为密钥 |
 | `PROVIDER_UNREACHABLE` | DNS、端口、TLS、超时 | 先确认 curl 能到端点；本地服务是否启动 |
 | `PROVIDER_BAD_RESPONSE` | 不是 JSON、没有 choices、content 为空 | 端点不是 OpenAI 兼容格式，或模型拒答 |

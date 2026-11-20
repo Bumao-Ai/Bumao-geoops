@@ -104,6 +104,10 @@ All notable changes to this project are documented in this file.
   raises `NOT_CONFIGURED`; provider HTTP errors, invalid JSON, empty messages
   and unreachable endpoints fail explicitly. The key is never returned by
   `status()` or written to audit/log output.
+- `ModelRuntime.from_env` also reads the ignored local `var/model-runtime.env`
+  (same four keys, `KEY=VALUE`); real environment variables win, unknown keys
+  become `CONFIG_ERROR`, and `status()` exposes only the config path, never the
+  key.
 - `geoops/ai/nodes.py`: a workflow node that makes a real model call and
   records the reply, usage and latency; an unconfigured runtime makes the run
   `ERROR`, never a fake `PASS`.
