@@ -26,7 +26,7 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
     except ChangeError as exc:
         raise MetricsError(str(exc)) from exc
     return {
-        "path": grid["path"],
+        "path": os.path.abspath(grid["path"]),
         "header": grid["header"],
         "ncols": grid["ncols"],
         "nrows": grid["nrows"],
