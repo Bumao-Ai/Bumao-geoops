@@ -367,8 +367,14 @@ def create_server(
             match = DATASET_PROFILE_PATH.match(path)
             if match:
                 dataset_id = unquote(match.group(1))
+                raw_band = parse_qs(urlparse(self.path).query).get("band", ["1"])[0]
                 try:
-                    result = dataset_registry.profile(dataset_id)
+                    band = int(raw_band)
+                except (TypeError, ValueError):
+                    self._json(400, {"error": "band must be a positive integer"})
+                    return
+                try:
+                    result = dataset_registry.profile(dataset_id, band=band)
                 except DatasetError as exc:
                     self._json(404, {"error": str(exc)})
                     return

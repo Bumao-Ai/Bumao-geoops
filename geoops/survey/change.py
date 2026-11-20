@@ -124,8 +124,14 @@ def _sidecar_crs(path: str) -> Tuple[str, str]:
     return crs, model
 
 
-def read_raster_grid(path: str) -> Dict[str, Any]:
-    """Read an ASCII grid or a classic GeoTIFF (first band for multiband)."""
+def read_raster_grid(path: str, band: int = 1) -> Dict[str, Any]:
+    """Read an ASCII grid or a classic/BigTIFF GeoTIFF (selected band, default 1)."""
+    try:
+        band = int(band)
+    except (TypeError, ValueError) as exc:
+        raise ChangeError("band must be a positive integer") from exc
+    if band < 1:
+        raise ChangeError("band must be a positive integer")
     suffix = os.path.splitext(str(path or ""))[1].lower()
     if suffix in (".tif", ".tiff"):
         from geoops.geotiff import GeoTiffError, read_geotiff_pixels
@@ -141,7 +147,9 @@ def read_raster_grid(path: str) -> Dict[str, Any]:
                 "GeoTIFF %s has no pixel scale/tiepoint; cannot align it" % path
             )
         bands = int(image.get("bands") or 1)
-        values = image["values"][0::bands]
+        if band > bands:
+            raise ChangeError("GeoTIFF %s has %d band(s), not band %d" % (path, bands, band))
+        values = image["values"][band - 1::bands]
         crs = str(image.get("crs") or "")
         crs_model = str(image.get("crs_model") or "")
         if not crs or not crs_model:
@@ -169,12 +177,15 @@ def read_raster_grid(path: str) -> Dict[str, Any]:
             "values": values,
             "source_format": "geotiff",
             "bands": bands,
+            "band": band,
             "crs": crs,
             "crs_model": crs_model,
         }
+    if band != 1:
+        raise ChangeError("ASCII grid %s has one band, not band %d" % (path, band))
     grid = read_ascii_grid(path)
     crs, crs_model = _sidecar_crs(path)
-    return {**grid, "crs": crs, "crs_model": crs_model}
+    return {**grid, "band": 1, "crs": crs, "crs_model": crs_model}
 
 
 def _check_alignment(baseline: Dict[str, Any], comparison: Dict[str, Any]) -> None:

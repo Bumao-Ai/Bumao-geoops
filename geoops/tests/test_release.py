@@ -12,7 +12,7 @@ from geoops.catalog import Catalog, CatalogError
 from geoops.domain import DomainRegistry, ObjectType, TaskEngine
 from geoops.domain.datasets_store import DatasetError, DatasetRegistry
 from geoops.domain.survey_areas import SurveyAreaError, SurveyAreaRegistry
-from geoops.tests.test_geotiff_pixels import _georeferenced_tiff
+from geoops.tests.test_geotiff_pixels import _georeferenced_multiband_tiff, _georeferenced_tiff
 from geoops.domain.projects import ProjectError, ProjectRegistry
 from geoops.review import ReviewEngine, ReviewError
 from geoops.trace import build_trace
@@ -133,6 +133,22 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(profile["mean"], 2.5)
         self.assertEqual(profile["bounds"], [0.0, -20.0, 20.0, 0.0])
         self.assertEqual(profile["crs"], "EPSG:4547")
+
+    def test_profile_selects_a_real_geotiff_band(self) -> None:
+        path = os.path.join(self.tempdir, "multi.tif")
+        _georeferenced_multiband_tiff(path, [1, 5, 2, 6, 3, 7, 4, 8])
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547"}, handle)
+        dataset = self.datasets.register("PRJ-1", path)
+        profile = self.datasets.profile(dataset.object_id, band=2)
+        self.assertEqual(profile["bands"], 2)
+        self.assertEqual(profile["band"], 2)
+        self.assertEqual(profile["valid_cells"], 4)
+        self.assertEqual(profile["mean"], 6.5)
+        self.assertEqual(profile["min"], 5.0)
+        self.assertEqual(profile["max"], 8.0)
+        with self.assertRaises(DatasetError):
+            self.datasets.profile(dataset.object_id, band=3)
 
 
 class SurveyAreaTests(unittest.TestCase):

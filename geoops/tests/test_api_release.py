@@ -115,6 +115,10 @@ class ReleaseApiTests(unittest.TestCase):
         self.assertEqual(profile["min"], 0.0)
         self.assertEqual(profile["max"], 1.0)
         self.assertEqual(profile["mean"], 0.5)
+        status, _ = self.call("GET", "/api/v1/datasets/%s/profile?band=nope" % dataset["object_id"])
+        self.assertEqual(status, 400)
+        status, _ = self.call("GET", "/api/v1/datasets/%s/profile?band=2" % dataset["object_id"])
+        self.assertEqual(status, 404)
 
     def test_dataset_without_a_project_is_refused(self) -> None:
         status, payload = self.call(

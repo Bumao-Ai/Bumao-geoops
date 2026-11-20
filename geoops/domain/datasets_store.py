@@ -134,7 +134,7 @@ class DatasetRegistry:
         status = "PASS" if all(check["status"] == "PASS" for check in checks) else "FAIL"
         return {"dataset_id": dataset_id, "status": status, "checks": checks}
 
-    def profile(self, dataset_id: str) -> Dict[str, Any]:
+    def profile(self, dataset_id: str, band: int = 1) -> Dict[str, Any]:
         """Read the real raster pixels and return a profile; never guess values."""
         obj = self.get(dataset_id)
         if obj is None:
@@ -143,8 +143,8 @@ class DatasetRegistry:
         if not path or not os.path.isfile(path):
             raise DatasetError("dataset file is missing: %s" % dataset_id)
         try:
-            grid = read_raster_grid(path)
-        except ChangeError as exc:
+            grid = read_raster_grid(path, band=band)
+        except (ChangeError, TypeError, ValueError) as exc:
             raise DatasetError("cannot profile raster: %s" % exc) from exc
         nodata = grid["header"].get("nodata_value")
         valid = [value for value in grid["values"] if nodata is None or value != nodata]
@@ -168,7 +168,7 @@ class DatasetRegistry:
             "path": path,
             "format": grid.get("source_format") or "ascii",
             "bands": int(grid.get("bands") or 1),
-            "band": 1,
+            "band": int(grid.get("band") or 1),
             "ncols": ncols,
             "nrows": nrows,
             "cellsize": cellsize,

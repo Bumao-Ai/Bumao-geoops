@@ -27,7 +27,8 @@ All notable changes to this project are documented in this file.
 - Survey areas: `SurveyAreaRegistry` with real project linkage and validated
   `minx/miny/maxx/maxy` bounds; `GET/POST /api/v1/survey-areas`.
 - `GET /api/v1/datasets/<id>/profile`: real ASCII/GeoTIFF pixel summary
-  (dimensions, bands, cellsize, origin, bounds, CRS, NODATA count, min/max/mean).
+  (dimensions, bands, selected band, cellsize, origin, bounds, CRS, NODATA
+  count, min/max/mean); `?band=N` selects a real band from a multiband GeoTIFF.
 - Node policies: declared `outputs` aliases, dotted `preconditions`, and
   `success_condition` (`PASS`, `status == …`, or a dotted-path comparison) are
   executed; missing preconditions and failed conditions stop the node.
@@ -50,14 +51,15 @@ All notable changes to this project are documented in this file.
   height or band count no longer matches what was registered, not only when
   the sha256 changes.
 - `geoops/survey/change.py`: change detection accepts ASCII or classic GeoTIFF
-  rasters through one raster reader; ASCII headers may declare cell-center
-  origins (`xllcenter`/`yllcenter`) which are normalised to corners, and a
-  contradictory corner/center pair is refused; a sidecar `crs` (with optional
-  `crs_model`) supplies a missing GeoTIFF header CRS as well as ASCII CRS, so
-  either input can write a georeferenced output; a `.tif`/`.tiff` output writes
-  a one-band float32 GeoTIFF mask with the source PixelScale, Tiepoint, EPSG
-  GeoKey and GDAL_NODATA. Output without a source CRS is refused; `.asc`
-  remains ASCII.
+  rasters through one raster reader; `read_raster_grid(path, band=1)` can
+  select one band from a multiband GeoTIFF (an out-of-range band is refused);
+  ASCII headers may declare cell-center origins (`xllcenter`/`yllcenter`) which
+  are normalised to corners, and a contradictory corner/center pair is refused;
+  a sidecar `crs` (with optional `crs_model`) supplies a missing GeoTIFF header
+  CRS as well as ASCII CRS, so either input can write a georeferenced output; a
+  `.tif`/`.tiff` output writes a one-band float32 GeoTIFF mask with the source
+  PixelScale, Tiepoint, EPSG GeoKey and GDAL_NODATA. Output without a source
+  CRS is refused; `.asc` remains ASCII.
 - `geoops/quality/service.py`: optional `accuracy_thresholds` adds a real
   `professional.accuracy_threshold` check; below-minimum metrics are `FAIL`,
   invalid keys/values or thresholds without a reference mask are refused, and

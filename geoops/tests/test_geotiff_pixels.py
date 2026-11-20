@@ -218,6 +218,41 @@ def _georeferenced_tiff(path: str, values, scale=(10.0, 10.0, 0.0), tie=(0.0, 0.
         handle.write(body)
 
 
+def _georeferenced_multiband_tiff(path: str, values) -> None:
+    """A 2x2 chunky two-band GeoTIFF with PixelScale and Tiepoint, no GeoKey."""
+    raw = bytes(values)
+    count = 13
+    data_offset = 8 + 2 + count * 12 + 4
+    scale_offset = data_offset
+    tie_offset = scale_offset + 24
+    data_start = tie_offset + 48
+    entries = [
+        (256, 3, 1, 2),
+        (257, 3, 1, 2),
+        (258, 3, 2, 8 | (8 << 16)),
+        (259, 3, 1, 1),
+        (262, 3, 1, 2),
+        (273, 4, 1, data_start),
+        (277, 3, 1, 2),
+        (278, 3, 1, 2),
+        (279, 4, 1, len(raw)),
+        (284, 3, 1, 1),
+        (339, 3, 2, 1 | (1 << 16)),
+        (33550, 12, 3, scale_offset),
+        (33922, 12, 6, tie_offset),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += struct.pack("<3d", 10.0, 10.0, 0.0)
+    body += struct.pack("<6d", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    body += raw
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _bigtiff(path: str, values) -> None:
     """A minimal 2x2 BigTIFF with PixelScale and Tiepoint, no GeoKey."""
     raw = bytes(values)
@@ -286,6 +321,15 @@ class GeoTiffPixelTests(unittest.TestCase):
         grid = read_raster_grid(path)
         self.assertEqual(grid["cellsize"], 10.0)
         self.assertEqual(grid["crs"], "")
+
+    def test_multiband_band_is_selected(self) -> None:
+        path = os.path.join(self.tmp.name, "multi.tif")
+        _georeferenced_multiband_tiff(path, [1, 5, 2, 6, 3, 7, 4, 8])
+        grid = read_raster_grid(path, band=2)
+        self.assertEqual(grid["band"], 2)
+        self.assertEqual(grid["values"], [5.0, 6.0, 7.0, 8.0])
+        with self.assertRaises(ChangeError):
+            read_raster_grid(path, band=3)
 
     def test_lzw_pixels_are_decoded(self) -> None:
         _tiff(self.path, [1, 2, 3, 4], compression=5)
