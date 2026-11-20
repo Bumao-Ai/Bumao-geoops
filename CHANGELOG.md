@@ -39,9 +39,9 @@ All notable changes to this project are documented in this file.
   rasters through one raster reader; a `.tif`/`.tiff` output writes a one-band
   float32 GeoTIFF mask with the source PixelScale, Tiepoint, EPSG GeoKey and
   GDAL_NODATA. Output without a source CRS is refused; `.asc` remains ASCII.
-- `geoops/quality/metrics.py`: ASCII mask confusion matrix with TP/FP/FN/TN,
-  pixel accuracy, precision, recall, F1 and IoU; NODATA excluded; mismatched
-  geometry refused.
+- `geoops/quality/metrics.py`: ASCII or GeoTIFF mask confusion matrix with
+  TP/FP/FN/TN, pixel accuracy, precision, recall, F1 and IoU; NODATA excluded;
+  mismatched dimensions, cell size, origin or CRS refused.
 - Quality API accepts `reference_path`, `predicted_path`, `synthetic_reference`
   and writes an `accuracy` object into the report.
 - Quality reports now carry `basis`, `method`, `data` and `evidence` alongside

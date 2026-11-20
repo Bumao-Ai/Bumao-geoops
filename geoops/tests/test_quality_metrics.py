@@ -7,6 +7,7 @@ import tempfile
 import unittest
 
 from geoops.quality.metrics import MetricsError, compare_masks, read_ascii_grid, read_mask_grid
+from geoops.geotiff import write_geotiff_mask
 from geoops.tests.test_geotiff_pixels import _georeferenced_tiff, _tiff
 
 
@@ -82,6 +83,41 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["cells"]["fp"], 1)
         self.assertEqual(result["cells"]["fn"], 1)
         self.assertEqual(result["cells"]["tn"], 1)
+
+    def test_geotiff_masks_with_different_origins_are_refused(self) -> None:
+        reference = os.path.join(self.tmp.name, "ref_origin.tif")
+        predicted = os.path.join(self.tmp.name, "pred_origin.tif")
+        _georeferenced_tiff(
+            reference, [1, 0, 0, 1], tie=(0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        )
+        _georeferenced_tiff(
+            predicted, [1, 0, 0, 1], tie=(0.0, 0.0, 0.0, 100.0, 0.0, 0.0)
+        )
+        with self.assertRaises(MetricsError) as caught:
+            compare_masks(reference, predicted)
+        self.assertIn("origins differ", str(caught.exception))
+
+    def test_geotiff_masks_with_different_crs_are_refused(self) -> None:
+        reference = os.path.join(self.tmp.name, "ref_crs.tif")
+        predicted = os.path.join(self.tmp.name, "pred_crs.tif")
+        for path, crs, model in (
+            (reference, "EPSG:3857", "projected"),
+            (predicted, "EPSG:4326", "geographic"),
+        ):
+            write_geotiff_mask(
+                path,
+                width=2,
+                height=2,
+                cellsize=10.0,
+                xllcorner=0.0,
+                yllcorner=0.0,
+                crs=crs,
+                crs_model=model,
+                values=[1.0, 0.0, 0.0, 1.0],
+            )
+        with self.assertRaises(MetricsError) as caught:
+            compare_masks(reference, predicted)
+        self.assertIn("CRS differ", str(caught.exception))
 
 
 if __name__ == "__main__":

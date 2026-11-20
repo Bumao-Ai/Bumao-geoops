@@ -66,6 +66,7 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
         )
     return {
         "path": os.path.abspath(path),
+        "header": header,
         "ncols": ncols,
         "nrows": nrows,
         "cellsize": float(header["cellsize"]),
@@ -90,10 +91,19 @@ def read_mask_grid(path: str) -> Dict[str, Any]:
             "ncols": grid["ncols"],
             "nrows": grid["nrows"],
             "cellsize": grid["cellsize"],
+            "xllcorner": grid["header"].get("xllcorner"),
+            "yllcorner": grid["header"].get("yllcorner"),
+            "crs": grid.get("crs") or "",
             "nodata": float(nodata) if nodata is not None else -9999.0,
             "values": grid["values"],
         }
-    return read_ascii_grid(path)
+    ascii_grid = read_ascii_grid(path)
+    return {
+        **ascii_grid,
+        "xllcorner": ascii_grid["header"].get("xllcorner"),
+        "yllcorner": ascii_grid["header"].get("yllcorner"),
+        "crs": "",
+    }
 
 
 def compare_masks(
@@ -123,6 +133,19 @@ def compare_masks(
         raise MetricsError(
             "grid cell sizes differ: %s vs %s"
             % (reference["cellsize"], predicted["cellsize"])
+        )
+    for key in ("xllcorner", "yllcorner"):
+        ref_origin, pred_origin = reference.get(key), predicted.get(key)
+        if ref_origin is None or pred_origin is None:
+            raise MetricsError("grid %s is missing; cannot confirm alignment" % key)
+        if abs(float(ref_origin) - float(pred_origin)) > 1e-9:
+            raise MetricsError(
+                "grid origins differ at %s: %s vs %s"
+                % (key, ref_origin, pred_origin)
+            )
+    if reference.get("crs") and predicted.get("crs") and reference["crs"] != predicted["crs"]:
+        raise MetricsError(
+            "grid CRS differ: %s vs %s" % (reference["crs"], predicted["crs"])
         )
 
     tp = fp = fn = tn = skipped = 0
