@@ -121,7 +121,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 328 tests in 29.0s`, `OK`.
+- Full suite: `Ran 328 tests in 28.2s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -141,6 +141,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - An automatic shutdown request was blocked by the runtime safety layer; no
   bypass was attempted. Shutdown remains a manual user action.
+
 
 
 
