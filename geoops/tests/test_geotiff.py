@@ -85,6 +85,16 @@ class GeoTiffTests(unittest.TestCase):
         self.assertEqual(record.bounds, [0.0, 0.0, 4.0, 4.0])
         self.assertEqual(record.pixel_size, [1.0, 1.0])
 
+    def test_sidecar_crs_allows_a_geotiff_header_without_epsg(self) -> None:
+        path = make_geotiff(os.path.join(self.tempdir, "d.tif"), epsg=0)
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547"}, handle)
+        record = register(path)
+        self.assertEqual(record.status, "READY")
+        self.assertEqual(record.crs, "EPSG:4547")
+        self.assertEqual(record.width, 4)
+        self.assertEqual(record.bounds, [0.0, 0.0, 4.0, 4.0])
+
 
 if __name__ == "__main__":
     unittest.main()
