@@ -70,6 +70,9 @@ All notable changes to this project are documented in this file.
 - Change detection and quality comparison refuse a non-finite threshold or
   minimum area instead of silently writing an empty mask or an all-zero
   confusion matrix.
+- A `GTRasterTypeGeoKey` outside PixelIsArea/PixelIsPoint is refused, and a
+  dataset profile turns an unsupported linear unit into a dataset error rather
+  than letting a raw `ChangeError` escape.
 - Quality reports now expose `cellsize_y` alongside `cellsize`, so a non-square
   mask is not described as if it had square cells.
 - `ModelTransformationTag` (34264) now supplies the affine georeferencing when

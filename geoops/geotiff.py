@@ -290,7 +290,12 @@ def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
             found["crs"] = "EPSG:%d" % int(value)
             found["crs_model"] = EPSG_KEYS[key_id]
         elif key_id == 1025:
-            found["raster_type"] = int(value)
+            raster_type = int(value)
+            if raster_type not in (1, 2):
+                raise GeoTiffError(
+                    "unsupported GTRasterTypeGeoKey value %d" % raster_type
+                )
+            found["raster_type"] = raster_type
         elif key_id == 3076:
             unit = LINEAR_UNITS.get(int(value))
             found["linear_unit_code"] = int(value)

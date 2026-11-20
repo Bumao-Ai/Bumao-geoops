@@ -159,7 +159,10 @@ class DatasetRegistry:
         nrows = int(grid["nrows"])
         cellsize = float(grid["cellsize"])
         cellsize_y = float(grid.get("cellsize_y") or cellsize)
-        area = measure_raster_area(grid)
+        try:
+            area = measure_raster_area(grid)
+        except ChangeError as exc:
+            raise DatasetError("cannot measure raster area: %s" % exc) from exc
         xll = grid["header"].get("xllcorner")
         yll = grid["header"].get("yllcorner")
         bounds = None
