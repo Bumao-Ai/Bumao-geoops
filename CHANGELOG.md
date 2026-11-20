@@ -30,6 +30,10 @@ All notable changes to this project are documented in this file.
 - Node policies: declared `outputs` aliases, dotted `preconditions`, and
   `success_condition` (`PASS`, `status == …`, or a dotted-path comparison) are
   executed; missing preconditions and failed conditions stop the node.
+- `geoops/geotiff.py`: both classic TIFF (magic 42) and BigTIFF (magic 43,
+  64-bit offsets, `LONG8`/`SLONG8`/`IFD8` field types) are read. The same
+  GeoTIFF tags, strip/tile decoding and EPSG parsing apply; the writer still
+  emits classic TIFF.
 - `geoops/geotiff.py`: classic TIFF pixel decoding for uncompressed, LZW and
   Deflate images, striped or tiled, 8/16/32-bit chunky or separate-planar
   bands; JPEG/JPEG2000 decode through optional Pillow. Other codecs are

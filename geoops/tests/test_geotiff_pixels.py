@@ -218,6 +218,41 @@ def _georeferenced_tiff(path: str, values, scale=(10.0, 10.0, 0.0), tie=(0.0, 0.
         handle.write(body)
 
 
+def _bigtiff(path: str, values) -> None:
+    """A minimal 2x2 BigTIFF with PixelScale and Tiepoint, no GeoKey."""
+    raw = bytes(values)
+    count = 13
+    data_start = 16 + 8 + count * 20 + 8
+    scale_offset = data_start
+    tie_offset = scale_offset + 24
+    pixel_start = tie_offset + 48
+    entries = [
+        (256, 3, 1, struct.pack("<H", 2) + b"\0" * 6),
+        (257, 3, 1, struct.pack("<H", 2) + b"\0" * 6),
+        (258, 3, 1, struct.pack("<H", 8) + b"\0" * 6),
+        (259, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (262, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (273, 4, 1, struct.pack("<I", pixel_start) + b"\0" * 4),
+        (277, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (278, 3, 1, struct.pack("<H", 2) + b"\0" * 6),
+        (279, 4, 1, struct.pack("<I", len(raw)) + b"\0" * 4),
+        (284, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (339, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (33550, 12, 3, struct.pack("<Q", scale_offset)),
+        (33922, 12, 6, struct.pack("<Q", tie_offset)),
+    ]
+    body = struct.pack("<2sHHHQ", b"II", 43, 8, 0, 16)
+    body += struct.pack("<Q", count)
+    for tag, typ, n, value_field in entries:
+        body += struct.pack("<HHQ", tag, typ, n) + value_field
+    body += struct.pack("<Q", 0)
+    body += struct.pack("<3d", 10.0, 10.0, 0.0)
+    body += struct.pack("<6d", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    body += raw
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 class GeoTiffPixelTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
@@ -238,6 +273,19 @@ class GeoTiffPixelTests(unittest.TestCase):
         _tiff(self.path, [9, 8, 7, 6], compression=8)
         image = read_geotiff_pixels(self.path)
         self.assertEqual(image["values"], [9.0, 8.0, 7.0, 6.0])
+
+    def test_bigtiff_header_and_pixels_are_read(self) -> None:
+        path = os.path.join(self.tmp.name, "big.tif")
+        _bigtiff(path, [1, 2, 3, 4])
+        info = probe_geotiff(path, require_crs=False)
+        self.assertEqual(info["width"], 2)
+        self.assertEqual(info["height"], 2)
+        self.assertEqual(info["bounds"], [0.0, -20.0, 20.0, 0.0])
+        image = read_geotiff_pixels(path)
+        self.assertEqual(image["values"], [1.0, 2.0, 3.0, 4.0])
+        grid = read_raster_grid(path)
+        self.assertEqual(grid["cellsize"], 10.0)
+        self.assertEqual(grid["crs"], "")
 
     def test_lzw_pixels_are_decoded(self) -> None:
         _tiff(self.path, [1, 2, 3, 4], compression=5)

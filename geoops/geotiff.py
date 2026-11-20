@@ -1,11 +1,12 @@
-"""Read and write classic GeoTIFF, without GDAL.
+"""Read classic TIFF and BigTIFF, without GDAL.
 
-Only classic TIFF (magic 42) with GeoTIFF tags is supported. The header parser
-returns width, height, band count, EPSG code, pixel size and bounds when the
-tags are present; an ordinary TIFF without those tags is refused rather than
-guessed. Pixel decoding covers the codecs documented on
-:func:`read_geotiff_pixels`; :func:`write_geotiff_mask` writes a real one-band
-float32 GeoTIFF with PixelScale, Tiepoint, one EPSG GeoKey and GDAL_NODATA.
+Both classic TIFF (magic 42) and BigTIFF (magic 43, 64-bit offsets) with
+GeoTIFF tags are supported. The header parser returns width, height, band
+count, EPSG code, pixel size and bounds when the tags are present; an ordinary
+TIFF without those tags is refused rather than guessed. Pixel decoding covers
+the codecs documented on :func:`read_geotiff_pixels`;
+:func:`write_geotiff_mask` writes a real classic one-band float32 GeoTIFF with
+PixelScale, Tiepoint, one EPSG GeoKey and GDAL_NODATA.
 
 This is deliberately a narrow reader/writer: it does not replace GDAL, reproject
 or build overviews. It exists so a real GeoTIFF can supply its own CRS and so a
@@ -40,6 +41,7 @@ TAG_DOUBLE_PARAMS = 34736
 TAG_ASCII_PARAMS = 34737
 
 TYPE_SIZES = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 11: 4, 12: 8}
+BIG_TYPE_SIZES = {**TYPE_SIZES, 16: 8, 17: 8, 18: 8}
 EPSG_KEYS = {3072: "projected", 2048: "geographic"}
 
 
@@ -54,12 +56,16 @@ def _unpack(fmt: str, data: bytes) -> Any:
         raise GeoTiffError("truncated GeoTIFF field: %s" % exc) from exc
 
 
-def _read_field(data: bytes, endian: str, typ: int, count: int, raw: bytes) -> Any:
-    if typ not in TYPE_SIZES:
+def _read_field(
+    data: bytes, endian: str, typ: int, count: int, raw: bytes, big: bool = False
+) -> Any:
+    sizes = BIG_TYPE_SIZES if big else TYPE_SIZES
+    if typ not in sizes:
         raise GeoTiffError("unsupported TIFF field type %d" % typ)
-    size = TYPE_SIZES[typ] * count
-    if size > 4:
-        offset = struct.unpack(endian + "I", raw)[0]
+    size = sizes[typ] * count
+    field_size = 8 if big else 4
+    if size > field_size:
+        offset = struct.unpack(endian + ("Q" if big else "I"), raw[:field_size])[0]
         raw = data[offset:offset + size]
         if len(raw) < size:
             raise GeoTiffError("GeoTIFF field points past end of file")
@@ -69,6 +75,10 @@ def _read_field(data: bytes, endian: str, typ: int, count: int, raw: bytes) -> A
         return list(struct.unpack(endian + "%dH" % count, raw[:count * 2]))
     if typ == 4:
         return list(struct.unpack(endian + "%dI" % count, raw[:count * 4]))
+    if typ in (16, 18):
+        return list(struct.unpack(endian + "%dQ" % count, raw[:count * 8]))
+    if typ == 17:
+        return list(struct.unpack(endian + "%dq" % count, raw[:count * 8]))
     if typ == 12:
         return list(struct.unpack(endian + "%dd" % count, raw[:count * 8]))
     if typ == 11:
@@ -80,24 +90,31 @@ def _read_field(data: bytes, endian: str, typ: int, count: int, raw: bytes) -> A
 
 def _read_entries(path: str):
     with open(path, "rb") as handle:
-        head = handle.read(8)
+        head = handle.read(16)
         if len(head) < 8:
             raise GeoTiffError("file is shorter than a TIFF header")
         endian = {b"II": "<", b"MM": ">"}.get(head[:2])
         if endian is None:
             raise GeoTiffError("not a TIFF file (bad byte order)")
         magic = _unpack(endian + "H", head[2:4])[0]
-        if magic == 43:
-            raise GeoTiffError("BigTIFF is not supported; use classic TIFF")
-        if magic != 42:
-            raise GeoTiffError("not a classic TIFF (magic %d)" % magic)
-        ifd_offset = _unpack(endian + "I", head[4:8])[0]
+        big = magic == 43
+        if big:
+            if len(head) < 16:
+                raise GeoTiffError("file is shorter than a BigTIFF header")
+            offset_size = _unpack(endian + "H", head[4:6])[0]
+            if offset_size != 8:
+                raise GeoTiffError("BigTIFF offset size %d is not supported" % offset_size)
+            ifd_offset = _unpack(endian + "Q", head[8:16])[0]
+        elif magic == 42:
+            ifd_offset = _unpack(endian + "I", head[4:8])[0]
+        else:
+            raise GeoTiffError("not a TIFF file (magic %d)" % magic)
         handle.seek(0)
         raw_file = handle.read()
     entries = {}
-    for tag, typ, n, raw in _iter_entries(raw_file, endian, ifd_offset):
+    for tag, typ, n, raw in _iter_entries(raw_file, endian, ifd_offset, big=big):
         try:
-            entries[tag] = _read_field(raw_file, endian, typ, n, raw)
+            entries[tag] = _read_field(raw_file, endian, typ, n, raw, big=big)
         except GeoTiffError as exc:
             # Unknown ancillary types (for example JPEGTables with type 7)
             # are not fields this reader needs; a critical tag will still be
@@ -342,7 +359,7 @@ def _pillow_pixels(
 
 
 def read_geotiff_pixels(path: str) -> Dict[str, Any]:
-    """Decode classic TIFF strips or tiles for uncompressed/LZW/Deflate.
+    """Decode classic TIFF or BigTIFF strips or tiles for uncompressed/LZW/Deflate.
 
     Chunky and separate-planar bands are supported; other codecs are refused
     explicitly. No value is guessed: a missing block or a short decode is an
@@ -666,7 +683,17 @@ def write_geotiff_mask(
     return absolute
 
 
-def _iter_entries(data: bytes, endian: str, ifd_offset: int):
+def _iter_entries(data: bytes, endian: str, ifd_offset: int, big: bool = False):
+    if big:
+        count = _unpack(endian + "Q", data[ifd_offset:ifd_offset + 8])[0]
+        start = ifd_offset + 8
+        for index in range(count):
+            entry = data[start + index * 20:start + (index + 1) * 20]
+            if len(entry) < 20:
+                raise GeoTiffError("truncated BigTIFF entry")
+            tag, typ, n = struct.unpack(endian + "HHQ", entry[:12])
+            yield tag, typ, n, entry[12:20]
+        return
     count = _unpack(endian + "H", data[ifd_offset:ifd_offset + 2])[0]
     start = ifd_offset + 2
     for index in range(count):
