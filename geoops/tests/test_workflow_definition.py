@@ -12,6 +12,7 @@ import urllib.error
 import urllib.request
 
 from geoops.api import AuditLog, PermissionPolicy, create_server
+from geoops.catalog import Catalog, CatalogError
 from geoops.domain import DomainRegistry, TaskEngine
 from geoops.domain.datasets_store import DatasetRegistry
 from geoops.domain.projects import ProjectRegistry
@@ -149,6 +150,15 @@ class NodeDataTests(unittest.TestCase):
         self.assertEqual(result.status, NodeStatus.PASS)
         self.assertEqual(result.output["agent_id"], "AGT-1")
         self.assertEqual(result.output["text"], "ok")
+
+    def test_agent_max_steps_is_bounded(self):
+        catalog = Catalog(DomainRegistry())
+        with self.assertRaises(CatalogError):
+            catalog.register_agent("A-0", "零步", "1.0", "react", [], [], max_steps=0)
+        with self.assertRaises(CatalogError):
+            catalog.register_agent("A-17", "十七步", "1.0", "react", [], [], max_steps=17)
+        agent = catalog.register_agent("A-3", "三步", "1.0", "react", [], [], max_steps=3)
+        self.assertEqual(agent.payload["max_steps"], 3)
 
     def test_agent_executor_runs_a_declared_builtin_tool(self):
         directory = tempfile.mkdtemp(prefix="geoops-agent-tool-")

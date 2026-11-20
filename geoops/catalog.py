@@ -145,6 +145,13 @@ class Catalog:
         missing += [tool_id for tool_id, obj in zip(tool_ids, tools) if obj is None]
         if missing:
             raise CatalogError("agent references unknown ids: %s" % ", ".join(missing))
+        if max_steps is not None:
+            try:
+                max_steps = int(max_steps)
+            except (TypeError, ValueError) as exc:
+                raise CatalogError("max_steps must be an integer") from exc
+            if not 1 <= max_steps <= 16:
+                raise CatalogError("max_steps must be between 1 and 16")
         unavailable = [
             obj.object_id for obj in models + tools if not obj.payload.get("available")
         ]
@@ -156,7 +163,6 @@ class Catalog:
             "model_ids": list(model_ids),
             "tool_ids": list(tool_ids),
             "description": description,
-            "max_steps": max_steps,
             "max_steps": max_steps,
             "available": not unavailable,
             "reason": "" if not unavailable else "unavailable dependencies: %s" % ", ".join(unavailable),

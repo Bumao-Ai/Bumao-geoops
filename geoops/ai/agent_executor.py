@@ -189,7 +189,7 @@ def agent_execute_node(
     prompt_key: str = "prompt",
     system: str = "",
     max_tokens: int = 512,
-    max_steps: int = 8,
+    max_steps: Optional[int] = None,
     rules: Any = None,
     context_key: str = "agent_text",
 ) -> Node:
@@ -212,6 +212,16 @@ def agent_execute_node(
                 "agent %s is unavailable: %s"
                 % (resolved_id, payload.get("reason") or "dependency unavailable"),
             )
+        raw_steps = max_steps if max_steps is not None else payload.get("max_steps")
+        if raw_steps is None:
+            budget = 8
+        else:
+            try:
+                budget = int(raw_steps)
+            except (TypeError, ValueError):
+                return NodeResult(NodeStatus.FAIL, "agent max_steps is not an integer")
+            if not 1 <= budget <= 16:
+                return NodeResult(NodeStatus.FAIL, "agent max_steps must be between 1 and 16")
         text_prompt = str(context.get(prompt_key) or prompt or "").strip()
         if not text_prompt:
             return NodeResult(
@@ -237,7 +247,7 @@ def agent_execute_node(
         started = time.monotonic()
 
         try:
-            for step in range(1, max(1, min(16, int(max_steps))) + 1):
+            for step in range(1, budget + 1):
                 plan_prompt = (
                     "Request:\n%s\n\nAvailable tools:\n%s\n\nPrevious steps:\n%s\n\n"
                     "Return one JSON plan now."
@@ -265,6 +275,7 @@ def agent_execute_node(
                         "text": final,
                         "final": final,
                         "steps": len(steps) + 1,
+                        "max_steps": budget,
                         "tool_calls": steps,
                         "model": last_model,
                         "usage": usage,
@@ -338,6 +349,7 @@ def agent_execute_node(
             NodeStatus.ERROR,
             "agent %s reached the step budget without a final answer" % resolved_id,
             {"agent_id": resolved_id, "steps": steps, "tool_calls": steps,
+             "max_steps": budget,
              "elapsed_ms": int((time.monotonic() - started) * 1000)},
         )
 

@@ -12,7 +12,8 @@ All notable changes to this project are documented in this file.
 - `geoops/ai/agent_executor.py`: Agent JSON plan loop, declared-tool whitelist,
   real builtin tool execution, per-step `tool_calls` and bounded steps; both
   builtin profile and change tools accept a selected `band` and treat NaN as
-  NODATA; no scripted fallback.
+  NODATA; no scripted fallback. An Agent's registered `max_steps` is validated
+  to 1–16 and used when a workflow node does not override it.
 - Real nodes: `data_input` / `data_check`, `review`, builtin ASCII
   `gis_tool_call`, `agent_execute`, `change_detection`,
   `artifact_register`, `output`.

@@ -69,6 +69,8 @@ here.
 - `SurveyAreaRegistry` and `GET/POST /api/v1/survey-areas`: a survey area
   requires a real project, name, type and CRS; optional bounds must be four
   finite numbers with positive extent.
+- Agent records now validate `max_steps` to 1–16, and the workflow node uses
+  that value when it does not declare its own step budget.
 - External tool configuration refuses duplicate `tool_id` entries and
   non-finite timeouts instead of overwriting a tool or passing `nan` to
   `subprocess`.
@@ -83,7 +85,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 311 tests in 26.6s`, `OK`.
+- Full suite: `Ran 312 tests in 26.6s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
@@ -103,6 +105,7 @@ here.
   still required for the remaining 0.1 acceptance items.
 - The requested 23:25 shutdown was not executed; run it manually at the
   requested time.
+
 
 
 

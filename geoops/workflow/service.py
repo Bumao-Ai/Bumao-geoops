@@ -160,7 +160,7 @@ class WorkflowService:
                         prompt_key=spec.get("prompt_key") or "prompt",
                         system=spec.get("system") or "",
                         max_tokens=spec.get("max_tokens") or 512,
-                        max_steps=int(spec.get("max_steps") or 8),
+                        max_steps=spec.get("max_steps"),
                         rules=self.rules,
                     )
                 )
