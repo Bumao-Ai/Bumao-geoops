@@ -162,9 +162,13 @@ class ModelRuntimeTests(unittest.TestCase):
         for kwargs in (
             {"temperature": float("nan")},
             {"temperature": 5},
+            {"temperature": True},
             {"max_tokens": 0},
             {"max_tokens": "many"},
+            {"max_tokens": 1.5},
+            {"max_tokens": True},
             {"timeout_s": -3},
+            {"timeout_s": True},
         ):
             with self.assertRaises(ModelRuntimeError) as caught:
                 self.runtime.invoke("hello", **kwargs)

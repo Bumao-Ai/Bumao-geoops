@@ -217,6 +217,10 @@ class ModelRuntime:
         prompt = str(prompt or "").strip()
         if not prompt:
             raise ModelRuntimeError("EMPTY_PROMPT", "prompt is empty")
+        if isinstance(max_tokens, bool):
+            raise ModelRuntimeError("INVALID_OPTION", "max_tokens must be an integer")
+        if isinstance(max_tokens, float) and not max_tokens.is_integer():
+            raise ModelRuntimeError("INVALID_OPTION", "max_tokens must be a whole number")
         try:
             max_tokens_value = int(max_tokens)
         except (TypeError, ValueError) as exc:
@@ -225,6 +229,8 @@ class ModelRuntime:
             raise ModelRuntimeError("INVALID_OPTION", "max_tokens must be between 1 and 8192")
         temperature_value = None
         if temperature is not None:
+            if isinstance(temperature, bool):
+                raise ModelRuntimeError("INVALID_OPTION", "temperature must be a number")
             try:
                 temperature_value = float(temperature)
             except (TypeError, ValueError) as exc:
@@ -233,6 +239,8 @@ class ModelRuntime:
                 raise ModelRuntimeError("INVALID_OPTION", "temperature must be finite")
             if temperature_value < 0 or temperature_value > 2:
                 raise ModelRuntimeError("INVALID_OPTION", "temperature must be between 0 and 2")
+        if isinstance(timeout_s, bool):
+            raise ModelRuntimeError("INVALID_OPTION", "timeout_s must be a number")
         try:
             request_timeout = float(timeout_s) if timeout_s is not None else self.timeout_s
         except (TypeError, ValueError) as exc:
