@@ -225,6 +225,7 @@ class DatasetRegistry:
             "dataset_id": dataset_id,
             "path": path,
             "format": grid.get("source_format") or "ascii",
+            "read_mode": "whole_file",
             "bands": int(grid.get("bands") or 1),
             "band": int(grid.get("band") or 1),
             "ncols": ncols,

@@ -637,6 +637,60 @@ def iter_geotiff_band_values(path: str, band: int = 1):
         if rows_per_strip > height:
             rows_per_strip = height
         needed_strips = (height + rows_per_strip - 1) // rows_per_strip
+        if compression == 1 and needed_strips == 1:
+            # A huge uncompressed one-strip TIFF must not be decoded as one
+            # width*height list; read one row at a time from the mmap.
+            if planar == 2:
+                if len(offsets) % samples:
+                    raise GeoTiffError(
+                        "separate planar StripOffsets do not match bands"
+                    )
+                strips_per_plane = len(offsets) // samples
+                block_index = (band - 1) * strips_per_plane
+            else:
+                block_index = 0
+            strip_offset = int(offsets[block_index])
+            bytes_per_sample = bits // 8
+            row_samples = width if planar == 2 else width * samples
+            row_bytes = row_samples * bytes_per_sample
+            for row in range(height):
+                start = strip_offset + row * row_bytes
+                if start < 0 or start + row_bytes > len(raw_file):
+                    raise GeoTiffError(
+                        "TIFF strip %d points outside the file" % block_index
+                    )
+                row_values = _decode_samples(
+                    raw_file[start:start + row_bytes],
+                    endian,
+                    bits,
+                    sample_format,
+                )
+                if len(row_values) < row_samples:
+                    raise GeoTiffError(
+                        "TIFF strip %d decoded %d samples, expected %d"
+                        % (block_index, len(row_values), row_samples)
+                    )
+                if predictor == 2:
+                    _undo_predictor(
+                        row_values,
+                        row_samples,
+                        1 if planar == 2 else samples,
+                        bits,
+                        sample_format,
+                    )
+                if planar == 2:
+                    yield from row_values[:width]
+                    produced += width
+                else:
+                    for col in range(width):
+                        yield row_values[col * samples + band - 1]
+                        produced += 1
+            if produced != total_pixels:
+                raise GeoTiffError(
+                    "TIFF row streaming covered %d of %d pixels"
+                    % (produced, total_pixels)
+                )
+            return
         if planar == 2:
             if len(offsets) % samples:
                 raise GeoTiffError("separate planar StripOffsets do not match bands")

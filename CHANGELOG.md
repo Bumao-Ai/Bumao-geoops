@@ -48,6 +48,9 @@ All notable changes to this project are documented in this file.
   truncated literal/repeat runs refused instead of yielding short pixel data.
 - GeoTIFF 64-bit samples are decoded for unsigned/signed integer and float
   SampleFormat, so Float64 rasters are no longer refused as unsupported bits.
+- An uncompressed GeoTIFF whose whole image is one strip is now read row by
+  row from the mmap, so profile memory stays proportional to one image row
+  instead of width*height floats.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,
