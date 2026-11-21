@@ -47,7 +47,7 @@ was pushed to the remote.
 
 ## Verification
 
-- Full suite: `Ran 377 tests in 31.506s`, `OK`.
+- Full suite: `Ran 377 tests in 31.073s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - Working tree after the backend work contained only the other contributor's
   front-end changes; no backend file was left uncommitted.
