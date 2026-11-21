@@ -9,7 +9,13 @@ import tempfile
 import unittest
 
 from geoops.domain.datasets import register
-from geoops.geotiff import GeoTiffError, probe_geotiff, write_geotiff_mask
+from geoops.geotiff import (
+    TAG_GEOKEYS,
+    GeoTiffError,
+    _epsg_metadata,
+    probe_geotiff,
+    write_geotiff_mask,
+)
 
 
 def make_geotiff(path: str, epsg: int = 32650, pixel_is_point: bool = False, scale=None) -> str:
@@ -95,6 +101,19 @@ class GeoTiffTests(unittest.TestCase):
         self.assertEqual(info["height"], 4)
         self.assertEqual(info["bounds"], [0.0, 0.0, 4.0, 4.0])
         self.assertEqual(info["pixel_size"], [1.0, 1.0])
+
+    def test_the_projected_geo_key_beats_its_base_geographic_key(self) -> None:
+        # A projected GeoTIFF normally carries both 2048 (base geographic)
+        # and 3072 (projected). Key order must not decide the raster CRS.
+        keys = [1, 1, 0, 2, 2048, 0, 1, 4326, 3072, 0, 1, 32650]
+        found = _epsg_metadata({TAG_GEOKEYS: keys})
+        self.assertEqual(found["crs"], "EPSG:32650")
+        self.assertEqual(found["crs_model"], "projected")
+
+    def test_a_user_defined_crs_is_refused_not_mislabelled(self) -> None:
+        keys = [1, 1, 0, 1, 3072, 0, 1, 32767]
+        with self.assertRaises(GeoTiffError):
+            _epsg_metadata({TAG_GEOKEYS: keys})
 
     def test_a_non_numeric_gdal_nodata_tag_is_refused(self) -> None:
         path = os.path.join(self.tempdir, "bad-nodata.tif")

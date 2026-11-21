@@ -46,7 +46,6 @@ TAG_ASCII_PARAMS = 34737
 
 TYPE_SIZES = {1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 11: 4, 12: 8}
 BIG_TYPE_SIZES = {**TYPE_SIZES, 16: 8, 17: 8, 18: 8}
-EPSG_KEYS = {3072: "projected", 2048: "geographic"}
 LINEAR_UNITS = {
     9001: ("metre", 1.0),
     9002: ("foot", 0.3048),
@@ -320,6 +319,8 @@ def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
         "linear_unit_code": None,
         "linear_unit_m": 1.0,
     }
+    projected = None
+    geographic = None
     for index in range(key_count):
         base = 4 + index * 4
         if base + 3 >= len(geo_keys):
@@ -327,9 +328,10 @@ def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
         key_id, location, _count, value = geo_keys[base:base + 4]
         if location != 0 or not value:
             continue
-        if key_id in EPSG_KEYS:
-            found["crs"] = "EPSG:%d" % int(value)
-            found["crs_model"] = EPSG_KEYS[key_id]
+        if key_id == 3072:
+            projected = int(value)
+        elif key_id == 2048:
+            geographic = int(value)
         elif key_id == 1025:
             raster_type = int(value)
             if raster_type not in (1, 2):
@@ -345,6 +347,25 @@ def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
             else:
                 found["linear_unit"] = "EPSG:%d" % int(value)
                 found["linear_unit_m"] = 0.0
+    # A projected GeoTIFF normally carries both the base geographic CRS and
+    # the projected CRS. The projected key is the raster CRS; taking whichever
+    # key happened to come last would label a projected image as EPSG:4326.
+    if projected is not None:
+        if projected == 32767:
+            raise GeoTiffError(
+                "GeoTIFF uses a user-defined projected CRS (32767); "
+                "only an EPSG CRS can be read without guessing"
+            )
+        found["crs"] = "EPSG:%d" % projected
+        found["crs_model"] = "projected"
+    elif geographic is not None:
+        if geographic == 32767:
+            raise GeoTiffError(
+                "GeoTIFF uses a user-defined geographic CRS (32767); "
+                "only an EPSG CRS can be read without guessing"
+            )
+        found["crs"] = "EPSG:%d" % geographic
+        found["crs_model"] = "geographic"
     return found
 
 
