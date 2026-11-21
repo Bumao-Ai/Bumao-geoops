@@ -339,11 +339,7 @@ class DatasetRegistry:
             "dataset_id": dataset_id,
             "path": path,
             "format": "geotiff",
-            "read_mode": (
-                "pillow_full_image"
-                if info.get("compression") in (7, 34712)
-                else "streamed_blocks"
-            ),
+            "read_mode": str(info.get("read_mode") or "streamed_blocks"),
             "bands": int(info.get("bands") or 1),
             "band": int(info.get("band") or band),
             "ncols": ncols,

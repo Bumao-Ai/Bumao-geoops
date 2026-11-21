@@ -698,6 +698,7 @@ class GeoTiffPixelTests(unittest.TestCase):
             nodata=-9999.0,
         )
         profile = profile_geotiff_band(self.path)
+        self.assertEqual(profile["read_mode"], "streamed_blocks")
         self.assertEqual(profile["valid_cells"], 3)
         self.assertEqual(profile["nodata_cells"], 1)
         self.assertEqual(profile["non_finite_cells"], 0)

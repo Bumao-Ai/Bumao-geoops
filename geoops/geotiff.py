@@ -802,6 +802,9 @@ def profile_geotiff_band(path: str, band: int = 1) -> Dict[str, Any]:
             maximum = value if maximum is None or value > maximum else maximum
     return {
         **info,
+        "read_mode": (
+            "pillow_full_image" if info.get("compression") in (7, 34712) else "streamed_blocks"
+        ),
         "band": int(band),
         "cells": total,
         "valid_cells": valid,
