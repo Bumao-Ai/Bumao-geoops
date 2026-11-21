@@ -71,6 +71,22 @@ class ArtifactStoreTests(unittest.TestCase):
         with self.assertRaises(ArtifactError):
             self.store.verify(row["artifact_id"])
 
+    def test_verify_refuses_a_file_replaced_by_a_symlink(self) -> None:
+        row = self.store.register(self.path)
+        copy_path = os.path.join(self.root, "copy.tif")
+        with open(self.path, "rb") as source, open(copy_path, "wb") as destination:
+            destination.write(source.read())
+        os.remove(self.path)
+        try:
+            os.symlink(copy_path, self.path)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlink creation is unavailable: %s" % exc)
+        with self.assertRaises(ArtifactError) as caught:
+            self.store.verify(row["artifact_id"])
+        self.assertIn("symlink", str(caught.exception))
+        result = self.store.verify_all()[0]
+        self.assertFalse(result["ok"])
+
     def test_index_round_trip(self) -> None:
         self.store.register(self.path, task_id="TSK-1", kind="ortho")
         index = os.path.join(self.root, "artifacts.json")

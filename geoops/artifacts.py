@@ -218,6 +218,8 @@ class ArtifactStore:
             absolute = self._absolute(row["path"])
             if not os.path.exists(absolute):
                 raise ArtifactError("artifact file is gone: %s" % row["path"])
+            if os.path.islink(absolute):
+                raise ArtifactError("artifact is now a symlink: %s" % row["path"])
             if not os.path.isfile(absolute):
                 raise ArtifactError("artifact is no longer a regular file: %s" % row["path"])
             if _sha256(absolute) != row["sha256"]:

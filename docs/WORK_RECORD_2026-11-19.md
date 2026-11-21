@@ -119,7 +119,8 @@ here.
   `manifest.json` with hashes and provenance.
 - Archive verification now resolves manifest and file paths and refuses symlinks
   that leave the archive directory; audit verification reports an unreadable
-  encoding instead of raising.
+  encoding instead of raising. Artifact verification refuses a registered file
+  that has been replaced by a symlink.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
   that value when it does not declare its own step budget; a node override is
   also restricted to an integer 1–16.
