@@ -127,6 +127,27 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["cells"]["fn"], 1)
         self.assertEqual(result["cells"]["tn"], 1)
 
+    def test_streamed_geotiff_nodata_is_excluded(self) -> None:
+        reference = os.path.join(self.tmp.name, "stream_ref_nodata.tif")
+        predicted = os.path.join(self.tmp.name, "stream_pred_nodata.tif")
+        write_geotiff_mask(
+            reference, width=2, height=2, cellsize=10.0,
+            xllcorner=0.0, yllcorner=0.0, crs="EPSG:4547",
+            crs_model="projected", values=[1.0, -9999.0, 0.0, 1.0],
+            nodata=-9999.0,
+        )
+        write_geotiff_mask(
+            predicted, width=2, height=2, cellsize=10.0,
+            xllcorner=0.0, yllcorner=0.0, crs="EPSG:4547",
+            crs_model="projected", values=[1.0, 1.0, 0.0, 0.0],
+        )
+        result = compare_masks(reference, predicted)
+        self.assertEqual(result["cells"]["valid"], 3)
+        self.assertEqual(result["cells"]["skipped_nodata"], 1)
+        self.assertEqual(result["cells"]["tp"], 1)
+        self.assertEqual(result["cells"]["fn"], 1)
+        self.assertEqual(result["cells"]["tn"], 1)
+
     def test_mixed_ascii_reference_and_geotiff_prediction_align(self) -> None:
         reference = os.path.join(self.tmp.name, "mixed_ref.asc")
         predicted = os.path.join(self.tmp.name, "mixed_pred.tif")

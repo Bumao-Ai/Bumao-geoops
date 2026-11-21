@@ -80,7 +80,8 @@ here.
   so `changed_area_m2` and `min_area_m2` are real square metres rather than
   square degrees.
 - Non-square GeoTIFF cells keep their row height through change detection,
-  area, dataset profiles and mask output; ASCII masks refuse that geometry.- Projected GeoTIFF linear units (GeoKey 3076: metre, foot, US survey foot,
+  area, dataset profiles and mask output; ASCII masks refuse that geometry.
+- Projected GeoTIFF linear units (GeoKey 3076: metre, foot, US survey foot,
   yard) are converted to square metres for area and written back on the mask;
   unknown declared units are refused rather than silently called metres.
 - Archived deliverables can be re-verified: manifest and registry hashes,
@@ -160,7 +161,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 363 tests in 28.0s`, `OK`.
+- Full suite: `Ran 364 tests in 27.6s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
