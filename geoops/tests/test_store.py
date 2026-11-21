@@ -118,6 +118,37 @@ class SnapshotStoreTests(unittest.TestCase):
             self.store.restore(fresh, TaskEngine(fresh))
         self.assertEqual(len(fresh), 0)
 
+    def test_object_ids_cannot_be_paths(self) -> None:
+        registry = DomainRegistry()
+        for bad in ("../escape", "a/b", "a\\b", ".", "..", "a\x00b"):
+            with self.assertRaises(ValueError):
+                registry.register(ObjectType.PROJECT, bad, {"name": "bad"})
+
+    def test_a_snapshot_with_a_path_like_id_is_refused(self) -> None:
+        row = {
+            "object_id": "../escape",
+            "object_type": "Project",
+            "version": 1,
+            "status": "registered",
+            "created_at": "2026-11-16T00:00:00Z",
+            "payload": {"name": "bad"},
+        }
+        with open(self.path, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "format": FORMAT,
+                    "version": 1,
+                    "saved_at": "2026-11-16T00:00:00Z",
+                    "objects": [row],
+                    "tasks": [],
+                },
+                handle,
+            )
+        registry = DomainRegistry()
+        with self.assertRaises(StoreError):
+            self.store.restore(registry)
+        self.assertEqual(len(registry), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

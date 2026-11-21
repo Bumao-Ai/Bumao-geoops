@@ -66,6 +66,23 @@ class DomainRegistry:
         self._objects: Dict[str, DomainObject] = {}
         self._lock = threading.RLock()
 
+    @staticmethod
+    def _check_object_id(value: Any) -> str:
+        object_id = str(value or "").strip()
+        if not object_id:
+            raise ValueError("object_id must not be empty")
+        if (
+            object_id in (".", "..")
+            or "/" in object_id
+            or "\\" in object_id
+            or "\x00" in object_id
+            or any(ord(char) < 32 for char in object_id)
+        ):
+            raise ValueError(
+                "object_id must be a plain name, not a path: %r" % object_id
+            )
+        return object_id
+
     @_locked
     def register(
         self,
@@ -75,9 +92,7 @@ class DomainRegistry:
         status: str = "registered",
     ) -> DomainObject:
         object_type = ObjectType(object_type)
-        object_id = str(object_id or "").strip()
-        if not object_id:
-            raise ValueError("object_id must not be empty")
+        object_id = self._check_object_id(object_id)
         if object_id in self._objects:
             raise ValueError("duplicate object_id: %s" % object_id)
         obj = DomainObject(
@@ -137,9 +152,7 @@ class DomainRegistry:
         """
         if not isinstance(row, dict):
             raise ValueError("object row must be an object, got %r" % (row,))
-        object_id = str(row.get("object_id") or "").strip()
-        if not object_id:
-            raise ValueError("restored object_id must not be empty")
+        object_id = self._check_object_id(row.get("object_id"))
         if object_id in self._objects:
             raise ValueError("duplicate object_id: %s" % object_id)
         try:
