@@ -125,50 +125,57 @@ def _read_entries(path: str):
         except (ValueError, OSError) as exc:
             raise GeoTiffError("TIFF cannot be memory-mapped: %s" % exc) from exc
     entries = {}
-    for tag, typ, n, raw in _iter_entries(raw_file, endian, ifd_offset, big=big):
-        try:
-            entries[tag] = _read_field(raw_file, endian, typ, n, raw, big=big)
-        except GeoTiffError as exc:
-            # Unknown ancillary types (for example JPEGTables with type 7)
-            # are not fields this reader needs; a critical tag will still be
-            # absent and fail explicitly below.
-            if str(exc).startswith("unsupported TIFF field type"):
-                continue
-            raise
+    try:
+        for tag, typ, n, raw in _iter_entries(raw_file, endian, ifd_offset, big=big):
+            try:
+                entries[tag] = _read_field(raw_file, endian, typ, n, raw, big=big)
+            except GeoTiffError as exc:
+                # Unknown ancillary types (for example JPEGTables with type 7)
+                # are not fields this reader needs; a critical tag will still be
+                # absent and fail explicitly below.
+                if str(exc).startswith("unsupported TIFF field type"):
+                    continue
+                raise
+    except Exception:
+        raw_file.close()
+        raise
     return endian, raw_file, entries
 
 
 def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
     endian, raw_file, entries = _read_entries(path)
 
-    width = _first(entries.get(TAG_WIDTH))
-    height = _first(entries.get(TAG_HEIGHT))
-    samples = _first(entries.get(TAG_SAMPLES)) or 1
-    bits = _first(entries.get(TAG_BITS))
-    if not width or not height:
-        raise GeoTiffError("GeoTIFF has no image width/height")
+    try:
+        width = _first(entries.get(TAG_WIDTH))
+        height = _first(entries.get(TAG_HEIGHT))
+        samples = _first(entries.get(TAG_SAMPLES)) or 1
+        bits = _first(entries.get(TAG_BITS))
+        if not width or not height:
+            raise GeoTiffError("GeoTIFF has no image width/height")
 
-    metadata = _raster_metadata(entries, int(width), int(height))
-    crs = str(metadata.get("crs") or "")
-    if not crs and require_crs:
-        raise GeoTiffError("GeoTIFF has no EPSG GeoKey")
+        metadata = _raster_metadata(entries, int(width), int(height))
+        crs = str(metadata.get("crs") or "")
+        if not crs and require_crs:
+            raise GeoTiffError("GeoTIFF has no EPSG GeoKey")
 
-    return {
-        "driver": "GTiff",
-        "width": int(width),
-        "height": int(height),
-        "bands": int(samples),
-        "bits_per_sample": int(bits) if bits else None,
-        "crs": crs,
-        "crs_model": metadata.get("crs_model", ""),
-        "raster_type": metadata.get("raster_type", 1),
-        "linear_unit": metadata.get("linear_unit", ""),
-        "linear_unit_code": metadata.get("linear_unit_code"),
-        "linear_unit_m": metadata.get("linear_unit_m", 1.0),
-        "bounds": metadata["bounds"],
-        "pixel_size": metadata["pixel_size"],
-        "nodata": metadata.get("nodata"),
-    }
+        return {
+            "driver": "GTiff",
+            "width": int(width),
+            "height": int(height),
+            "bands": int(samples),
+            "bits_per_sample": int(bits) if bits else None,
+            "crs": crs,
+            "crs_model": metadata.get("crs_model", ""),
+            "raster_type": metadata.get("raster_type", 1),
+            "linear_unit": metadata.get("linear_unit", ""),
+            "linear_unit_code": metadata.get("linear_unit_code"),
+            "linear_unit_m": metadata.get("linear_unit_m", 1.0),
+            "bounds": metadata["bounds"],
+            "pixel_size": metadata["pixel_size"],
+            "nodata": metadata.get("nodata"),
+        }
+    finally:
+        raw_file.close()
 
 
 def _packbits_decode(data: bytes) -> bytes:
