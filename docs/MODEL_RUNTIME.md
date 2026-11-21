@@ -105,7 +105,7 @@ python -m geoops.ai probe
 python -m geoops.ai chat "用一句中文说明你能为测绘成果做什么"
 ```
 
-`status` 只读环境变量并打印配置状态，不打印密钥；`probe` 和 `chat` 是真实 HTTP 请求。
+`status` 只读环境变量并打印配置状态，不打印密钥；`probe` 和 `chat` 是真实 HTTP 请求。`chat` 的 `temperature` 取 0–2 的有限数，`max_tokens` 取 1–8192 的整数，超时 1–300 秒；非法值在发请求前以 `INVALID_OPTION` 拒绝。
 
 ### 4.2 HTTP API
 
