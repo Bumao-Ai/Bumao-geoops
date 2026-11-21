@@ -646,8 +646,16 @@ def iter_geotiff_band_values(path: str, band: int = 1):
                         "separate planar StripOffsets do not match bands"
                     )
                 strips_per_plane = len(offsets) // samples
+                if strips_per_plane != 1:
+                    raise GeoTiffError(
+                        "TIFF has more than one strip for a one-strip image"
+                    )
                 block_index = (band - 1) * strips_per_plane
             else:
+                if len(offsets) != 1:
+                    raise GeoTiffError(
+                        "TIFF has more than one strip for a one-strip image"
+                    )
                 block_index = 0
             strip_offset = int(offsets[block_index])
             bytes_per_sample = bits // 8
