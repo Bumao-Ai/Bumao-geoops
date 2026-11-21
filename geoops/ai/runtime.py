@@ -98,12 +98,24 @@ class ModelRuntime:
         self.base_url = str(base_url or "").strip().rstrip("/")
         self.api_key = str(api_key or "").strip()
         self.model = str(model or "").strip()
-        try:
-            self.timeout_s = max(1.0, min(300.0, float(timeout_s)))
-        except (TypeError, ValueError):
-            self.timeout_s = 60.0
         self.config_file = str(config_file or "").strip()
         self.config_error = str(config_error or "").strip()
+        self.timeout_s = 60.0
+        try:
+            parsed_timeout = float(timeout_s)
+        except (TypeError, ValueError):
+            parsed_timeout = None
+        if parsed_timeout is None:
+            timeout_error = "GEOOPS_MODEL_TIMEOUT must be a number"
+        elif not math.isfinite(parsed_timeout) or parsed_timeout < 1 or parsed_timeout > 300:
+            timeout_error = "GEOOPS_MODEL_TIMEOUT must be between 1 and 300 seconds"
+        else:
+            timeout_error = ""
+            self.timeout_s = parsed_timeout
+        if timeout_error:
+            self.config_error = "; ".join(
+                part for part in (self.config_error, timeout_error) if part
+            )
 
     @classmethod
     def from_env(cls, env_file: Optional[str] = None) -> "ModelRuntime":

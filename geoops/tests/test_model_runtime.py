@@ -148,6 +148,20 @@ class ModelRuntimeTests(unittest.TestCase):
             self.assertEqual(status["state"], "CONFIG_ERROR")
             self.assertIn("unknown key", status["reason"])
 
+    def test_an_invalid_timeout_is_a_config_error_not_a_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, "model.env")
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write("GEOOPS_MODEL_BASE_URL=http://127.0.0.1:%d/v1\n" % _Provider.port)
+                handle.write("GEOOPS_MODEL_NAME=file-model\n")
+                handle.write("GEOOPS_MODEL_TIMEOUT=not-a-number\n")
+            with patch.dict(os.environ, {}, clear=True):
+                runtime = ModelRuntime.from_env(path)
+                status = runtime.status()
+            self.assertFalse(status["configured"])
+            self.assertEqual(status["state"], "CONFIG_ERROR")
+            self.assertIn("GEOOPS_MODEL_TIMEOUT", status["reason"])
+
     def test_invoke_sends_real_http_request(self):
         result = self.runtime.invoke("请回答 OK", system="你是测试助手", max_tokens=16)
         self.assertEqual(result["text"], "OK")
