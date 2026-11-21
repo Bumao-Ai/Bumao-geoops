@@ -116,12 +116,19 @@ def register(path: Optional[str]) -> DatasetRecord:
         )
     sidecar, source = _probe_sidecar(absolute)
     crs = str(sidecar.get("crs") or "").strip()
-    crs_model = str(sidecar.get("crs_model") or "").strip().lower()
-    if crs_model not in ("geographic", "projected"):
+    raw_model = str(sidecar.get("crs_model") or "").strip()
+    crs_model = raw_model.lower()
+    invalid_sidecar_model = bool(raw_model) and crs_model not in (
+        "geographic",
+        "projected",
+    )
+    if invalid_sidecar_model:
         crs_model = ""
     extra: Dict[str, Any] = {}
-    metadata_conflict = False
+    metadata_conflict = invalid_sidecar_model
     reason = "" if crs else "CRS field is empty in sidecar metadata"
+    if invalid_sidecar_model:
+        reason = "sidecar crs_model must be geographic or projected: %r" % raw_model
     if os.path.splitext(absolute)[1].lower() in (".tif", ".tiff"):
         try:
             info = probe_geotiff(absolute, require_crs=False)

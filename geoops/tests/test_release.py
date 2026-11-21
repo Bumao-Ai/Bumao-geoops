@@ -168,6 +168,19 @@ class DatasetTests(unittest.TestCase):
             self.datasets.register("PRJ-1", path)
         self.assertIn("metadata conflict", str(caught.exception))
 
+    def test_an_invalid_sidecar_crs_model_is_not_ignored(self) -> None:
+        path = os.path.join(self.tempdir, "bad-model.tif")
+        write_geotiff_mask(
+            path, width=2, height=2, cellsize=10.0, cellsize_y=10.0,
+            xllcorner=0.0, yllcorner=0.0, crs="EPSG:4547",
+            crs_model="projected", values=[1.0, 2.0, 3.0, 4.0],
+        )
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547", "crs_model": "banana"}, handle)
+        with self.assertRaises(DatasetError) as caught:
+            self.datasets.register("PRJ-1", path)
+        self.assertIn("crs_model", str(caught.exception))
+
     def test_profile_reads_real_geotiff_pixels(self) -> None:
         path = os.path.join(self.tempdir, "tile.tif")
         _georeferenced_tiff(path, [1, 2, 3, 4])
