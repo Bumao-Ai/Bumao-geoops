@@ -51,6 +51,9 @@ All notable changes to this project are documented in this file.
 - An uncompressed GeoTIFF whose whole image is one strip is now read row by
   row from the mmap, so profile memory stays proportional to one image row
   instead of width*height floats.
+- API JSON responses replace non-finite floats (for example a NaN NODATA
+  sentinel) with null and encode with `allow_nan=False`, so clients receive
+  valid JSON instead of Python's `NaN`/`Infinity` literals.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

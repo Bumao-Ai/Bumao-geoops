@@ -144,6 +144,9 @@ here.
 - 64-bit GeoTIFF samples are decoded for unsigned/signed integer and Float64.
 - A one-strip uncompressed GeoTIFF is streamed one image row at a time from the
   mmap instead of decoding the whole strip as a float list.
+- API JSON encoding converts non-finite floats (including a NaN NODATA
+  sentinel) to null and refuses NaN/Infinity literals, so the response stays
+  valid JSON for browsers.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
   that value when it does not declare its own step budget; a node override is
   also restricted to an integer 1–16.
@@ -161,7 +164,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 364 tests in 27.6s`, `OK`.
+- Full suite: `Ran 365 tests in 28.6s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

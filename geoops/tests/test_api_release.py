@@ -88,6 +88,15 @@ class ReleaseApiTests(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertEqual(payload["project"]["payload"]["crs"], "EPSG:4547")
 
+    def test_non_finite_numbers_never_reach_json(self) -> None:
+        from geoops.api.app import _json_safe
+
+        safe = _json_safe(
+            {"nodata": float("nan"), "values": [1.0, float("inf"), -float("inf")]}
+        )
+        self.assertEqual(safe, {"nodata": None, "values": [1.0, None, None]})
+        self.assertEqual(json.dumps(safe, allow_nan=False), '{"nodata": null, "values": [1.0, null, null]}')
+
     def test_dataset_is_registered_with_a_real_file(self) -> None:
         path = os.path.join(self.tempdir, "grid.asc")
         with open(path, "w", encoding="utf-8") as handle:

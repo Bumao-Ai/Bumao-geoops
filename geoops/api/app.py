@@ -62,6 +62,7 @@ built-in accounts; the caller supplies the grants.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -88,6 +89,17 @@ from geoops.workflow import (
 )
 
 MAX_BODY_BYTES = 64 * 1024
+
+
+def _json_safe(value):
+    """Make numbers JSON-spec clean; Python would otherwise emit NaN/Infinity."""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
 TRANSITION_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/transitions$")
 TASK_ACTION_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/(start|pause|resume|cancel)$")
 TRACE_PATH = re.compile(r"^/api/v1/tasks/([^/]+)/trace$")
@@ -1126,7 +1138,9 @@ def create_server(
             return payload
 
         def _json(self, code: int, payload: Dict[str, Any]):
-            body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+            body = json.dumps(
+                _json_safe(payload), ensure_ascii=False, default=str, allow_nan=False
+            ).encode("utf-8")
             self.send_response(code)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
