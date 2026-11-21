@@ -167,7 +167,11 @@ def register(path: Optional[str]) -> DatasetRecord:
     return DatasetRecord(
         dataset_id="DS-" + digest[:12],
         path=absolute,
-        status=STATUS_READY if crs and georeferenced else STATUS_INCOMPLETE,
+        status=(
+            STATUS_READY
+            if crs and georeferenced and not metadata_conflict
+            else STATUS_INCOMPLETE
+        ),
         size_bytes=size_bytes,
         sha256=digest,
         crs=crs,

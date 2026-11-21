@@ -155,7 +155,7 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(profile["max"], 2.0)
         self.assertEqual(profile["mean"], 1.5)
 
-    def test_validate_flags_a_sidecar_crs_conflict(self) -> None:
+    def test_a_sidecar_crs_conflict_is_refused_at_registration(self) -> None:
         path = os.path.join(self.tempdir, "conflict.tif")
         write_geotiff_mask(
             path, width=2, height=2, cellsize=10.0, cellsize_y=10.0,
@@ -164,14 +164,9 @@ class DatasetTests(unittest.TestCase):
         )
         with open(path + ".json", "w", encoding="utf-8") as handle:
             json.dump({"crs": "EPSG:4326", "crs_model": "geographic"}, handle)
-        dataset = self.datasets.register("PRJ-1", path)
-        self.assertTrue(dataset.payload["metadata_conflict"])
-        result = self.datasets.validate(dataset.object_id)
-        self.assertEqual(result["status"], "FAIL")
-        check = [row for row in result["checks"] if row["name"] == "metadata_conflict"][0]
-        self.assertEqual(check["status"], "FAIL")
-        with self.assertRaises(DatasetError):
-            self.datasets.profile(dataset.object_id)
+        with self.assertRaises(DatasetError) as caught:
+            self.datasets.register("PRJ-1", path)
+        self.assertIn("metadata conflict", str(caught.exception))
 
     def test_profile_reads_real_geotiff_pixels(self) -> None:
         path = os.path.join(self.tempdir, "tile.tif")
