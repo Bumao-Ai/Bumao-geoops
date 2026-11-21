@@ -17,9 +17,14 @@ All notable changes to this project are documented in this file.
   re-probe. Raster profiles count non-finite cells separately instead of letting
   NaN/Inf poison min/max/mean; mask metrics exclude them from the confusion
   matrix, and an undeclared NODATA value is no longer assumed to be -9999.
+  Change detection counts NODATA and non-finite cells separately, `threshold=0`
+  marks only real non-zero differences, and a mask refuses a non-finite NODATA
+  sentinel or writes a fractional one consistently in header and cells.
 - A sidecar CRS or CRS model that contradicts the GeoTIFF header is recorded as
   `metadata_conflict` and fails re-validation; raster reads refuse it instead of
   choosing one source and silently computing area on the wrong units.
+- Archive verification resolves each manifest path and refuses a symlink that
+  leaves the archive directory, even when the target's hash happens to match.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

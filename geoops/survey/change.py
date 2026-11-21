@@ -3,7 +3,8 @@
 This is a real calculation, not a placeholder: two aligned grids are read,
 cells whose absolute difference reaches the threshold are marked, 4-neighbour
 connectivity groups them into patches, and patches smaller than the declared
-minimum area are dropped before the mask is written. Values come from the
+minimum area are dropped before the mask is written. A threshold of zero means
+any non-zero difference; a positive threshold is inclusive. Values come from the
 files; nothing is invented.
 
 The output is an ESRI ASCII grid by default, or a one-band float32 GeoTIFF when
@@ -444,21 +445,21 @@ def detect_changes(
     mask: List[int] = []
     invalid_mask: List[bool] = []
     nodata_cells = 0
+    non_finite_cells = 0
     changed_cells = 0
     for left, right in zip(baseline["values"], comparison["values"]):
-        invalid = (
-            is_nodata(left, nodata_a)
-            or is_nodata(right, nodata_b)
-            or not math.isfinite(left)
-            or not math.isfinite(right)
-        )
-        if invalid:
+        if is_nodata(left, nodata_a) or is_nodata(right, nodata_b):
             nodata_cells += 1
             mask.append(0)
             invalid_mask.append(True)
             continue
+        if not math.isfinite(left) or not math.isfinite(right):
+            non_finite_cells += 1
+            mask.append(0)
+            invalid_mask.append(True)
+            continue
         invalid_mask.append(False)
-        changed = abs(right - left) >= threshold
+        changed = (right != left) if threshold == 0 else abs(right - left) >= threshold
         mask.append(1 if changed else 0)
         if changed:
             changed_cells += 1
@@ -509,6 +510,7 @@ def detect_changes(
         "kept_cells": kept_cells,
         "dropped_cells": changed_cells - kept_cells,
         "nodata_cells": nodata_cells,
+        "non_finite_cells": non_finite_cells,
         "changed_area_m2": changed_area,
         "patches": [
             {
@@ -549,6 +551,12 @@ def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -
     path = str(path or "").strip()
     if not path:
         raise ChangeError("output path must not be empty")
+    try:
+        nodata_value = float(nodata_value)
+    except (TypeError, ValueError) as exc:
+        raise ChangeError("nodata_value must be a finite number") from exc
+    if not math.isfinite(nodata_value):
+        raise ChangeError("nodata_value must be a finite number")
     cellsize_y = float(result.get("cellsize_y") or result["cellsize"])
     is_tiff = path.lower().endswith((".tif", ".tiff"))
     if not is_tiff and abs(cellsize_y - float(result["cellsize"])) > 1e-9:
@@ -589,13 +597,14 @@ def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -
     path = os.path.abspath(path)
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     header = result["header"]
+    nodata_text = repr(nodata_value)
     lines = [
         "ncols %d" % result["ncols"],
         "nrows %d" % result["nrows"],
         "xllcorner %s" % repr(header["xllcorner"]),
         "yllcorner %s" % repr(header["yllcorner"]),
         "cellsize %s" % repr(result["cellsize"]),
-        "NODATA_value %s" % repr(nodata_value),
+        "NODATA_value %s" % nodata_text,
     ]
     mask = result["mask"]
     invalid = result["invalid_mask"]
@@ -604,7 +613,7 @@ def write_change_mask(result: Dict[str, Any], path: str, nodata_value: float = -
         cells = []
         for col in range(ncols):
             index = row * ncols + col
-            cells.append(str(int(nodata_value)) if invalid[index] else str(mask[index]))
+            cells.append(nodata_text if invalid[index] else str(mask[index]))
         lines.append(" ".join(cells))
     text = "\n".join(lines) + "\n"
     temp_path = path + ".tmp"

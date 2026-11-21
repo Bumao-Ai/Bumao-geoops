@@ -143,6 +143,14 @@ class AuditFileTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("missing", result["error"])
 
+    def test_verify_reports_an_unreadable_encoding(self) -> None:
+        log = AuditLog(path=self.path)
+        with open(self.path, "wb") as handle:
+            handle.write(b"\xff\xfe not utf-8\n")
+        result = log.verify()
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["error"])
+
     def test_limit_trims_the_oldest_rows(self) -> None:
         log = AuditLog(limit=2, path=self.path)
         for index in range(4):

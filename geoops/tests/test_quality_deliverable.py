@@ -152,6 +152,29 @@ class QualityDeliverableTests(unittest.TestCase):
         self.assertFalse(tampered["ok"])
         self.assertTrue(any("does not match" in problem for problem in tampered["problems"]))
 
+    def test_archive_verification_refuses_a_symlink_outside_the_archive(self) -> None:
+        ReviewEngine(self.registry).submit(
+            self.task.task_id, self.deliverable.object_id, "reviewer", "APPROVE", "通过"
+        )
+        archive_dir = os.path.join(self.tempdir, "symlink-archive")
+        archived = DeliverableRegistry(self.registry, archive_dir=archive_dir).archive(
+            self.deliverable.object_id, actor="tester", note="最终归档"
+        )
+        target = archived.payload["archive_file"]
+        outside = os.path.join(self.tempdir, "outside-copy.asc")
+        with open(target, "rb") as source, open(outside, "wb") as destination:
+            destination.write(source.read())
+        os.remove(target)
+        try:
+            os.symlink(outside, target)
+        except (OSError, NotImplementedError) as exc:
+            self.skipTest("symlink creation is unavailable: %s" % exc)
+        report = DeliverableRegistry(self.registry, archive_dir=archive_dir).verify_archive(
+            self.deliverable.object_id
+        )
+        self.assertFalse(report["ok"])
+        self.assertTrue(any("outside the archive" in problem for problem in report["problems"]))
+
     def test_professional_sample_requires_a_note(self) -> None:
         with self.assertRaises(QualityError):
             self.quality.evaluate(

@@ -351,7 +351,7 @@ class AuditLog:
             }
         try:
             loaded = self._read_file(path)
-        except (AuditError, OSError) as exc:
+        except (AuditError, OSError, UnicodeDecodeError) as exc:
             return {
                 "path": path,
                 "exists": True,

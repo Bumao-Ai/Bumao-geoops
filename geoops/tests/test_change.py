@@ -149,6 +149,14 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(result["patches"][0]["col_max"], 2)
         self.assertEqual(result["changed_area_m2"], 200)
 
+    def test_zero_threshold_only_marks_real_differences(self) -> None:
+        unchanged = detect_changes(self.baseline, self.baseline, threshold=0, min_area_m2=0)
+        self.assertEqual(unchanged["changed_cells"], 0)
+        self.assertEqual(unchanged["nodata_cells"], 1)
+        self.assertEqual(unchanged["patches"], [])
+        changed = detect_changes(self.baseline, self.comparison, threshold=0, min_area_m2=0)
+        self.assertEqual(changed["changed_cells"], 3)
+
     def test_high_threshold_finds_nothing(self) -> None:
         result = detect_changes(self.baseline, self.comparison, threshold=11)
         self.assertEqual(result["changed_cells"], 1)
@@ -172,6 +180,22 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual([value for value in mask["values"] if value == 1], [1, 1])
         self.assertEqual(mask["values"][-1], -9999)
         self.assertEqual(mask["ncols"], 5)
+
+    def test_a_fractional_nodata_sentinel_is_written_consistently(self) -> None:
+        result = detect_changes(self.baseline, self.comparison, threshold=1, min_area_m2=150)
+        mask_path = write_change_mask(
+            result, os.path.join(self.tempdir, "fractional.asc"), nodata_value=-9999.5
+        )
+        mask = read_ascii_grid(mask_path)
+        self.assertEqual(mask["header"]["nodata_value"], -9999.5)
+        self.assertEqual(mask["values"][-1], -9999.5)
+
+    def test_write_change_mask_refuses_a_non_finite_nodata(self) -> None:
+        result = detect_changes(self.baseline, self.comparison, threshold=1, min_area_m2=150)
+        with self.assertRaises(ChangeError):
+            write_change_mask(
+                result, os.path.join(self.tempdir, "bad-nodata.asc"), nodata_value=float("nan")
+            )
 
     def test_geotiff_mask_is_a_real_tiff_with_source_georeferencing(self) -> None:
         result = detect_changes(self.baseline, self.comparison, threshold=1, min_area_m2=150)
@@ -398,7 +422,8 @@ class ChangeTests(unittest.TestCase):
             COMPARISON.replace("10 10 10 10 10", "1e999 10 10 10 10", 1),
         )
         result = detect_changes(self.baseline, broken, threshold=1, min_area_m2=0)
-        self.assertEqual(result["nodata_cells"], 2)
+        self.assertEqual(result["nodata_cells"], 1)
+        self.assertEqual(result["non_finite_cells"], 1)
         self.assertTrue(result["invalid_mask"][0])
         self.assertEqual(result["changed_cells"], 3)
 

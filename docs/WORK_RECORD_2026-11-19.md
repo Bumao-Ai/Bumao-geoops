@@ -110,11 +110,16 @@ here.
   to be -9999. A sidecar CRS/model that contradicts the GeoTIFF header is
   recorded as `metadata_conflict`, fails re-validation and is refused by raster
   reads instead of silently computing area on the wrong units.
+- `threshold=0` now marks only real non-zero differences; a fractional NODATA
+  sentinel is written consistently, and a non-finite one is refused.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
   archival copies the verified file into its own folder and writes a
   `manifest.json` with hashes and provenance.
+- Archive verification now resolves manifest and file paths and refuses symlinks
+  that leave the archive directory; audit verification reports an unreadable
+  encoding instead of raising.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
   that value when it does not declare its own step budget; a node override is
   also restricted to an integer 1–16.
@@ -132,7 +137,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 339 tests in 29.0s`, `OK`.
+- Full suite: `Ran 344 tests in 28.2s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

@@ -200,7 +200,11 @@ class DeliverableRegistry:
             manifest_real = os.path.realpath(manifest_path)
             if self.archive_dir:
                 root_real = os.path.realpath(self.archive_dir)
-                if os.path.commonpath([root_real, manifest_real]) != root_real:
+                try:
+                    inside = os.path.commonpath([root_real, manifest_real]) == root_real
+                except ValueError:
+                    inside = False
+                if not inside:
                     problems.append("archive manifest is outside the archive directory")
             try:
                 with open(manifest_path, encoding="utf-8-sig") as handle:
@@ -232,6 +236,17 @@ class DeliverableRegistry:
                     files.append({"path": relative, "ok": False})
                     continue
                 target = os.path.join(os.path.dirname(manifest_path), relative)
+                if self.archive_dir:
+                    root_real = os.path.realpath(self.archive_dir)
+                    target_real = os.path.realpath(target)
+                    try:
+                        inside = os.path.commonpath([root_real, target_real]) == root_real
+                    except ValueError:
+                        inside = False
+                    if not inside:
+                        problems.append("archive file resolves outside the archive directory: %s" % relative)
+                        files.append({"path": relative, "ok": False})
+                        continue
                 exists = os.path.isfile(target)
                 actual_sha = _sha256(target) if exists else ""
                 actual_size = os.path.getsize(target) if exists else 0
