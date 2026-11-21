@@ -7,6 +7,7 @@ the current scaffold.
 
 from __future__ import annotations
 
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -49,12 +50,23 @@ class DomainObject:
         }
 
 
+def _locked(method):
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    wrapper.__name__ = method.__name__
+    return wrapper
+
+
 class DomainRegistry:
     """Register typed domain objects and fetch them by id."""
 
     def __init__(self) -> None:
         self._objects: Dict[str, DomainObject] = {}
+        self._lock = threading.RLock()
 
+    @_locked
     def register(
         self,
         object_type: Any,
@@ -79,13 +91,16 @@ class DomainRegistry:
         self._objects[object_id] = obj
         return obj
 
+    @_locked
     def get(self, object_id: str) -> Optional[DomainObject]:
         return self._objects.get(str(object_id or ""))
 
+    @_locked
     def list_by_type(self, object_type: Any) -> List[DomainObject]:
         object_type = ObjectType(object_type)
         return [obj for obj in self._objects.values() if obj.object_type is object_type]
 
+    @_locked
     def update(
         self,
         object_id: str,
@@ -109,9 +124,11 @@ class DomainRegistry:
         obj.version += 1
         return obj
 
+    @_locked
     def all(self) -> List[DomainObject]:
         return list(self._objects.values())
 
+    @_locked
     def restore(self, row: Dict[str, Any]) -> DomainObject:
         """Re-create an object exactly as recorded, keeping version and time.
 

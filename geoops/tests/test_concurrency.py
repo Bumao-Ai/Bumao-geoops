@@ -31,6 +31,32 @@ def build_state(count: int = 120):
     return registry, tasks
 
 
+class RegistryConcurrencyTests(unittest.TestCase):
+    def test_parallel_duplicate_id_only_one_registration_wins(self) -> None:
+        registry = DomainRegistry()
+        barrier = threading.Barrier(2)
+        successes = []
+        failures = []
+
+        def worker():
+            barrier.wait(timeout=5)
+            try:
+                successes.append(
+                    registry.register(ObjectType.PROJECT, "PRJ-RACE", {"name": "race"})
+                )
+            except Exception as exc:
+                failures.append("%s: %s" % (type(exc).__name__, exc))
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(len(successes), 1)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("duplicate object_id", failures[0])
+
+
 class SnapshotConcurrencyTests(unittest.TestCase):
     def setUp(self) -> None:
         self.tempdir = tempfile.mkdtemp(prefix="geoops-concurrency-")

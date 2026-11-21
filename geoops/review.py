@@ -9,6 +9,7 @@ quietly replaced.
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from typing import Any, Dict, List, Optional
@@ -29,8 +30,30 @@ def _now() -> str:
 class ReviewEngine:
     def __init__(self, registry: DomainRegistry) -> None:
         self.registry = registry
+        self._lock = threading.RLock()
 
     def submit(
+        self,
+        task_id: str,
+        deliverable_id: str,
+        reviewer: str,
+        decision: str,
+        opinion: str = "",
+        review_id: str = "",
+        quality_report_id: str = "",
+    ) -> DomainObject:
+        with self._lock:
+            return self._submit(
+                task_id,
+                deliverable_id,
+                reviewer,
+                decision,
+                opinion,
+                review_id,
+                quality_report_id,
+            )
+
+    def _submit(
         self,
         task_id: str,
         deliverable_id: str,

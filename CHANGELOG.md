@@ -23,10 +23,9 @@ All notable changes to this project are documented in this file.
 - A sidecar CRS or CRS model that contradicts the GeoTIFF header is recorded as
   `metadata_conflict` and fails re-validation; raster reads refuse it instead of
   choosing one source and silently computing area on the wrong units.
-- Archive verification resolves each manifest path and refuses a symlink that
-  leaves the archive directory, even when the target's hash happens to match.
-  Artifact verification likewise refuses a registered file that has been
-  replaced by a symlink.
+- Domain registry mutations, task transitions and review submission are now
+  serialized with re-entrant locks, so concurrent requests cannot double-create
+  an id, apply two conflicting task edges or sign off the same deliverable twice.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

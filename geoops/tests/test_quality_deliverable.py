@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import threading
 import unittest
 
 from geoops.domain import DeliverableError, DeliverableRegistry, DomainRegistry, TaskEngine
@@ -94,6 +95,31 @@ class QualityDeliverableTests(unittest.TestCase):
         self.assertEqual(written["data"]["target_id"], self.dataset.object_id)
         self.assertEqual(written["evidence"]["target_id"], self.dataset.object_id)
         self.assertEqual(written["evidence"]["target_sha256"], self.dataset.payload["sha256"])
+
+    def test_concurrent_approvals_only_one_signs_off(self) -> None:
+        engine = ReviewEngine(self.registry)
+        barrier = threading.Barrier(2)
+        successes = []
+        failures = []
+
+        def worker(reviewer):
+            barrier.wait(timeout=5)
+            try:
+                successes.append(
+                    engine.submit(self.task.task_id, self.deliverable.object_id, reviewer, "APPROVE")
+                )
+            except Exception as exc:
+                failures.append("%s: %s" % (type(exc).__name__, exc))
+
+        threads = [threading.Thread(target=worker, args=("reviewer-%d" % i,)) for i in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(len(successes), 1)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("already finally accepted", failures[0])
+        self.assertEqual(self.deliverables.get(self.deliverable.object_id).status, "accepted")
 
     def test_archive_requires_acceptance(self) -> None:
         with self.assertRaises(Exception):

@@ -7,6 +7,7 @@ Standard library only: run with
 
 from __future__ import annotations
 
+import threading
 import unittest
 
 from geoops.domain import DomainRegistry, ObjectType, TaskEngine, TaskError, TaskStatus
@@ -100,6 +101,32 @@ class TaskEngineTests(unittest.TestCase):
         with self.assertRaises(TaskError):
             self.engine.attach_run(task.task_id, "")
         self.assertEqual(self.engine.get(task.task_id).workflow_run_ids, ["RUN-TEST-001"])
+
+    def test_concurrent_transitions_apply_only_one_edge(self) -> None:
+        task = self._create()
+        self.engine.transition(task.task_id, TaskStatus.READY, reason="preconditions listed")
+        barrier = threading.Barrier(2)
+        successes = []
+        failures = []
+
+        def worker():
+            barrier.wait(timeout=5)
+            try:
+                successes.append(
+                    self.engine.transition(task.task_id, TaskStatus.RUNNING, reason="started")
+                )
+            except Exception as exc:
+                failures.append("%s: %s" % (type(exc).__name__, exc))
+
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(len(successes), 1)
+        self.assertEqual(len(failures), 1)
+        self.assertIn("already RUNNING", failures[0])
+        self.assertEqual(self.engine.transition_count(task.task_id), 2)
 
     def test_unknown_task_and_unknown_status(self) -> None:
         with self.assertRaises(TaskError):

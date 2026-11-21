@@ -13,6 +13,7 @@ success in the record.
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -88,6 +89,15 @@ class SurveyTask:
         }
 
 
+def _locked(method):
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    wrapper.__name__ = method.__name__
+    return wrapper
+
+
 class TaskEngine:
     """Create survey tasks and drive their state machine.
 
@@ -99,7 +109,9 @@ class TaskEngine:
     def __init__(self, registry: DomainRegistry) -> None:
         self.registry = registry
         self._tasks: Dict[str, SurveyTask] = {}
+        self._lock = threading.RLock()
 
+    @_locked
     def create(
         self,
         project_id: str,
@@ -149,6 +161,7 @@ class TaskEngine:
     def get(self, task_id: str) -> Optional[SurveyTask]:
         return self._tasks.get(str(task_id or ""))
 
+    @_locked
     def restore(self, row: Dict[str, Any]) -> SurveyTask:
         """Rebuild a task from a snapshot, keeping status, version and history."""
         if not isinstance(row, dict):
@@ -214,6 +227,7 @@ class TaskEngine:
             raise TaskError("unknown task_id: %s" % task_id)
         return sorted(status.value for status in ALLOWED[task.status])
 
+    @_locked
     def transition(
         self,
         task_id: str,
@@ -257,6 +271,7 @@ class TaskEngine:
         self._sync(task)
         return task
 
+    @_locked
     def attach_run(self, task_id: str, run_id: str) -> SurveyTask:
         """Record a workflow run against a task. Runs attach while running."""
         task = self.get(task_id)
