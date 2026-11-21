@@ -69,7 +69,9 @@ All notable changes to this project are documented in this file.
   as `CONFIG_ERROR` instead of becoming 60 seconds unnoticed.
 - Object ids are used as archive folder names, so `register` and snapshot
   restore now refuse a path-like id such as `../escape`. A relative artifact
-  path must resolve inside the artifact store root.
+  path must resolve inside the artifact store root. An accepted deliverable
+  without a configured archive directory is refused instead of becoming
+  `archived` with no copied file or manifest.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,
