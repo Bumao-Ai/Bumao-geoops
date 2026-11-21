@@ -32,6 +32,7 @@ class DatasetRecord:
     size_bytes: Optional[int] = None
     sha256: str = ""
     crs: str = ""
+    crs_model: str = ""
     metadata_source: str = "none"
     reason: str = ""
     width: Optional[int] = None
@@ -48,6 +49,7 @@ class DatasetRecord:
             "size_bytes": self.size_bytes,
             "sha256": self.sha256,
             "crs": self.crs,
+            "crs_model": self.crs_model,
             "metadata_source": self.metadata_source,
             "reason": self.reason,
             "width": self.width,
@@ -102,6 +104,9 @@ def register(path: Optional[str]) -> DatasetRecord:
         )
     sidecar, source = _probe_sidecar(absolute)
     crs = str(sidecar.get("crs") or "").strip()
+    crs_model = str(sidecar.get("crs_model") or "").strip().lower()
+    if crs_model not in ("geographic", "projected"):
+        crs_model = ""
     extra: Dict[str, Any] = {}
     reason = "" if crs else "CRS field is empty in sidecar metadata"
     if os.path.splitext(absolute)[1].lower() in (".tif", ".tiff"):
@@ -113,12 +118,24 @@ def register(path: Optional[str]) -> DatasetRecord:
         else:
             extra = info
             header_crs = str(info.get("crs") or "").strip()
+            header_model = str(info.get("crs_model") or "").strip().lower()
+            if header_model not in ("geographic", "projected"):
+                header_model = ""
             if not crs:
                 crs = header_crs
                 source = "geotiff-header"
                 reason = "" if crs else "GeoTIFF header has no EPSG GeoKey"
+                crs_model = crs_model or header_model
             elif header_crs and header_crs.upper().replace(" ", "") != crs.upper().replace(" ", ""):
                 reason = "sidecar CRS overrides GeoTIFF header %s" % header_crs
+            else:
+                crs_model = crs_model or header_model
+    if not crs_model:
+        normalized = crs.upper().replace(" ", "")
+        if normalized == "EPSG:4326":
+            crs_model = "geographic"
+        elif normalized == "EPSG:3857":
+            crs_model = "projected"
     return DatasetRecord(
         dataset_id="DS-" + digest[:12],
         path=absolute,
@@ -126,6 +143,7 @@ def register(path: Optional[str]) -> DatasetRecord:
         size_bytes=size_bytes,
         sha256=digest,
         crs=crs,
+        crs_model=crs_model,
         metadata_source=source,
         reason=reason,
         width=extra.get("width"),

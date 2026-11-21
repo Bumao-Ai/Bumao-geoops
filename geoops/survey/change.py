@@ -342,6 +342,35 @@ def _patch_area_m2(cells: List[int], ncols: int, row_areas: List[float]) -> floa
     return sum(row_areas[cell // ncols] for cell in cells)
 
 
+def _patch_geometry(
+    cells: List[int],
+    ncols: int,
+    nrows: int,
+    xllcorner: float,
+    yllcorner: float,
+    cellsize_x: float,
+    cellsize_y: float,
+) -> Dict[str, Any]:
+    """Map a patch's cells to its footprint and cell-centre centroid."""
+    rows = [cell // ncols for cell in cells]
+    cols = [cell % ncols for cell in cells]
+    left = xllcorner + min(cols) * cellsize_x
+    right = xllcorner + (max(cols) + 1) * cellsize_x
+    top = yllcorner + nrows * cellsize_y
+    upper = top - min(rows) * cellsize_y
+    lower = top - (max(rows) + 1) * cellsize_y
+    center_x = sum(xllcorner + (col + 0.5) * cellsize_x for col in cols) / len(cells)
+    center_y = sum(top - (row + 0.5) * cellsize_y for row in rows) / len(cells)
+    return {
+        "bbox": [left, lower, right, upper],
+        "centroid": [center_x, center_y],
+        "row_min": min(rows),
+        "row_max": max(rows),
+        "col_min": min(cols),
+        "col_max": max(cols),
+    }
+
+
 def measure_raster_area(grid: Dict[str, Any]) -> Dict[str, Any]:
     """Return the raster footprint and mean cell area in square metres."""
     row_areas, basis = _row_areas_m2(grid)
@@ -400,6 +429,17 @@ def detect_changes(
     patches = _patches(mask, baseline["ncols"], baseline["nrows"])
     for patch in patches:
         patch["area_m2"] = _patch_area_m2(patch["cells"], baseline["ncols"], row_areas)
+        patch.update(
+            _patch_geometry(
+                patch["cells"],
+                baseline["ncols"],
+                baseline["nrows"],
+                float(baseline["header"]["xllcorner"]),
+                float(baseline["header"]["yllcorner"]),
+                baseline["cellsize"],
+                baseline["cellsize_y"],
+            )
+        )
     dropped = [patch for patch in patches if patch["area_m2"] < min_area_m2]
     for patch in dropped:
         for cell in patch["cells"]:
@@ -427,7 +467,17 @@ def detect_changes(
         "nodata_cells": nodata_cells,
         "changed_area_m2": changed_area,
         "patches": [
-            {"patch_id": patch["patch_id"], "cells": patch["count"], "area_m2": patch["area_m2"]}
+            {
+                "patch_id": patch["patch_id"],
+                "cells": patch["count"],
+                "area_m2": patch["area_m2"],
+                "bbox": patch["bbox"],
+                "centroid": patch["centroid"],
+                "row_min": patch["row_min"],
+                "row_max": patch["row_max"],
+                "col_min": patch["col_min"],
+                "col_max": patch["col_max"],
+            }
             for patch in kept
         ],
         "dropped_patches": len(dropped),

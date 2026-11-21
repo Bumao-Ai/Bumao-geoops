@@ -70,6 +70,11 @@ All notable changes to this project are documented in this file.
 - Change detection and quality comparison refuse a non-finite threshold or
   minimum area instead of silently writing an empty mask or an all-zero
   confusion matrix.
+- Each change patch now carries its map-space `bbox`, cell-centre `centroid`
+  and row/column extent, so a mask can be located without a vector library.
+- Dataset registration records `crs_model` next to `crs`; re-validation now
+  fails when the sidecar changes from projected to geographic (or back),
+  instead of only comparing the EPSG string.
 - A `GTRasterTypeGeoKey` outside PixelIsArea/PixelIsPoint is refused, and a
   dataset profile turns an unsupported linear unit into a dataset error rather
   than letting a raw `ChangeError` escape.

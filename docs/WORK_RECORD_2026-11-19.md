@@ -99,6 +99,9 @@ here.
   from square metres.
 - An unsupported raster type or linear unit is refused, and the profile wraps
   those failures as dataset errors instead of leaking a lower-level exception.
+- Change patches now expose `bbox`, `centroid` and row/column bounds, and
+  dataset records keep `crs_model`; validation detects a model switch as well
+  as an EPSG change.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
@@ -121,7 +124,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 328 tests in 28.2s`, `OK`.
+- Full suite: `Ran 329 tests in 27.5s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

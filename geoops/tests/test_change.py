@@ -137,6 +137,12 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(result["dropped_patches"], 1)
         self.assertEqual(len(result["patches"]), 1)
         self.assertEqual(result["patches"][0]["area_m2"], 200)
+        self.assertEqual(result["patches"][0]["bbox"], [500010.0, 4500020.0, 500030.0, 4500030.0])
+        self.assertEqual(result["patches"][0]["centroid"], [500020.0, 4500025.0])
+        self.assertEqual(result["patches"][0]["row_min"], 1)
+        self.assertEqual(result["patches"][0]["row_max"], 1)
+        self.assertEqual(result["patches"][0]["col_min"], 1)
+        self.assertEqual(result["patches"][0]["col_max"], 2)
         self.assertEqual(result["changed_area_m2"], 200)
 
     def test_high_threshold_finds_nothing(self) -> None:

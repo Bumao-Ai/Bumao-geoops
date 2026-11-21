@@ -64,7 +64,7 @@ class DatasetTests(unittest.TestCase):
 
     def _write_sidecar(self, crs: str = "EPSG:4547") -> None:
         with open(self.path + ".json", "w", encoding="utf-8") as handle:
-            json.dump({"crs": crs}, handle)
+            json.dump({"crs": crs, "crs_model": "projected"}, handle)
 
     def test_a_dataset_without_crs_is_refused(self) -> None:
         with self.assertRaises(DatasetError):
@@ -75,9 +75,20 @@ class DatasetTests(unittest.TestCase):
         self._write_sidecar()
         dataset = self.datasets.register("PRJ-1", self.path, label="一期")
         self.assertEqual(dataset.payload["crs"], "EPSG:4547")
+        self.assertEqual(dataset.payload["crs_model"], "projected")
         self.assertEqual(len(dataset.payload["sha256"]), 64)
         self.assertEqual(len(self.datasets.list("PRJ-1")), 1)
         self.assertEqual(self.datasets.list("PRJ-OTHER"), [])
+
+    def test_validate_detects_a_changed_crs_model(self) -> None:
+        self._write_sidecar()
+        dataset = self.datasets.register("PRJ-1", self.path)
+        with open(self.path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547", "crs_model": "geographic"}, handle)
+        result = self.datasets.validate(dataset.object_id)
+        self.assertEqual(result["status"], "FAIL")
+        check = [row for row in result["checks"] if row["name"] == "crs_model"][0]
+        self.assertEqual(check["status"], "FAIL")
 
     def test_validate_detects_changed_content(self) -> None:
         self._write_sidecar()
@@ -129,6 +140,7 @@ class DatasetTests(unittest.TestCase):
         with open(path + ".json", "w", encoding="utf-8") as handle:
             json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
         dataset = self.datasets.register("PRJ-1", path)
+        self.assertEqual(dataset.payload["crs_model"], "projected")
         profile = self.datasets.profile(dataset.object_id)
         self.assertEqual(profile["format"], "geotiff")
         self.assertEqual(profile["ncols"], 2)

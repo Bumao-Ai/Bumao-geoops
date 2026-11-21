@@ -63,6 +63,7 @@ class DatasetRegistry:
             "size_bytes": result.size_bytes,
             "sha256": result.sha256,
             "crs": result.crs,
+            "crs_model": result.crs_model,
             "metadata_source": result.metadata_source,
             "width": result.width,
             "height": result.height,
@@ -124,6 +125,18 @@ class DatasetRegistry:
             )
         else:
             checks.append({"name": "crs", "status": "PASS", "detail": fresh.crs})
+        registered_model = str(payload.get("crs_model") or "").lower()
+        if registered_model and fresh.crs_model != registered_model:
+            checks.append(
+                {
+                    "name": "crs_model",
+                    "status": "FAIL",
+                    "detail": "registered %s but re-probe reads %s"
+                    % (registered_model, fresh.crs_model),
+                }
+            )
+        elif registered_model:
+            checks.append({"name": "crs_model", "status": "PASS", "detail": fresh.crs_model})
         for name in ("width", "height", "bands"):
             registered_value = payload.get(name)
             fresh_value = getattr(fresh, name)
@@ -197,7 +210,7 @@ class DatasetRegistry:
             "yllcorner": yll,
             "bounds": bounds,
             "crs": str(obj.payload.get("crs") or grid.get("crs") or ""),
-            "crs_model": str(grid.get("crs_model") or ""),
+            "crs_model": str(obj.payload.get("crs_model") or grid.get("crs_model") or ""),
             "nodata": nodata,
             "valid_cells": len(valid),
             "nodata_cells": len(grid["values"]) - len(valid),
