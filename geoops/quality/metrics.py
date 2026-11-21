@@ -35,7 +35,11 @@ def read_ascii_grid(path: str) -> Dict[str, Any]:
         "nrows": grid["nrows"],
         "cellsize": grid["cellsize"],
         "cellsize_y": grid.get("cellsize_y") or grid["cellsize"],
-        "nodata": float(grid["header"].get("nodata_value", -9999.0)),
+        "nodata": (
+            float(grid["header"]["nodata_value"])
+            if grid["header"].get("nodata_value") is not None
+            else None
+        ),
         "crs": grid.get("crs") or "",
         "crs_model": grid.get("crs_model") or "",
         "values": grid["values"],
@@ -63,7 +67,7 @@ def read_mask_grid(path: str) -> Dict[str, Any]:
             "yllcorner": grid["header"].get("yllcorner"),
             "crs": grid.get("crs") or "",
             "crs_model": grid.get("crs_model") or "",
-            "nodata": float(nodata) if nodata is not None else -9999.0,
+            "nodata": float(nodata) if nodata is not None else None,
             "values": grid["values"],
         }
     ascii_grid = read_ascii_grid(path)
@@ -139,10 +143,15 @@ def compare_masks(
             "grid CRS model differ: %s vs %s" % (left_model, right_model)
         )
 
-    tp = fp = fn = tn = skipped = 0
+    tp = fp = fn = tn = skipped_nodata = skipped_non_finite = 0
     for ref_value, pred_value in zip(reference["values"], predicted["values"]):
-        if is_nodata(ref_value, reference["nodata"]) or is_nodata(pred_value, predicted["nodata"]):
-            skipped += 1
+        if is_nodata(ref_value, reference["nodata"]) or is_nodata(
+            pred_value, predicted["nodata"]
+        ):
+            skipped_nodata += 1
+            continue
+        if not math.isfinite(ref_value) or not math.isfinite(pred_value):
+            skipped_non_finite += 1
             continue
         ref_positive = ref_value > threshold
         pred_positive = pred_value > threshold
@@ -157,7 +166,7 @@ def compare_masks(
 
     valid = tp + fp + fn + tn
     if valid == 0:
-        raise MetricsError("no comparable cells: every cell is NODATA")
+        raise MetricsError("no comparable cells: every cell is NODATA or non-finite")
 
     precision = tp / (tp + fp) if (tp + fp) else None
     recall = tp / (tp + fn) if (tp + fn) else None
@@ -179,11 +188,12 @@ def compare_masks(
             "nrows": reference["nrows"],
             "cellsize": reference["cellsize"],
             "cellsize_y": reference["cellsize_y"],
-            "total": valid + skipped,
+            "total": valid + skipped_nodata + skipped_non_finite,
         },
         "cells": {
             "valid": valid,
-            "skipped_nodata": skipped,
+            "skipped_nodata": skipped_nodata,
+            "skipped_non_finite": skipped_non_finite,
             "tp": tp,
             "fp": fp,
             "fn": fn,

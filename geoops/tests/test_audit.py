@@ -123,6 +123,26 @@ class AuditFileTests(unittest.TestCase):
         self.assertNotEqual(first["token_fp"], "secret-token")
         self.assertEqual(len(first["token_fp"]), 8)
 
+    def test_verify_reports_a_tampered_file_without_raising(self) -> None:
+        log = AuditLog(path=self.path)
+        log.record("GET", "/api/v1/health", "", "allow", "first", 200)
+        self.assertTrue(log.verify()["ok"])
+        with open(self.path, encoding="utf-8") as handle:
+            rows = [json.loads(line) for line in handle if line.strip()]
+        rows[0]["reason"] = "rewritten"
+        with open(self.path, "w", encoding="utf-8") as handle:
+            handle.write(json.dumps(rows[0]) + "\n")
+        result = log.verify()
+        self.assertFalse(result["ok"])
+        self.assertIn("hash", result["error"])
+        self.assertEqual(result["memory_rows"], 1)
+
+    def test_verify_reports_a_missing_audit_file(self) -> None:
+        result = AuditLog(path=self.path).verify()
+        self.assertFalse(result["exists"])
+        self.assertFalse(result["ok"])
+        self.assertIn("missing", result["error"])
+
     def test_limit_trims_the_oldest_rows(self) -> None:
         log = AuditLog(limit=2, path=self.path)
         for index in range(4):

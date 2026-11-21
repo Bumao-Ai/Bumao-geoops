@@ -5,7 +5,7 @@
 
 ## 一、当前可核对的软件基线
 
-- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **329 tests OK**。
+- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **337 tests OK**。
 - 结构自检：`python -m geoops.smoke`，当前 **SMOKE PASS: 73 assertions**。
 - 控制台：`http://127.0.0.1:8790/ui/`；健康接口 `/api/v1/health`。
 - 等级：核心工程（CORE），登记在 `docs/ENGINEERING_TIER.md`。
@@ -76,8 +76,8 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/profile?band=1"
 Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 ```
 
-`profile` 返回真实 `ncols/nrows/bands/cellsize/cellsize_y/cell_area_m2/footprint_area_m2/area_basis/bounds/crs/valid_cells/min/max/mean`；
-`validate` 会重算 sha256，并比较注册时的 CRS、宽、高、波段数。地理坐标系面积按逐行 WGS84 椭球计算；投影坐标系按 GeoKey 3076 声明的 metre/foot/yard/US survey foot 换算；未声明 CRS 模型时面积只以 map units 返回，不冒充平方米。
+`profile` 返回真实 `ncols/nrows/bands/cellsize/cellsize_y/cell_area_m2/footprint_area_m2/area_basis/bounds/crs/raster_type/linear_unit/valid_cells/nodata_cells/non_finite_cells/min/max/mean`；
+`validate` 会重算 sha256，并比较注册时的 CRS、CRS 模型、宽、高、波段数、栅格类型与线性单位。地理坐标系面积按逐行 WGS84 椭球计算；投影坐标系按 GeoKey 3076 声明的 metre/foot/yard/US survey foot 换算；未声明 CRS 模型时面积只以 map units 返回，不冒充平方米。没有声明 NODATA 的栅格不会把 -9999 当缺失值；NaN/Inf 单独计数，不进入统计。
 
 ## 四、真实外部 GIS 工具
 
@@ -113,7 +113,8 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 4. 人工抽查说明（专业样本备注）。
 
 质量报告会记录 `TP/FP/FN/TN`、pixel accuracy、precision、recall、F1、IoU；参考/预测 CRS 不一致、
-缺 CRS、尺寸/像元/原点不一致都会拒绝，不会出伪造混淆矩阵。
+缺 CRS、尺寸/像元/原点不一致都会拒绝，不会出伪造混淆矩阵。NODATA 与 NaN/Inf 分开计数并从矩阵排除；
+没有声明 NODATA 的掩膜不会把 -9999 当缺失值。
 
 ## 六、审核、归档与追溯
 
@@ -135,9 +136,11 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 Invoke-RestMethod "$b/api/v1/tasks/<task_id>/trace"
 Invoke-RestMethod "$b/api/v1/deliverables/<deliverable_id>/trace"
 Invoke-RestMethod "$b/api/v1/deliverables/<deliverable_id>/archive-verification"
+Invoke-RestMethod "$b/api/v1/audit/verify"
 ```
 
 `archive-verification` 会重新打开归档清单、逐文件重算 sha256、比对登记值与文件大小，并拒绝归档目录之外的清单路径；任何缺失或被改都会返回 `ok=false` 和具体 `problems`。
+`audit/verify` 会重新读取审计 JSONL 并校验整条哈希链；文件缺失、断链或某行字段被改都会返回 `ok=false`，不会用内存副本冒充通过。
 
 真实数据环填满后，`complete` 才能由真实记录支撑，而不是靠合成对象凑齐。
 

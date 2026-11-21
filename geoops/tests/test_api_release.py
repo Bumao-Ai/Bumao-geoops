@@ -39,7 +39,7 @@ class ReleaseApiTests(unittest.TestCase):
                 "reader": ["audit:read"],
             }
         )
-        self.audit = AuditLog(limit=100)
+        self.audit = AuditLog(limit=100, path=os.path.join(self.tempdir, "audit.jsonl"))
         self.runs = RunJournal()
         self.server = create_server(
             self.registry,
@@ -241,6 +241,14 @@ class ReleaseApiTests(unittest.TestCase):
         self.assertIn("datasets", names)
         status, missing = self.call("GET", "/api/v1/tasks/TSK-NOPE/trace")
         self.assertEqual(status, 404)
+
+    def test_audit_verify_rechecks_the_file_hash_chain(self) -> None:
+        status, _ = self.call("POST", "/api/v1/projects", {"project_id": "NOPE"})
+        self.assertEqual(status, 401)
+        status, payload = self.call("GET", "/api/v1/audit/verify", token="admin")
+        self.assertEqual(status, 200)
+        self.assertTrue(payload["verification"]["ok"])
+        self.assertGreaterEqual(payload["verification"]["rows"], 1)
 
     def test_overview_counts_the_new_layers(self) -> None:
         status, overview = self.call("GET", "/api/v1/overview")

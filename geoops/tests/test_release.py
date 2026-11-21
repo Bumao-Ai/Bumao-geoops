@@ -128,11 +128,30 @@ class DatasetTests(unittest.TestCase):
         profile = self.datasets.profile(dataset.object_id)
         self.assertEqual(profile["valid_cells"], 1)
         self.assertEqual(profile["nodata_cells"], 3)
+        self.assertEqual(profile["non_finite_cells"], 0)
         self.assertEqual(profile["min"], 1.0)
         self.assertEqual(profile["max"], 1.0)
         self.assertEqual(profile["mean"], 1.0)
         self.assertEqual(profile["bounds"], [0.0, 0.0, 2.0, 2.0])
         self.assertEqual(profile["crs"], "EPSG:4547")
+
+    def test_profile_excludes_non_finite_cells(self) -> None:
+        path = os.path.join(self.tempdir, "infinite.asc")
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(
+                "ncols 2\nnrows 2\nxllcorner 0\nyllcorner 0\ncellsize 1\n"
+                "NODATA_value -9999\n1 1e999\n2 -9999\n"
+            )
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
+        dataset = self.datasets.register("PRJ-1", path)
+        profile = self.datasets.profile(dataset.object_id)
+        self.assertEqual(profile["valid_cells"], 2)
+        self.assertEqual(profile["nodata_cells"], 1)
+        self.assertEqual(profile["non_finite_cells"], 1)
+        self.assertEqual(profile["min"], 1.0)
+        self.assertEqual(profile["max"], 2.0)
+        self.assertEqual(profile["mean"], 1.5)
 
     def test_profile_reads_real_geotiff_pixels(self) -> None:
         path = os.path.join(self.tempdir, "tile.tif")
@@ -141,6 +160,8 @@ class DatasetTests(unittest.TestCase):
             json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
         dataset = self.datasets.register("PRJ-1", path)
         self.assertEqual(dataset.payload["crs_model"], "projected")
+        self.assertEqual(dataset.payload["raster_type"], 1)
+        self.assertEqual(dataset.payload["linear_unit_m"], 1.0)
         profile = self.datasets.profile(dataset.object_id)
         self.assertEqual(profile["format"], "geotiff")
         self.assertEqual(profile["ncols"], 2)

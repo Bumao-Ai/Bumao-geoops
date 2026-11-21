@@ -8,6 +8,7 @@ with the probe's reason, not a dataset row with blanks.
 
 from __future__ import annotations
 
+import math
 import os
 from typing import Any, Dict, List, Optional
 
@@ -64,6 +65,10 @@ class DatasetRegistry:
             "sha256": result.sha256,
             "crs": result.crs,
             "crs_model": result.crs_model,
+            "raster_type": result.raster_type,
+            "linear_unit": result.linear_unit,
+            "linear_unit_code": result.linear_unit_code,
+            "linear_unit_m": result.linear_unit_m,
             "metadata_source": result.metadata_source,
             "width": result.width,
             "height": result.height,
@@ -137,7 +142,7 @@ class DatasetRegistry:
             )
         elif registered_model:
             checks.append({"name": "crs_model", "status": "PASS", "detail": fresh.crs_model})
-        for name in ("width", "height", "bands"):
+        for name in ("width", "height", "bands", "raster_type", "linear_unit_code"):
             registered_value = payload.get(name)
             fresh_value = getattr(fresh, name)
             if registered_value is not None and fresh_value is not None and registered_value != fresh_value:
@@ -149,6 +154,16 @@ class DatasetRegistry:
                         % (registered_value, fresh_value),
                     }
                 )
+        registered_unit = str(payload.get("linear_unit") or "")
+        if registered_unit and fresh.linear_unit != registered_unit:
+            checks.append(
+                {
+                    "name": "linear_unit",
+                    "status": "FAIL",
+                    "detail": "registered %s but re-probe reads %s"
+                    % (registered_unit, fresh.linear_unit),
+                }
+            )
         status = "PASS" if all(check["status"] == "PASS" for check in checks) else "FAIL"
         return {"dataset_id": dataset_id, "status": status, "checks": checks}
 
@@ -165,7 +180,17 @@ class DatasetRegistry:
         except (ChangeError, TypeError, ValueError) as exc:
             raise DatasetError("cannot profile raster: %s" % exc) from exc
         nodata = grid["header"].get("nodata_value")
-        valid = [value for value in grid["values"] if not is_nodata(value, nodata)]
+        nodata_cells = sum(1 for value in grid["values"] if is_nodata(value, nodata))
+        non_finite_cells = sum(
+            1
+            for value in grid["values"]
+            if not is_nodata(value, nodata) and not math.isfinite(value)
+        )
+        valid = [
+            value
+            for value in grid["values"]
+            if not is_nodata(value, nodata) and math.isfinite(value)
+        ]
         if not valid:
             raise DatasetError("raster %s has no valid cells after NODATA removal" % dataset_id)
         ncols = int(grid["ncols"])
@@ -211,9 +236,14 @@ class DatasetRegistry:
             "bounds": bounds,
             "crs": str(obj.payload.get("crs") or grid.get("crs") or ""),
             "crs_model": str(obj.payload.get("crs_model") or grid.get("crs_model") or ""),
+            "raster_type": grid.get("raster_type"),
+            "linear_unit": str(grid.get("linear_unit") or ""),
+            "linear_unit_code": grid.get("linear_unit_code"),
+            "linear_unit_m": grid.get("linear_unit_m"),
             "nodata": nodata,
             "valid_cells": len(valid),
-            "nodata_cells": len(grid["values"]) - len(valid),
+            "nodata_cells": nodata_cells,
+            "non_finite_cells": non_finite_cells,
             "min": min(valid),
             "max": max(valid),
             "mean": sum(valid) / len(valid),

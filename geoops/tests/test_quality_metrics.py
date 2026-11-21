@@ -53,6 +53,27 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["cells"]["skipped_nodata"], 1)
         self.assertEqual(result["cells"]["tp"], 2)
 
+    def test_non_finite_cells_are_excluded_from_the_matrix(self) -> None:
+        reference = os.path.join(self.tmp.name, "ref_inf.asc")
+        predicted = os.path.join(self.tmp.name, "pred_inf.asc")
+        _grid(reference, "1 1e999 0\n0 1 0")
+        _grid(predicted, "1 1 0\n0 1 1")
+        result = compare_masks(reference, predicted)
+        self.assertEqual(result["cells"]["valid"], 5)
+        self.assertEqual(result["cells"]["skipped_non_finite"], 1)
+        self.assertEqual(result["cells"]["tp"], 2)
+
+    def test_undeclared_nodata_does_not_swallow_a_real_value(self) -> None:
+        reference = os.path.join(self.tmp.name, "ref_no_nodata.asc")
+        predicted = os.path.join(self.tmp.name, "pred_no_nodata.asc")
+        text = "ncols 3\nnrows 1\nxllcorner 0\nyllcorner 0\ncellsize 10\n-9999 1 0\n"
+        for path in (reference, predicted):
+            with open(path, "w", encoding="utf-8") as handle:
+                handle.write(text)
+        result = compare_masks(reference, predicted)
+        self.assertEqual(result["cells"]["valid"], 3)
+        self.assertEqual(result["cells"]["skipped_nodata"], 0)
+
     def test_non_finite_threshold_is_refused(self) -> None:
         with self.assertRaises(MetricsError):
             compare_masks(self.reference, self.predicted, threshold=float("nan"))

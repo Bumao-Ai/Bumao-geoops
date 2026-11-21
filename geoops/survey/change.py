@@ -201,6 +201,7 @@ def read_raster_grid(path: str, band: int = 1) -> Dict[str, Any]:
             "band": band,
             "crs": crs,
             "crs_model": crs_model,
+            "raster_type": image.get("raster_type", 1),
             "linear_unit": str(image.get("linear_unit") or ""),
             "linear_unit_code": image.get("linear_unit_code"),
             "linear_unit_m": (
@@ -217,6 +218,7 @@ def read_raster_grid(path: str, band: int = 1) -> Dict[str, Any]:
         "band": 1,
         "crs": crs,
         "crs_model": crs_model,
+        "raster_type": None,
         "linear_unit": "",
         "linear_unit_code": None,
         "linear_unit_m": 1.0,
@@ -258,6 +260,13 @@ def _check_alignment(baseline: Dict[str, Any], comparison: Dict[str, Any]) -> No
         raise ChangeError(
             "grids are not aligned: CRS model differs (%s vs %s)"
             % (left_model, right_model)
+        )
+    left_unit_m = float(baseline.get("linear_unit_m") or 1.0)
+    right_unit_m = float(comparison.get("linear_unit_m") or 1.0)
+    if abs(left_unit_m - right_unit_m) > 1e-12:
+        raise ChangeError(
+            "grids are not aligned: linear unit differs (%r m vs %r m)"
+            % (left_unit_m, right_unit_m)
         )
 
 
@@ -382,6 +391,23 @@ def measure_raster_area(grid: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _patch_values(
+    cells: List[int],
+    baseline_values: List[float],
+    comparison_values: List[float],
+) -> Dict[str, float]:
+    """Return mean/max absolute change and mean levels for one patch."""
+    before = [baseline_values[cell] for cell in cells]
+    after = [comparison_values[cell] for cell in cells]
+    deltas = [abs(right - left) for left, right in zip(before, after)]
+    return {
+        "mean_abs_delta": sum(deltas) / len(deltas),
+        "max_abs_delta": max(deltas),
+        "mean_baseline": sum(before) / len(before),
+        "mean_comparison": sum(after) / len(after),
+    }
+
+
 def detect_changes(
     baseline_path: str,
     comparison_path: str,
@@ -414,7 +440,12 @@ def detect_changes(
     nodata_cells = 0
     changed_cells = 0
     for left, right in zip(baseline["values"], comparison["values"]):
-        invalid = is_nodata(left, nodata_a) or is_nodata(right, nodata_b)
+        invalid = (
+            is_nodata(left, nodata_a)
+            or is_nodata(right, nodata_b)
+            or not math.isfinite(left)
+            or not math.isfinite(right)
+        )
         if invalid:
             nodata_cells += 1
             mask.append(0)
@@ -438,6 +469,13 @@ def detect_changes(
                 float(baseline["header"]["yllcorner"]),
                 baseline["cellsize"],
                 baseline["cellsize_y"],
+            )
+        )
+        patch.update(
+            _patch_values(
+                patch["cells"],
+                baseline["values"],
+                comparison["values"],
             )
         )
     dropped = [patch for patch in patches if patch["area_m2"] < min_area_m2]
@@ -471,6 +509,10 @@ def detect_changes(
                 "patch_id": patch["patch_id"],
                 "cells": patch["count"],
                 "area_m2": patch["area_m2"],
+                "mean_abs_delta": patch["mean_abs_delta"],
+                "max_abs_delta": patch["max_abs_delta"],
+                "mean_baseline": patch["mean_baseline"],
+                "mean_comparison": patch["mean_comparison"],
                 "bbox": patch["bbox"],
                 "centroid": patch["centroid"],
                 "row_min": patch["row_min"],
@@ -486,6 +528,7 @@ def detect_changes(
         "header": dict(baseline["header"]),
         "crs": baseline.get("crs") or "",
         "crs_model": baseline.get("crs_model") or "",
+        "raster_type": baseline.get("raster_type"),
         "linear_unit": baseline.get("linear_unit") or "",
         "linear_unit_code": baseline.get("linear_unit_code"),
         "linear_unit_m": (

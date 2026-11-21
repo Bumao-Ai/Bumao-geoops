@@ -102,6 +102,12 @@ here.
 - Change patches now expose `bbox`, `centroid` and row/column bounds, and
   dataset records keep `crs_model`; validation detects a model switch as well
   as an EPSG change.
+- Patch statistics now include mean/max absolute change and mean levels; a
+  grid pair with different declared linear units is refused. Dataset records
+  also persist raster type and linear unit, and `GET /api/v1/audit/verify`
+  re-checks the audit hash chain from disk. Non-finite cells are excluded from
+  change, profiles and mask metrics, and undeclared NODATA is no longer assumed
+  to be -9999.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
@@ -124,7 +130,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 329 tests in 27.5s`, `OK`.
+- Full suite: `Ran 337 tests in 28.1s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

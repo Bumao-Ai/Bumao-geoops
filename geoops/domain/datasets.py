@@ -4,8 +4,9 @@ No synthetic dataset is produced here. A missing path returns ``SKIP`` with a
 written reason so the caller can continue; an unreadable file returns
 ``ERROR``. Metadata comes from a sidecar ``<path>.json`` file when present.
 
-Raster CRS extraction from imagery itself requires a geospatial reader and is
-not part of the current scaffold. The sidecar is the only metadata source here.
+Metadata comes from the GeoTIFF header when readable, and from a sidecar
+``<path>.json`` for CRS overrides and non-GeoTIFF formats. The sidecar wins on
+an explicit CRS disagreement; no metadata is invented when neither source has it.
 """
 
 from __future__ import annotations
@@ -33,6 +34,10 @@ class DatasetRecord:
     sha256: str = ""
     crs: str = ""
     crs_model: str = ""
+    raster_type: Optional[int] = None
+    linear_unit: str = ""
+    linear_unit_code: Optional[int] = None
+    linear_unit_m: Optional[float] = None
     metadata_source: str = "none"
     reason: str = ""
     width: Optional[int] = None
@@ -50,6 +55,10 @@ class DatasetRecord:
             "sha256": self.sha256,
             "crs": self.crs,
             "crs_model": self.crs_model,
+            "raster_type": self.raster_type,
+            "linear_unit": self.linear_unit,
+            "linear_unit_code": self.linear_unit_code,
+            "linear_unit_m": self.linear_unit_m,
             "metadata_source": self.metadata_source,
             "reason": self.reason,
             "width": self.width,
@@ -144,6 +153,10 @@ def register(path: Optional[str]) -> DatasetRecord:
         sha256=digest,
         crs=crs,
         crs_model=crs_model,
+        raster_type=extra.get("raster_type"),
+        linear_unit=str(extra.get("linear_unit") or ""),
+        linear_unit_code=extra.get("linear_unit_code"),
+        linear_unit_m=extra.get("linear_unit_m"),
         metadata_source=source,
         reason=reason,
         width=extra.get("width"),

@@ -30,6 +30,7 @@ Read endpoints:
     GET /api/v1/rules              rule pack metadata, from the pack files
     GET /api/v1/artifacts          (token with audit:read; when a store is supplied)
     GET /api/v1/audit              (when a permission policy is supplied)
+    GET /api/v1/audit/verify       re-read the audit file and verify its hash chain
     GET /ui/                       the HTML console (static files in geoops/web)
 
 Write endpoints (only when a permission policy is supplied):
@@ -513,6 +514,15 @@ def create_server(
                 return
             if path in UI_FILES:
                 self._serve_ui(UI_FILES[path])
+                return
+            if path == "/api/v1/audit/verify":
+                if policy is None:
+                    self._json(404, {"error": "audit endpoint not configured"})
+                    return
+                if not self._authorize("audit:read", path):
+                    return
+                verification = audit_log.verify()
+                self._json(200, {"verification": verification})
                 return
             if path == "/api/v1/audit":
                 if policy is None:

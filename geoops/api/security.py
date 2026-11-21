@@ -328,6 +328,51 @@ class AuditLog:
         with self._lock:
             return [dict(row) for row in self._rows]
 
+    def verify(self) -> Dict[str, Any]:
+        """Re-read the audit file and verify its hash chain on demand."""
+        with self._lock:
+            path = self._path
+            memory_rows = len(self._rows)
+        if not path:
+            return {
+                "path": "",
+                "exists": False,
+                "ok": False,
+                "error": "audit log has no file path",
+                "memory_rows": memory_rows,
+            }
+        if not os.path.exists(path):
+            return {
+                "path": path,
+                "exists": False,
+                "ok": False,
+                "error": "audit file is missing",
+                "memory_rows": memory_rows,
+            }
+        try:
+            loaded = self._read_file(path)
+        except (AuditError, OSError) as exc:
+            return {
+                "path": path,
+                "exists": True,
+                "ok": False,
+                "error": str(exc),
+                "memory_rows": memory_rows,
+            }
+        last = loaded[-1] if loaded else None
+        tip = (
+            (last.get("row_hash") or self.row_digest(last))
+            if last else self.CHAIN_START
+        )
+        return {
+            "path": path,
+            "exists": True,
+            "ok": True,
+            "rows": len(loaded),
+            "memory_rows": memory_rows,
+            "chain_tip": tip,
+        }
+
     def denied(self) -> int:
         with self._lock:
             return sum(1 for row in self._rows if row["decision"] == "deny")

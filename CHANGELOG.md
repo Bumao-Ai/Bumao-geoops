@@ -6,6 +6,18 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- `GET /api/v1/audit/verify`: re-reads the JSONL audit file on demand and
+  verifies its whole hash chain, reporting `ok=false` with the failing line
+  instead of trusting the in-memory copy.
+- Each change patch now reports mean/max absolute change and mean levels
+  alongside its map bbox/centroid; a grid pair whose declared linear units
+  differ is refused before any cell is compared.
+- Dataset records persist `raster_type`, `linear_unit`, `linear_unit_code` and
+  `linear_unit_m` from the GeoTIFF header, and validation compares them on
+  re-probe. Raster profiles count non-finite cells separately instead of letting
+  NaN/Inf poison min/max/mean; mask metrics exclude them from the confusion
+  matrix, and an undeclared NODATA value is no longer assumed to be -9999.
+
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,
   per-node `attempts`, execute and resume APIs.

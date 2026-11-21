@@ -137,6 +137,10 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(result["dropped_patches"], 1)
         self.assertEqual(len(result["patches"]), 1)
         self.assertEqual(result["patches"][0]["area_m2"], 200)
+        self.assertEqual(result["patches"][0]["mean_abs_delta"], 10)
+        self.assertEqual(result["patches"][0]["max_abs_delta"], 10)
+        self.assertEqual(result["patches"][0]["mean_baseline"], 10)
+        self.assertEqual(result["patches"][0]["mean_comparison"], 20)
         self.assertEqual(result["patches"][0]["bbox"], [500010.0, 4500020.0, 500030.0, 4500030.0])
         self.assertEqual(result["patches"][0]["centroid"], [500020.0, 4500025.0])
         self.assertEqual(result["patches"][0]["row_min"], 1)
@@ -248,6 +252,24 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(image["linear_unit_code"], 9003)
         self.assertEqual(image["linear_unit"], "US survey foot")
 
+    def test_grids_with_different_linear_units_are_refused(self) -> None:
+        baseline = os.path.join(self.tempdir, "unit-base.tif")
+        comparison = os.path.join(self.tempdir, "unit-comp.tif")
+        write_geotiff_mask(
+            baseline, width=2, height=2, cellsize=10.0, cellsize_y=10.0,
+            xllcorner=0.0, yllcorner=0.0, crs="EPSG:2277",
+            crs_model="projected", values=[0.0, 0.0, 0.0, 0.0],
+        )
+        write_geotiff_mask(
+            comparison, width=2, height=2, cellsize=10.0, cellsize_y=10.0,
+            xllcorner=0.0, yllcorner=0.0, crs="EPSG:2277",
+            crs_model="projected", values=[5.0, 0.0, 0.0, 0.0],
+            linear_unit_code=9003,
+        )
+        with self.assertRaises(ChangeError) as caught:
+            detect_changes(baseline, comparison, threshold=1)
+        self.assertIn("linear unit", str(caught.exception))
+
     def test_non_square_pixels_keep_their_height_and_area(self) -> None:
         baseline = os.path.join(self.tempdir, "rect-base.tif")
         comparison = os.path.join(self.tempdir, "rect-comp.tif")
@@ -355,6 +377,17 @@ class ChangeTests(unittest.TestCase):
         self.assertTrue(is_nodata(float("nan"), float("nan")))
         self.assertFalse(is_nodata(1.0, float("nan")))
         self.assertTrue(is_nodata(-9999.0, -9999.0))
+
+    def test_a_non_finite_cell_is_excluded_from_change(self) -> None:
+        broken = os.path.join(self.tempdir, "infinite.asc")
+        self._write(
+            broken,
+            COMPARISON.replace("10 10 10 10 10", "1e999 10 10 10 10", 1),
+        )
+        result = detect_changes(self.baseline, broken, threshold=1, min_area_m2=0)
+        self.assertEqual(result["nodata_cells"], 2)
+        self.assertTrue(result["invalid_mask"][0])
+        self.assertEqual(result["changed_cells"], 3)
 
 
 class ChangeNodeTests(unittest.TestCase):
