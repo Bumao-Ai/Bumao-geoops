@@ -157,10 +157,17 @@ def register(path: Optional[str]) -> DatasetRecord:
             crs_model = "geographic"
         elif normalized == "EPSG:3857":
             crs_model = "projected"
+    georeferenced = True
+    if extra and extra.get("bounds") is None:
+        georeferenced = False
+        reason = "GeoTIFF has a CRS but no pixel scale/tiepoint bounds"
+    elif not extra and os.path.splitext(absolute)[1].lower() in (".tif", ".tiff"):
+        georeferenced = False
+        reason = "GeoTIFF header could not be read; metadata would come from a sidecar alone"
     return DatasetRecord(
         dataset_id="DS-" + digest[:12],
         path=absolute,
-        status=STATUS_READY if crs else STATUS_INCOMPLETE,
+        status=STATUS_READY if crs and georeferenced else STATUS_INCOMPLETE,
         size_bytes=size_bytes,
         sha256=digest,
         crs=crs,

@@ -124,6 +124,9 @@ here.
 - Domain registry mutations, task transitions and review submission now use
   re-entrant locks, so concurrent requests cannot double-create an id, apply two
   conflicting task edges or accept one deliverable twice.
+- GeoTIFF metadata rejects a non-numeric `GDAL_NODATA`, non-finite pixel
+  scale/tiepoint/matrix values and a non-finite extent; a `.tif` without header
+  bounds is `INCOMPLETE`, not READY.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
   that value when it does not declare its own step budget; a node override is
   also restricted to an integer 1–16.
@@ -141,7 +144,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 348 tests in 28.1s`, `OK`.
+- Full suite: `Ran 350 tests in 32.1s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

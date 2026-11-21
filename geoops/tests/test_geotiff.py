@@ -9,10 +9,10 @@ import tempfile
 import unittest
 
 from geoops.domain.datasets import register
-from geoops.geotiff import GeoTiffError, probe_geotiff
+from geoops.geotiff import GeoTiffError, probe_geotiff, write_geotiff_mask
 
 
-def make_geotiff(path: str, epsg: int = 32650, pixel_is_point: bool = False) -> str:
+def make_geotiff(path: str, epsg: int = 32650, pixel_is_point: bool = False, scale=None) -> str:
     width, height = 4, 4
     count = 7
     key_count = 2 if pixel_is_point else 1
@@ -38,7 +38,7 @@ def make_geotiff(path: str, epsg: int = 32650, pixel_is_point: bool = False) -> 
     out += entry(33922, 12, 6, tie_offset)
     out += entry(34735, 3, key_words, keys_offset)
     out += struct.pack("<I", 0)
-    out += struct.pack("<3d", 1.0, 1.0, 0.0)
+    out += struct.pack("<3d", *(scale or (1.0, 1.0, 0.0)))
     out += struct.pack("<6d", 0.0, 0.0, 0.0, 0.0, 4.0, 0.0)
     out += struct.pack("<4H", 1, 1, 0, key_count)
     out += struct.pack("<4H", 3072, 0, 1, epsg)
@@ -96,12 +96,42 @@ class GeoTiffTests(unittest.TestCase):
         self.assertEqual(info["bounds"], [0.0, 0.0, 4.0, 4.0])
         self.assertEqual(info["pixel_size"], [1.0, 1.0])
 
+    def test_a_non_numeric_gdal_nodata_tag_is_refused(self) -> None:
+        path = os.path.join(self.tempdir, "bad-nodata.tif")
+        write_geotiff_mask(
+            path, width=2, height=2, cellsize=1.0, cellsize_y=1.0,
+            xllcorner=0.0, yllcorner=0.0, crs="EPSG:4326",
+            crs_model="geographic", values=[0.0, 1.0, 0.0, 1.0], nodata=-9999,
+        )
+        with open(path, "rb") as handle:
+            data = handle.read()
+        self.assertEqual(data.count(b"-9999"), 1)
+        with open(path, "wb") as handle:
+            handle.write(data.replace(b"-9999", b"abcde"))
+        with self.assertRaises(GeoTiffError) as caught:
+            probe_geotiff(path)
+        self.assertIn("GDAL_NODATA", str(caught.exception))
+
     def test_a_plain_tiff_has_no_crs(self) -> None:
         path = os.path.join(self.tempdir, "plain.tif")
         with open(path, "wb") as handle:
             handle.write(b"II" + struct.pack("<H", 42) + struct.pack("<I", 8) + struct.pack("<H", 0) + struct.pack("<I", 0))
         with self.assertRaises(GeoTiffError):
             probe_geotiff(path)
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4326", "crs_model": "geographic"}, handle)
+        record = register(path)
+        self.assertEqual(record.status, "INCOMPLETE")
+        self.assertIn("header could not be read", record.reason)
+
+    def test_a_non_finite_pixel_scale_is_refused(self) -> None:
+        path = make_geotiff(
+            os.path.join(self.tempdir, "nan-scale.tif"),
+            scale=(float("nan"), 1.0, 0.0),
+        )
+        with self.assertRaises(GeoTiffError) as caught:
+            probe_geotiff(path)
+        self.assertIn("not finite", str(caught.exception))
 
     def test_pixel_is_point_shifts_bounds_by_half_a_cell(self) -> None:
         path = make_geotiff(os.path.join(self.tempdir, "point.tif"), pixel_is_point=True)

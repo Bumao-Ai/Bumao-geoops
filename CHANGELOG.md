@@ -23,6 +23,10 @@ All notable changes to this project are documented in this file.
 - A sidecar CRS or CRS model that contradicts the GeoTIFF header is recorded as
   `metadata_conflict` and fails re-validation; raster reads refuse it instead of
   choosing one source and silently computing area on the wrong units.
+- GeoTIFF metadata now rejects a non-numeric `GDAL_NODATA`, non-finite pixel
+  scale/tiepoint/matrix values and an extent that would overflow to NaN; a
+  `.tif` whose header cannot supply bounds is registered as `INCOMPLETE` rather
+  than READY with missing georeferencing.
 - Domain registry mutations, task transitions and review submission are now
   serialized with re-entrant locks, so concurrent requests cannot double-create
   an id, apply two conflicting task edges or sign off the same deliverable twice.

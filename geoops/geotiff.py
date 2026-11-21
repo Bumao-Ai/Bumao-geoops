@@ -16,6 +16,7 @@ library installed.
 
 from __future__ import annotations
 
+import math
 import os
 import struct
 import zlib
@@ -314,15 +315,21 @@ def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[s
     nodata = None
     raw_nodata = entries.get(TAG_GDAL_NODATA)
     if isinstance(raw_nodata, str) and raw_nodata.strip().strip("\x00"):
+        text = raw_nodata.strip().strip("\x00")
         try:
-            nodata = float(raw_nodata.strip().strip("\x00"))
-        except ValueError:
-            nodata = None
+            nodata = float(text)
+        except ValueError as exc:
+            raise GeoTiffError(
+                "GeoTIFF GDAL_NODATA is not numeric: %r" % text
+            ) from exc
     pixel_size = None
     bounds = None
     geo = _epsg_metadata(entries)
     if len(transform) >= 16:
-        a, b, _c, d, e, f, _g, h = [float(value) for value in transform[:8]]
+        values = [float(value) for value in transform[:16]]
+        if not all(math.isfinite(value) for value in values):
+            raise GeoTiffError("GeoTIFF ModelTransformation is not finite")
+        a, b, _c, d, e, f, _g, h = values[:8]
         span = max(abs(a), abs(f), 1.0)
         if abs(b) > span * 1e-12 or abs(e) > span * 1e-12:
             raise GeoTiffError(
@@ -337,11 +344,17 @@ def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[s
             top += 0.5 * sy
         bounds = [left, top - height * sy, left + width * sx, top]
         pixel_size = [sx, sy]
+        if not all(math.isfinite(value) for value in bounds + pixel_size):
+            raise GeoTiffError("GeoTIFF ModelTransformation produced a non-finite extent")
     elif len(scale) >= 2 and len(tie) >= 6:
         sx, sy = float(scale[0]), float(scale[1])
+        if not math.isfinite(sx) or not math.isfinite(sy):
+            raise GeoTiffError("GeoTIFF pixel scale is not finite")
         if sx <= 0 or sy <= 0:
             raise GeoTiffError("GeoTIFF pixel scale must be positive and north-up")
         i, j, _k, x, y, _z = [float(value) for value in tie[:6]]
+        if not all(math.isfinite(value) for value in (i, j, x, y)):
+            raise GeoTiffError("GeoTIFF tiepoint is not finite")
         left = x - i * sx
         top = y + j * sy
         if geo.get("raster_type") == 2:
@@ -349,6 +362,8 @@ def _raster_metadata(entries: Dict[int, Any], width: int, height: int) -> Dict[s
             top += 0.5 * sy
         bounds = [left, top - height * sy, left + width * sx, top]
         pixel_size = [sx, sy]
+        if not all(math.isfinite(value) for value in bounds + pixel_size):
+            raise GeoTiffError("GeoTIFF pixel scale/tiepoint produced a non-finite extent")
     return {"nodata": nodata, "pixel_size": pixel_size, "bounds": bounds, **geo}
 
 
