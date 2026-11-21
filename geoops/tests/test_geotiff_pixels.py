@@ -623,6 +623,7 @@ class GeoTiffPixelTests(unittest.TestCase):
         decoded = read_geotiff_pixels(self.path)
         self.assertEqual(decoded["bands"], 3)
         self.assertEqual(len(decoded["values"]), 12)
+        self.assertEqual(probe_geotiff(self.path, require_crs=False)["compression"], 7)
 
     def test_written_geotiff_has_real_georeferencing(self) -> None:
         path = os.path.join(tempfile.mkdtemp(prefix="geoops-write-"), "mask.tif")

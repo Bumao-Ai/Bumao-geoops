@@ -164,6 +164,7 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
             "height": int(height),
             "bands": int(samples),
             "bits_per_sample": int(bits) if bits else None,
+            "compression": int(_first(entries.get(TAG_COMPRESSION)) or 1),
             "crs": crs,
             "crs_model": metadata.get("crs_model", ""),
             "raster_type": metadata.get("raster_type", 1),
