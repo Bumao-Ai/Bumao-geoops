@@ -58,6 +58,18 @@ All notable changes to this project are documented in this file.
 - API JSON responses replace non-finite floats (for example a NaN NODATA
   sentinel) with null and encode with `allow_nan=False`, so clients receive
   valid JSON instead of Python's `NaN`/`Infinity` literals.
+- A projected GeoTIFF normally declares both its base geographic GeoKey and
+  its projected GeoKey; the projected key now always decides the raster CRS,
+  not key order. A user-defined `32767` CRS is refused instead of being
+  mislabelled as EPSG, and a truncated GeoKey directory is a header error.
+- Quality metrics refuse a negative mask threshold, which would count every
+  0/1 background cell as positive and produce a meaningless matrix.
+- Model options reject fractional `max_tokens` and booleans instead of
+  silently coercing `1.5` to `1`; an invalid `GEOOPS_MODEL_TIMEOUT` is reported
+  as `CONFIG_ERROR` instead of becoming 60 seconds unnoticed.
+- Object ids are used as archive folder names, so `register` and snapshot
+  restore now refuse a path-like id such as `../escape`. A relative artifact
+  path must resolve inside the artifact store root.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,
