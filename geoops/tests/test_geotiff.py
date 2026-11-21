@@ -115,6 +115,13 @@ class GeoTiffTests(unittest.TestCase):
         with self.assertRaises(GeoTiffError):
             _epsg_metadata({TAG_GEOKEYS: keys})
 
+    def test_a_truncated_geokey_directory_is_refused(self) -> None:
+        # key_count says two keys, but the second key has no value word.
+        keys = [1, 1, 0, 2, 2048, 0, 1, 4326, 3072, 0, 1]
+        with self.assertRaises(GeoTiffError) as caught:
+            _epsg_metadata({TAG_GEOKEYS: keys})
+        self.assertIn("truncated", str(caught.exception))
+
     def test_a_non_numeric_gdal_nodata_tag_is_refused(self) -> None:
         path = os.path.join(self.tempdir, "bad-nodata.tif")
         write_geotiff_mask(

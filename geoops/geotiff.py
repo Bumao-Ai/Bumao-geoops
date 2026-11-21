@@ -324,7 +324,7 @@ def _epsg_metadata(entries: Dict[int, Any]) -> Dict[str, Any]:
     for index in range(key_count):
         base = 4 + index * 4
         if base + 3 >= len(geo_keys):
-            break
+            raise GeoTiffError("GeoTIFF GeoKey directory is truncated")
         key_id, location, _count, value = geo_keys[base:base + 4]
         if location != 0 or not value:
             continue
