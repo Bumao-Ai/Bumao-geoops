@@ -171,6 +171,8 @@ def register(path: Optional[str]) -> DatasetRecord:
     elif not extra and os.path.splitext(absolute)[1].lower() in (".tif", ".tiff"):
         georeferenced = False
         reason = "GeoTIFF header could not be read; metadata would come from a sidecar alone"
+    if invalid_sidecar_model and not reason:
+        reason = "sidecar crs_model must be geographic or projected: %r" % raw_model
     return DatasetRecord(
         dataset_id="DS-" + digest[:12],
         path=absolute,
