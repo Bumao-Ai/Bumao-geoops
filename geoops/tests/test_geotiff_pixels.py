@@ -10,6 +10,7 @@ import zlib
 
 from geoops.geotiff import (
     GeoTiffError,
+    _packbits_decode,
     iter_geotiff_band_values,
     probe_geotiff,
     profile_geotiff_band,
@@ -303,6 +304,16 @@ def _tiled_grid_tiff(path: str, width: int, height: int, tile_width: int, tile_h
         handle.write(body)
 
 
+def _packbits_encode(values) -> bytes:
+    data = bytes(values)
+    output = bytearray()
+    for start in range(0, len(data), 128):
+        chunk = data[start:start + 128]
+        output.append(len(chunk) - 1)
+        output.extend(chunk)
+    return bytes(output)
+
+
 def _tiff(path: str, values, compression: int = 1) -> None:
     raw = bytes(values)
     payload = raw
@@ -310,6 +321,8 @@ def _tiff(path: str, values, compression: int = 1) -> None:
         payload = zlib.compress(raw)
     elif compression == 5:
         payload = _lzw_encode(values)
+    elif compression == 32773:
+        payload = _packbits_encode(values)
     count = 11
     data_offset = 8 + 2 + count * 12 + 4
     entries = [
@@ -506,6 +519,17 @@ class GeoTiffPixelTests(unittest.TestCase):
         image = read_geotiff_pixels(self.path)
         self.assertEqual(image["values"], [1.0, 2.0, 3.0, 4.0])
 
+    def test_packbits_pixels_are_decoded(self) -> None:
+        _tiff(self.path, [1, 2, 3, 4], compression=32773)
+        image = read_geotiff_pixels(self.path)
+        self.assertEqual(image["values"], [1.0, 2.0, 3.0, 4.0])
+        self.assertEqual(list(iter_geotiff_band_values(self.path)), [1.0, 2.0, 3.0, 4.0])
+
+    def test_packbits_repeat_runs_are_decoded(self) -> None:
+        self.assertEqual(_packbits_decode(bytes([0xFE, 0x2A])), b"\x2a\x2a\x2a")
+        with self.assertRaises(GeoTiffError):
+            _packbits_decode(bytes([0xFE]))
+
     def test_tiled_pixels_are_decoded(self) -> None:
         _tiled_tiff(self.path, [1, 2, 3, 4])
         image = read_geotiff_pixels(self.path)
@@ -563,6 +587,7 @@ class GeoTiffPixelTests(unittest.TestCase):
             ("strip", lambda p: _tiff(p, [1, 2, 3, 4])),
             ("lzw", lambda p: _tiff(p, [1, 2, 3, 4], compression=5)),
             ("deflate", lambda p: _tiff(p, [1, 2, 3, 4], compression=8)),
+            ("packbits", lambda p: _tiff(p, [1, 2, 3, 4], compression=32773)),
             ("predictor8", lambda p: _deflate_predictor8_tiff(p, [200, 10, 50, 5])),
             ("predictor16", lambda p: _deflate_predictor16_tiff(p, [40000, 100, 50000, 200])),
             ("tiled", lambda p: _tiled_tiff(p, [1, 2, 3, 4])),

@@ -138,6 +138,8 @@ here.
   keeping real NODATA/non-finite counts and min/max/mean.
 - Two GeoTIFF quality masks are streamed in row order; the confusion matrix is
   accumulated from aligned cells without loading either full float array.
+- PackBits (TIFF compression 32773) strips/tiles are decoded; truncated
+  literal/repeat runs fail explicitly.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
   that value when it does not declare its own step budget; a node override is
   also restricted to an integer 1–16.
@@ -155,7 +157,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 359 tests in 29.8s`, `OK`.
+- Full suite: `Ran 361 tests in 28.8s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

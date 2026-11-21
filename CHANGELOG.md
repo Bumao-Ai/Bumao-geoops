@@ -44,6 +44,8 @@ All notable changes to this project are documented in this file.
 - Two GeoTIFF masks are now compared row by row in spatial order, so accuracy
   metrics on large classification/truth masks no longer load two full float
   arrays; alignment is still checked before any cell is counted.
+- GeoTIFF strips and tiles using PackBits (compression 32773) are decoded, with
+  truncated literal/repeat runs refused instead of yielding short pixel data.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

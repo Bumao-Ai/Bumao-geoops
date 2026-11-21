@@ -171,6 +171,29 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
     }
 
 
+def _packbits_decode(data: bytes) -> bytes:
+    """Decode TIFF PackBits (compression 32773); a truncated run is an error."""
+    output = bytearray()
+    index = 0
+    length = len(data)
+    while index < length:
+        header = data[index]
+        index += 1
+        if header <= 127:
+            count = header + 1
+            if index + count > length:
+                raise GeoTiffError("PackBits literal run is truncated")
+            output.extend(data[index:index + count])
+            index += count
+        elif header >= 129:
+            if index >= length:
+                raise GeoTiffError("PackBits repeat run has no value")
+            output.extend([data[index]] * (257 - header))
+            index += 1
+        # 128 is a no-op by specification.
+    return bytes(output)
+
+
 def _lzw_decode(data: bytes) -> bytes:
     """Decode TIFF LZW (MSB-first codes, early code-width change)."""
     dictionary: Dict[int, bytes] = {index: bytes([index]) for index in range(256)}
@@ -455,6 +478,8 @@ def _decode_block(
     raw = raw_file[int(offset):int(offset) + int(count)]
     if compression == 5:
         raw = _lzw_decode(raw)
+    elif compression == 32773:
+        raw = _packbits_decode(raw)
     elif compression in (8, 32946):
         try:
             raw = zlib.decompress(raw)
@@ -498,9 +523,9 @@ def iter_geotiff_band_values(path: str, band: int = 1):
         )
     if bits not in (8, 16, 32):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
-    if compression not in (1, 5, 7, 8, 32946, 34712):
+    if compression not in (1, 5, 7, 8, 32946, 32773, 34712):
         raise GeoTiffError(
-            "unsupported TIFF compression %s; uncompressed, LZW, Deflate, JPEG or JPEG2000 only"
+            "unsupported TIFF compression %s; uncompressed, LZW, Deflate, PackBits, JPEG or JPEG2000 only"
             % compression
         )
     if compression in (7, 34712):
@@ -740,9 +765,9 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         )
     if bits not in (8, 16, 32):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
-    if compression not in (1, 5, 7, 8, 32946, 34712):
+    if compression not in (1, 5, 7, 8, 32946, 32773, 34712):
         raise GeoTiffError(
-            "unsupported TIFF compression %s; uncompressed, LZW, Deflate, JPEG or JPEG2000 only"
+            "unsupported TIFF compression %s; uncompressed, LZW, Deflate, PackBits, JPEG or JPEG2000 only"
             % compression
         )
     if compression in (7, 34712):
@@ -764,6 +789,8 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         raw = raw_file[int(offset):int(offset) + int(count)]
         if compression == 5:
             raw = _lzw_decode(raw)
+        elif compression == 32773:
+            raw = _packbits_decode(raw)
         elif compression in (8, 32946):
             try:
                 raw = zlib.decompress(raw)
