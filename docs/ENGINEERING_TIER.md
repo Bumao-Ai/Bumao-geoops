@@ -41,7 +41,7 @@
 | 看得见且不造假 | `/ui/` 六段控制台（概览/任务/流程/规则/成果/审计），书香纸色 + 深空夜纸；流程页接运行日志（节点判定 + 跳过数 + 恢复来源）；缺接口写「未开放」、缺令牌写「需令牌」；smoke 17 段 4 条；`test_ui` 9 条、`test_journal` 11 条；`docs/ui-preview/` 六张真实截图；桌面快捷方式一键起服务 |
 | 并发纪律已验 | 唯一临时名 + 进程内锁 + 读占用时读写双侧重试；旧/新版本各自拒绝；`test_concurrency` 8 条（连跑 5 次全绿）；全量连跑 5 次全绿 |
 | 变更可追溯 | 提交 `22f3fc4`、`9f80d77`、`43d2c03`、`ef76fab`、`66a86a2`、`8e3d12a`、`4ae7bdc`、`4b6e6e5`、`4790816`、`ac4e9d4`、`785fdb2`、`9a4a187`、`3a611ab`、`7308af0`、`986faf8`、`ed95c9e` 及本轮提交 |
-| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 358 tests, OK` |
+| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 359 tests, OK` |
 
 ## 四、升级为核心工程后，仍未达成的门槛（不粉饰）
 
@@ -70,7 +70,7 @@
 | 7 | 调用至少一种真实地理空间处理工具 | 通过（内置工具） | `gis_tool_call` 真实调用 `builtin:ascii_grid_profile`（读 ASCII/GeoTIFF 栅格、校验像元、算有效格数/最值/均值）；`external:<id>` 可按 `var/external-tools.json` 调用真实可执行程序，未配置或退出非零即 `ERROR`；GDAL/QGIS/Rasterio 本体未安装 |
 | 8 | 执行测绘专业规则 | 通过 | 规则包 11 条、五态结果、闸门节点；异常不判 PASS |
 | 9 | 记录整个 AI 作业过程 | 部分 | 工作流定义、节点输出、运行日志、审计、任务历史、结构化追溯均有；Agent `tool_calls` 现记录成功与失败调用，外部工具调用带渲染命令、退出码、stdout/stderr、超时与耗时；仍无真实外部 GIS 工具在用户环境执行 |
-| 10 | 对成果自动质量检查 | 部分 | 三层检查已实现；混淆矩阵（TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU）支持 ASCII 与 GeoTIFF 掩膜，并校验尺寸、像元宽高、原点与 CRS；调用方可声明最低精度阈值，低于阈值即 FAIL，不预设默认阈值；真实影像分类/几何精度样本仍缺 |
+| 10 | 对成果自动质量检查 | 部分 | 三层检查已实现；混淆矩阵（TP/FP/FN/TN、pixel_accuracy、precision、recall、F1、IoU）支持 ASCII 与 GeoTIFF 掩膜，并校验尺寸、像元宽高、原点与 CRS；两张 GeoTIFF 掩膜按行序流式比较；调用方可声明最低精度阈值，低于阈值即 FAIL，不预设默认阈值；真实影像分类/几何精度样本仍缺 |
 | 11 | 输出质检报告 | 通过（软件路径） | `QualityService` 原子写 `var/quality/QR-*.json` 并登记 `QualityReport`；报告含 `basis`/`method`/`data`/`evidence`/`program`；审核引用报告时 `APPROVE` 必须是 `PASS` |
 | 12 | 人工审核 | 通过 | `ReviewEngine` + `POST /api/v1/reviews` + 审核页；通过才 accepted，驳回/返工必须写意见；`review` 流程节点只查真实 APPROVE，不自动批准；合成成果禁止最终验收 |
 | 13 | 归档最终成果 | 通过（软件路径） | `DeliverableRegistry` 真文件登记 sha256/大小/版本；归档前重算哈希，缺文件或被改即拒；控制台归档到 `var/archive/<成果编号>/` 并写 `manifest.json`；accepted 后 `POST /api/v1/deliverables/{id}/archive` 归档并留人/时间；`GET .../archive-verification` 可再次逐文件重算哈希并与登记值、清单路径核对 |

@@ -136,6 +136,8 @@ here.
 - GeoTIFF reads use `mmap` rather than a full `read()`; GeoTIFF dataset
   profiles stream one band block by block (`read_mode=streamed_blocks`) while
   keeping real NODATA/non-finite counts and min/max/mean.
+- Two GeoTIFF quality masks are streamed in row order; the confusion matrix is
+  accumulated from aligned cells without loading either full float array.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
   that value when it does not declare its own step budget; a node override is
   also restricted to an integer 1–16.
@@ -153,7 +155,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 358 tests in 31.2s`, `OK`.
+- Full suite: `Ran 359 tests in 29.8s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

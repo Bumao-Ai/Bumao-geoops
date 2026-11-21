@@ -5,7 +5,7 @@
 
 ## 一、当前可核对的软件基线
 
-- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **358 tests OK**。
+- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **359 tests OK**。
 - 结构自检：`python -m geoops.smoke`，当前 **SMOKE PASS: 73 assertions**。
 - 控制台：`http://127.0.0.1:8790/ui/`；健康接口 `/api/v1/health`。
 - 等级：核心工程（CORE），登记在 `docs/ENGINEERING_TIER.md`。
@@ -115,7 +115,7 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 4. 人工抽查说明（专业样本备注）。
 
 质量报告会记录 `TP/FP/FN/TN`、pixel accuracy、precision、recall、F1、IoU；参考/预测 CRS 不一致、
-缺 CRS、尺寸/像元/原点不一致都会拒绝，不会出伪造混淆矩阵。NODATA 与 NaN/Inf 分开计数并从矩阵排除；
+缺 CRS、尺寸/像元/原点不一致都会拒绝，不会出伪造混淆矩阵。两张 GeoTIFF 掩膜按空间行序流式比较，不把两幅整图读成浮点数组。NODATA 与 NaN/Inf 分开计数并从矩阵排除；
 没有声明 NODATA 的掩膜不会把 -9999 当缺失值。
 
 ## 六、审核、归档与追溯

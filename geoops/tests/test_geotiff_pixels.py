@@ -255,6 +255,54 @@ def _oriented_tiff(path: str, values) -> None:
         handle.write(body)
 
 
+def _tiled_grid_tiff(path: str, width: int, height: int, tile_width: int, tile_height: int, values) -> None:
+    """A one-band uncompressed tiled TIFF with more than one tile row."""
+    tiles = []
+    for tile_row in range(0, height, tile_height):
+        for tile_col in range(0, width, tile_width):
+            block = []
+            for row in range(tile_row, min(tile_row + tile_height, height)):
+                for col in range(tile_col, min(tile_col + tile_width, width)):
+                    block.append(values[row * width + col])
+            tiles.append(bytes(block))
+    columns = (width + tile_width - 1) // tile_width
+    rows = (height + tile_height - 1) // tile_height
+    count = 12
+    data_offset = 8 + 2 + count * 12 + 4
+    offsets_offset = data_offset
+    counts_offset = offsets_offset + len(tiles) * 4
+    data_start = counts_offset + len(tiles) * 4
+    offsets = []
+    position = data_start
+    for tile in tiles:
+        offsets.append(position)
+        position += len(tile)
+    entries = [
+        (256, 3, 1, width),
+        (257, 3, 1, height),
+        (258, 3, 1, 8),
+        (259, 3, 1, 1),
+        (262, 3, 1, 1),
+        (277, 3, 1, 1),
+        (284, 3, 1, 1),
+        (339, 3, 1, 1),
+        (322, 3, 1, tile_width),
+        (323, 3, 1, tile_height),
+        (324, 4, len(tiles), offsets_offset),
+        (325, 4, len(tiles), counts_offset),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += struct.pack("<%dI" % len(offsets), *offsets)
+    body += struct.pack("<%dI" % len(tiles), *[len(tile) for tile in tiles])
+    body += b"".join(tiles)
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _tiff(path: str, values, compression: int = 1) -> None:
     raw = bytes(values)
     payload = raw
@@ -531,6 +579,15 @@ class GeoTiffPixelTests(unittest.TestCase):
                     expected = image["values"][band - 1::image["bands"]]
                     streamed = list(iter_geotiff_band_values(self.path, band))
                     self.assertEqual(streamed, expected)
+
+    def test_multiple_tile_rows_are_streamed_in_image_row_order(self) -> None:
+        _tiled_grid_tiff(self.path, 4, 2, 2, 1, list(range(1, 9)))
+        image = read_geotiff_pixels(self.path)
+        self.assertEqual(image["values"], [float(value) for value in range(1, 9)])
+        self.assertEqual(
+            list(iter_geotiff_band_values(self.path)),
+            [float(value) for value in range(1, 9)],
+        )
 
     def test_profile_geotiff_band_counts_nodata_without_full_decode(self) -> None:
         write_geotiff_mask(

@@ -41,6 +41,9 @@ All notable changes to this project are documented in this file.
   GeoTIFF dataset profiles now stream one band strip/tile by strip/tile
   (`read_mode=streamed_blocks`), so a large image no longer needs width*height
   Python floats in memory; real pixel counts and statistics are unchanged.
+- Two GeoTIFF masks are now compared row by row in spatial order, so accuracy
+  metrics on large classification/truth masks no longer load two full float
+  arrays; alignment is still checked before any cell is counted.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,
