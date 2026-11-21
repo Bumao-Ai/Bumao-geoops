@@ -127,8 +127,22 @@ class QualityDeliverableTests(unittest.TestCase):
         ReviewEngine(self.registry).submit(
             self.task.task_id, self.deliverable.object_id, "reviewer", "APPROVE", "通过"
         )
-        archived = self.deliverables.archive(self.deliverable.object_id, actor="tester")
+        configured = DeliverableRegistry(
+            self.registry, archive_dir=os.path.join(self.tempdir, "archive")
+        )
+        archived = configured.archive(self.deliverable.object_id, actor="tester")
         self.assertEqual(archived.status, "archived")
+
+    def test_archive_without_a_directory_is_refused(self) -> None:
+        ReviewEngine(self.registry).submit(
+            self.task.task_id, self.deliverable.object_id, "reviewer", "APPROVE", "通过"
+        )
+        with self.assertRaises(DeliverableError) as caught:
+            self.deliverables.archive(self.deliverable.object_id, actor="tester")
+        self.assertIn("archive directory is not configured", str(caught.exception))
+        self.assertEqual(
+            self.deliverables.get(self.deliverable.object_id).status, "accepted"
+        )
 
     def test_archive_refuses_a_file_changed_after_review(self) -> None:
         ReviewEngine(self.registry).submit(

@@ -299,6 +299,10 @@ class DeliverableRegistry:
             raise DeliverableError(
                 "deliverable file changed since registration; re-register before archiving"
             )
+        if not self.archive_dir:
+            raise DeliverableError(
+                "archive directory is not configured; refusing a metadata-only archive"
+            )
         payload = {
             "archived_at": _now(),
             "archived_by": str(actor or "").strip(),
