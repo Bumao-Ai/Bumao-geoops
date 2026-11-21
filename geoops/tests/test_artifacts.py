@@ -34,6 +34,10 @@ class ArtifactStoreTests(unittest.TestCase):
         with self.assertRaises(ArtifactError):
             self.store.register("")
 
+    def test_relative_path_cannot_escape_the_store_root(self) -> None:
+        with self.assertRaises(ArtifactError):
+            self.store.register("../escape.tif")
+
     def test_row_records_real_size_and_hash(self) -> None:
         row = self.store.register(self.path, task_id="TSK-1", kind="ortho")
         self.assertEqual(row["size"], len(b"real deliverable bytes"))

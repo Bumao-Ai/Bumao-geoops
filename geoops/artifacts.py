@@ -78,7 +78,16 @@ class ArtifactStore:
         if not os.path.isabs(path):
             if not self.root:
                 raise ArtifactError("a relative path needs a store root: %s" % path)
-            path = os.path.join(self.root, path)
+            joined = os.path.abspath(os.path.join(self.root, path))
+            try:
+                inside = os.path.commonpath([self.root, joined]) == self.root
+            except ValueError:
+                inside = False
+            if not inside:
+                raise ArtifactError(
+                    "a relative artifact path must stay inside the store root: %s" % path
+                )
+            path = joined
         return os.path.abspath(path)
 
     def _stored(self, absolute: str) -> str:
