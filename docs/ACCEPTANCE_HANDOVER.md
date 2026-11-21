@@ -128,6 +128,7 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 
 归档会：
 
+- 拒绝未配置归档目录或未填写归档人身份的请求，成果状态保持 accepted，不会出现“只改状态、没有文件”的假归档；
 - 重算源文件 sha256，缺失或被改即拒绝；
 - 将文件复制到 `var\archive\<成果编号>\files\`；
 - 写 `manifest.json`（成果编号、任务、项目、源路径、sha256、大小、归档人、时间、备注）。
