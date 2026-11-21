@@ -314,6 +314,33 @@ def _packbits_encode(values) -> bytes:
     return bytes(output)
 
 
+def _float64_tiff(path: str, values) -> None:
+    payload = struct.pack("<%dd" % len(values), *[float(value) for value in values])
+    count = 11
+    data_offset = 8 + 2 + count * 12 + 4
+    entries = [
+        (256, 3, 1, 2),
+        (257, 3, 1, 2),
+        (258, 3, 1, 64),
+        (259, 3, 1, 1),
+        (262, 3, 1, 1),
+        (273, 4, 1, data_offset),
+        (277, 3, 1, 1),
+        (278, 3, 1, 2),
+        (279, 4, 1, len(payload)),
+        (284, 3, 1, 1),
+        (339, 3, 1, 3),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += payload
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _tiff(path: str, values, compression: int = 1) -> None:
     raw = bytes(values)
     payload = raw
@@ -519,6 +546,15 @@ class GeoTiffPixelTests(unittest.TestCase):
         image = read_geotiff_pixels(self.path)
         self.assertEqual(image["values"], [1.0, 2.0, 3.0, 4.0])
 
+    def test_float64_pixels_are_decoded(self) -> None:
+        _float64_tiff(self.path, [1.5, -2.25, 3.0, 4.75])
+        image = read_geotiff_pixels(self.path)
+        self.assertEqual(image["values"], [1.5, -2.25, 3.0, 4.75])
+        self.assertEqual(
+            list(iter_geotiff_band_values(self.path)),
+            [1.5, -2.25, 3.0, 4.75],
+        )
+
     def test_packbits_pixels_are_decoded(self) -> None:
         _tiff(self.path, [1, 2, 3, 4], compression=32773)
         image = read_geotiff_pixels(self.path)
@@ -595,6 +631,7 @@ class GeoTiffPixelTests(unittest.TestCase):
             ("planar_tiled", lambda p: _planar_tiled_tiff(p, [1, 2, 3, 4], [5, 6, 7, 8])),
             ("multiband", lambda p: _georeferenced_multiband_tiff(p, [1, 5, 2, 6, 3, 7, 4, 8])),
             ("bigtiff", lambda p: _bigtiff(p, [1, 2, 3, 4])),
+            ("float64", lambda p: _float64_tiff(p, [1.5, -2.25, 3.0, 4.75])),
         ]
         for label, builder in fixtures:
             with self.subTest(layout=label):

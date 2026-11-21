@@ -258,8 +258,12 @@ def _decode_samples(raw: bytes, endian: str, bits: int, sample_format: int) -> L
         if sample_format == 3:
             raise GeoTiffError("16-bit float samples are not supported")
         fmt = "%d%s" % (count, "h" if sample_format == 2 else "H")
-    else:
+    elif bits == 32:
         fmt = "%d%s" % (count, {1: "I", 2: "i", 3: "f"}[sample_format])
+    elif bits == 64:
+        fmt = "%d%s" % (count, {1: "Q", 2: "q", 3: "d"}[sample_format])
+    else:
+        raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
     try:
         return [float(value) for value in struct.unpack(endian + fmt, raw[:count * bytes_per_sample])]
     except struct.error as exc:
@@ -521,7 +525,7 @@ def iter_geotiff_band_values(path: str, band: int = 1):
         raise GeoTiffError(
             "TIFF Orientation=%s is not supported; pixel order would be wrong" % orientation
         )
-    if bits not in (8, 16, 32):
+    if bits not in (8, 16, 32, 64):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
     if compression not in (1, 5, 7, 8, 32946, 32773, 34712):
         raise GeoTiffError(
@@ -763,7 +767,7 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         raise GeoTiffError(
             "TIFF Orientation=%s is not supported; pixel order would be wrong" % orientation
         )
-    if bits not in (8, 16, 32):
+    if bits not in (8, 16, 32, 64):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
     if compression not in (1, 5, 7, 8, 32946, 32773, 34712):
         raise GeoTiffError(

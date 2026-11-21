@@ -46,6 +46,8 @@ All notable changes to this project are documented in this file.
   arrays; alignment is still checked before any cell is counted.
 - GeoTIFF strips and tiles using PackBits (compression 32773) are decoded, with
   truncated literal/repeat runs refused instead of yielding short pixel data.
+- GeoTIFF 64-bit samples are decoded for unsigned/signed integer and float
+  SampleFormat, so Float64 rasters are no longer refused as unsupported bits.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

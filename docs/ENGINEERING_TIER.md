@@ -41,7 +41,7 @@
 | 看得见且不造假 | `/ui/` 六段控制台（概览/任务/流程/规则/成果/审计），书香纸色 + 深空夜纸；流程页接运行日志（节点判定 + 跳过数 + 恢复来源）；缺接口写「未开放」、缺令牌写「需令牌」；smoke 17 段 4 条；`test_ui` 9 条、`test_journal` 11 条；`docs/ui-preview/` 六张真实截图；桌面快捷方式一键起服务 |
 | 并发纪律已验 | 唯一临时名 + 进程内锁 + 读占用时读写双侧重试；旧/新版本各自拒绝；`test_concurrency` 8 条（连跑 5 次全绿）；全量连跑 5 次全绿 |
 | 变更可追溯 | 提交 `22f3fc4`、`9f80d77`、`43d2c03`、`ef76fab`、`66a86a2`、`8e3d12a`、`4ae7bdc`、`4b6e6e5`、`4790816`、`ac4e9d4`、`785fdb2`、`9a4a187`、`3a611ab`、`7308af0`、`986faf8`、`ed95c9e` 及本轮提交 |
-| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 361 tests, OK` |
+| 结果可复现 | `SMOKE PASS: 73 assertions`；`Ran 362 tests, OK` |
 
 ## 四、升级为核心工程后，仍未达成的门槛（不粉饰）
 
@@ -63,7 +63,7 @@
 |---|---|---|---|
 | 1 | 建真实项目 | 通过（软件路径） | `ProjectRegistry` 六字段必填、编号唯一；`POST /api/v1/projects`；数据页表单 |
 | 2 | 建真实任务 | 通过（软件路径） | `TaskEngine.create` 要求项目已登记；七态状态机；写操作页与 API |
-| 3 | 导入真实遥感影像 | 部分 | 数据集登记读真实文件算 sha256；GeoTIFF（classic/BigTIFF）已支持未压缩/LZW/Deflate/PackBits、条带/分块、chunky/分开波段像素解码、Predictor=2 位宽还原、PixelIsPoint、ModelTransformation，JPEG/JPEG2000 可选 Pillow 解码；文件用 mmap，profile 逐块流式统计；尚无用户提供的真实遥感影像入库 |
+| 3 | 导入真实遥感影像 | 部分 | 数据集登记读真实文件算 sha256；GeoTIFF（classic/BigTIFF）已支持未压缩/LZW/Deflate/PackBits、条带/分块、chunky/分开波段像素解码、8/16/32/64 位样本、Predictor=2 位宽还原、PixelIsPoint、ModelTransformation，JPEG/JPEG2000 可选 Pillow 解码；文件用 mmap，profile 逐块流式统计；尚无用户提供的真实遥感影像入库 |
 | 4 | 识别必要空间元信息 | 部分 | classic GeoTIFF 与 BigTIFF 读 EPSG、CRS 模型、宽高、波段、范围、像元大小、线性单位、RasterType；ASCII + sidecar；重投影与 GCP 未做 |
 | 5 | 登记并调用真实 AI 模型或算法 | 部分 | 目录登记 + `builtin:change_detection` 真跑逐格差分；OpenAI-compatible 模型运行时与 workflow `model_call` / `agent_execute` 已实现，但当前未配置真实端点 |
 | 6 | 用 Agent 组织执行过程 | 部分 | Agent 目录、依赖校验、JSON 计划循环、声明工具白名单、内置工具真实执行与 `tool_calls` 记录已做；外部工具可经 `external:<id>` 配置执行，真实模型端点仍缺 |
