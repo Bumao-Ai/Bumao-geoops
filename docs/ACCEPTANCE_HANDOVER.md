@@ -5,7 +5,7 @@
 
 ## 一、当前可核对的软件基线
 
-- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **352 tests OK**。
+- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **356 tests OK**。
 - 结构自检：`python -m geoops.smoke`，当前 **SMOKE PASS: 73 assertions**。
 - 控制台：`http://127.0.0.1:8790/ui/`；健康接口 `/api/v1/health`。
 - 等级：核心工程（CORE），登记在 `docs/ENGINEERING_TIER.md`。
@@ -99,8 +99,9 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 
 规则：
 
-- `command` 是 argv 数组，不经 shell。
-- `{path}` 等占位符必须由调用参数提供，缺失即拒绝。
+- `command` 是 argv 数组，不经 shell；`command[0]` 必须是绝对可执行路径。
+- `{path}` 等占位符必须由调用参数提供，缺失即拒绝；值只接受字符串/数字/布尔，拒绝 None、对象、数组、NaN/Inf 与 NUL。
+- 超时必须在 1–3600 秒之间；0 或空值不会再被当成默认 60。
 - 非零退出、超时、无法启动都记录为 `ERROR`，并带渲染命令、退出码、stdout/stderr、耗时。
 - 重复 `tool_id` 或非有限 `timeout` 在加载时就会被拒绝。
 

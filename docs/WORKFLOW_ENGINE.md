@@ -74,7 +74,7 @@
 
 ## 外部工具配置
 
-`gis_tool_call` 的 `tool_id` 写成 `external:<id>`，并在 `var/external-tools.json` 登记命令。参数模板用 `{path}` 等占位符，未提供参数会直接报错，不猜默认值；命令以列表形式执行，不使用 shell。
+`gis_tool_call` 的 `tool_id` 写成 `external:<id>`，并在 `var/external-tools.json` 登记命令。参数模板用 `{path}` 等占位符，未提供参数会直接报错，不猜默认值；命令以列表形式执行，不使用 shell。`command[0]` 必须是可执行文件的绝对路径；占位符只接受字符串/数字/布尔（拒绝 None、对象、数组、NaN/Inf 与 NUL），超时 1–3600 秒。
 
 ```json
 {

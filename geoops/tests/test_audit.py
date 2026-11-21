@@ -191,6 +191,20 @@ class AuditFileTests(unittest.TestCase):
         self.assertEqual(first["reason"], "legacy")
         self.assertEqual(second["prev_hash"], AuditLog.row_digest(first))
 
+    def test_unchained_row_after_a_chained_row_is_refused(self) -> None:
+        log = AuditLog(path=self.path)
+        log.record("GET", "/api/v1/health", "", "allow", "chained", 200)
+        legacy = {
+            "at": "2026-11-16T00:00:00Z", "method": "GET", "path": "/api/v1/health",
+            "token_fp": "", "decision": "allow", "reason": "injected", "status": 200,
+        }
+        with open(self.path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(legacy) + "\n")
+        with self.assertRaises(AuditError) as caught:
+            AuditLog(path=self.path)
+        self.assertIn("unchained", str(caught.exception))
+        self.assertFalse(log.verify()["ok"])
+
     def test_corrupt_line_is_reported_not_dropped(self) -> None:
         log = AuditLog(path=self.path)
         log.record("GET", "/api/v1/health", "", "allow", "ok", 200)

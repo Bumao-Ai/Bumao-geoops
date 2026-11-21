@@ -106,6 +106,50 @@ class ExternalToolTests(unittest.TestCase):
         result = node.action({"raster_path": "D:/data/a.tif"})
         self.assertEqual(result.status.value, "ERROR")
 
+    def test_relative_command_is_refused(self) -> None:
+        with open(self.config, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "tools": [
+                        {
+                            "tool_id": "external:python",
+                            "command": ["python", self.script],
+                            "args": ["{path}"],
+                        }
+                    ]
+                },
+                handle,
+            )
+        with self.assertRaises(ExternalToolError) as caught:
+            ExternalToolRegistry(self.config)
+        self.assertIn("absolute", str(caught.exception))
+
+    def test_invalid_parameter_values_are_refused(self) -> None:
+        registry = ExternalToolRegistry(self.config)
+        for value in (None, {"path": "x"}, ["x"], float("nan"), "a\x00b"):
+            with self.assertRaises(ExternalToolError) as caught:
+                registry.run("external:echo", {"path": value})
+            self.assertIn("invalid parameter", str(caught.exception))
+
+    def test_zero_timeout_is_refused_not_treated_as_default(self) -> None:
+        with open(self.config, "w", encoding="utf-8") as handle:
+            json.dump(
+                {
+                    "tools": [
+                        {
+                            "tool_id": "external:echo",
+                            "command": [sys.executable, self.script],
+                            "args": ["{path}"],
+                            "timeout": 0,
+                        }
+                    ]
+                },
+                handle,
+            )
+        with self.assertRaises(ExternalToolError) as caught:
+            ExternalToolRegistry(self.config)
+        self.assertIn("timeout", str(caught.exception))
+
     def test_nonzero_exit_is_an_error(self) -> None:
         bad = os.path.join(self.tmp.name, "bad.py")
         with open(bad, "w", encoding="utf-8") as handle:

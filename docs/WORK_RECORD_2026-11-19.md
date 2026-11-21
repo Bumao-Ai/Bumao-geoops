@@ -130,6 +130,9 @@ here.
 - The model runtime refuses a non-finite/out-of-range temperature, a bad
   `max_tokens` or timeout as `INVALID_OPTION`; chat returns 400 instead of
   sending NaN to the provider.
+- External GIS tool config now requires an absolute command, typed finite
+  placeholder values and a 1–3600s timeout; NUL bytes and containers are
+  refused instead of rendered into argv.
 - Agent records now validate `max_steps` to 1–16, and the workflow node uses
   that value when it does not declare its own step budget; a node override is
   also restricted to an integer 1–16.
@@ -147,7 +150,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 352 tests in 28.0s`, `OK`.
+- Full suite: `Ran 356 tests in 29.0s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

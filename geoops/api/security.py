@@ -389,6 +389,7 @@ class AuditLog:
     def _read_file(cls, path: str) -> List[Dict[str, Any]]:
         rows: List[Dict[str, Any]] = []
         expected = cls.CHAIN_START
+        chain_seen = False
         with open(path, encoding="utf-8") as handle:
             for number, line in enumerate(handle, start=1):
                 line = line.strip()
@@ -415,6 +416,12 @@ class AuditLog:
                         raise AuditError("audit line %d hash does not match its fields" % number)
                     expected = row["row_hash"]
                 else:
+                    if chain_seen:
+                        raise AuditError(
+                            "audit line %d is unchained after a chained row" % number
+                        )
                     expected = cls.row_digest(row)
+                if has_chain:
+                    chain_seen = True
                 rows.append(row)
         return rows

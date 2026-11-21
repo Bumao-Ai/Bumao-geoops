@@ -34,6 +34,9 @@ All notable changes to this project are documented in this file.
   non-integer/out-of-range `max_tokens` and invalid `timeout_s` as
   `INVALID_OPTION`; `/model-runtime/chat` returns 400 instead of forwarding
   malformed JSON or reporting a provider failure.
+- External GIS tools now require an absolute executable path, reject NUL bytes,
+  non-scalar/non-finite placeholder values and a zero or >3600s timeout at load
+  or run time; a bad argument is an explicit error, not a guessed default.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

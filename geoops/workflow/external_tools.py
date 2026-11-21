@@ -45,11 +45,20 @@ class ExternalTool:
 
     def run(self, params: Dict[str, Any]) -> Dict[str, Any]:
         missing = set()
+        invalid = set()
         rendered = []
         for template in self.args:
             for key in PLACEHOLDER.findall(template):
                 if key not in params:
                     missing.add(key)
+                    continue
+                value = params[key]
+                if value is None or isinstance(value, (dict, list, tuple, set)):
+                    invalid.add(key)
+                elif isinstance(value, float) and not math.isfinite(value):
+                    invalid.add(key)
+                elif isinstance(value, str) and "\x00" in value:
+                    invalid.add(key)
             rendered.append(
                 PLACEHOLDER.sub(
                     lambda match: str(params.get(match.group(1), "")), template
@@ -60,8 +69,17 @@ class ExternalTool:
                 "external tool %s is missing parameter(s): %s"
                 % (self.tool_id, ", ".join(sorted(missing)))
             )
+        if invalid:
+            raise ExternalToolError(
+                "external tool %s has invalid parameter(s): %s"
+                % (self.tool_id, ", ".join(sorted(invalid)))
+            )
         if not self.command:
             raise ExternalToolError("external tool %s has an empty command" % self.tool_id)
+        if any("\x00" in part for part in rendered):
+            raise ExternalToolError(
+                "external tool %s produced an argument with a NUL byte" % self.tool_id
+            )
         argv = self.command + rendered
         started = time.monotonic()
         try:
@@ -72,7 +90,7 @@ class ExternalTool:
                 timeout=self.timeout,
                 shell=False,
             )
-        except (OSError, subprocess.TimeoutExpired) as exc:
+        except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
             elapsed_ms = int((time.monotonic() - started) * 1000)
             raise ExternalToolError(
                 "external tool %s could not run: %s" % (self.tool_id, exc),
@@ -132,16 +150,29 @@ class ExternalToolRegistry:
             args = row.get("args") or []
             if not tool_id or not isinstance(command, list) or not command:
                 raise ExternalToolError("external tool %d needs tool_id and command" % index)
+            if not os.path.isabs(str(command[0])):
+                raise ExternalToolError(
+                    "external tool %s command must be an absolute executable path" % tool_id
+                )
+            if any("\x00" in str(part) for part in command):
+                raise ExternalToolError("external tool %s command contains a NUL byte" % tool_id)
             if tool_id in self.tools:
                 raise ExternalToolError("duplicate external tool_id: %s" % tool_id)
             if not isinstance(args, list) or not all(isinstance(arg, str) for arg in args):
                 raise ExternalToolError("external tool %s args must be strings" % tool_id)
+            if any("\x00" in arg for arg in args):
+                raise ExternalToolError("external tool %s args contain a NUL byte" % tool_id)
+            raw_timeout = row.get("timeout", 60)
+            if raw_timeout is None or raw_timeout == "":
+                raw_timeout = 60
             try:
-                timeout = float(row.get("timeout") or 60)
+                timeout = float(raw_timeout)
             except (TypeError, ValueError):
                 raise ExternalToolError("external tool %s timeout must be a number" % tool_id)
-            if not math.isfinite(timeout) or timeout <= 0:
-                raise ExternalToolError("external tool %s timeout must be positive" % tool_id)
+            if not math.isfinite(timeout) or timeout <= 0 or timeout > 3600:
+                raise ExternalToolError(
+                    "external tool %s timeout must be between 1 and 3600 seconds" % tool_id
+                )
             self.tools[tool_id] = ExternalTool(
                 tool_id=tool_id,
                 command=[str(command[0])] + [str(part) for part in command[1:]],
