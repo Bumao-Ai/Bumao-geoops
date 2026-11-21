@@ -15,11 +15,13 @@ from typing import Any, Dict, List, Optional
 from geoops.domain import datasets as probe
 from geoops.domain.projects import ProjectRegistry
 from geoops.domain.registry import DomainObject, DomainRegistry, ObjectType
+from geoops.geotiff import GeoTiffError, profile_geotiff_band
 from geoops.survey.change import (
     ChangeError,
     is_nodata,
     measure_raster_area,
     read_raster_grid,
+    read_sidecar_crs,
 )
 
 
@@ -180,6 +182,9 @@ class DatasetRegistry:
         path = str(obj.payload.get("path") or "")
         if not path or not os.path.isfile(path):
             raise DatasetError("dataset file is missing: %s" % dataset_id)
+        suffix = os.path.splitext(path)[1].lower()
+        if suffix in (".tif", ".tiff"):
+            return self._profile_geotiff(dataset_id, obj, path, band)
         try:
             grid = read_raster_grid(path, band=band)
         except (ChangeError, TypeError, ValueError) as exc:
@@ -252,4 +257,122 @@ class DatasetRegistry:
             "min": min(valid),
             "max": max(valid),
             "mean": sum(valid) / len(valid),
+        }
+
+    def _profile_geotiff(
+        self, dataset_id: str, obj: DomainObject, path: str, band: int
+    ) -> Dict[str, Any]:
+        """Profile a GeoTIFF block by block; peak memory is one strip/tile."""
+        if obj.payload.get("metadata_conflict"):
+            raise DatasetError(
+                "dataset %s was registered with conflicting sidecar/header metadata"
+                % dataset_id
+            )
+        try:
+            info = profile_geotiff_band(path, band=band)
+        except (GeoTiffError, TypeError, ValueError) as exc:
+            raise DatasetError("cannot profile raster: %s" % exc) from exc
+        header_crs = str(info.get("crs") or "").strip()
+        header_model = str(info.get("crs_model") or "").strip().lower()
+        side_crs, side_model = read_sidecar_crs(path)
+        if header_crs and side_crs:
+            if header_crs.upper().replace(" ", "") != side_crs.upper().replace(" ", ""):
+                raise DatasetError(
+                    "GeoTIFF %s has conflicting CRS: sidecar %s vs header %s"
+                    % (dataset_id, side_crs, header_crs)
+                )
+        if header_model and side_model and header_model != side_model:
+            raise DatasetError(
+                "GeoTIFF %s has conflicting CRS model: sidecar %s vs header %s"
+                % (dataset_id, side_model, header_model)
+            )
+        effective_crs = header_crs or side_crs
+        effective_model = header_model or side_model
+        if not info.get("valid_cells"):
+            raise DatasetError(
+                "raster %s has no valid cells after NODATA removal" % dataset_id
+            )
+        pixel_size = info.get("pixel_size") or []
+        bounds = info.get("bounds")
+        if not pixel_size or not bounds:
+            raise DatasetError(
+                "GeoTIFF %s has no pixel scale/tiepoint; cannot align it" % dataset_id
+            )
+        cellsize = float(pixel_size[0])
+        cellsize_y = float(pixel_size[1]) if len(pixel_size) > 1 else cellsize
+        if cellsize <= 0 or cellsize_y <= 0:
+            raise DatasetError("GeoTIFF %s has a non-positive pixel size" % dataset_id)
+        ncols = int(info["width"])
+        nrows = int(info["height"])
+        nodata = info.get("nodata")
+        grid = {
+            "ncols": ncols,
+            "nrows": nrows,
+            "cellsize": cellsize,
+            "cellsize_y": cellsize_y,
+            "crs": effective_crs,
+            "crs_model": effective_model,
+            "raster_type": info.get("raster_type", 1),
+            "linear_unit": str(info.get("linear_unit") or ""),
+            "linear_unit_code": info.get("linear_unit_code"),
+            "linear_unit_m": (
+                float(info["linear_unit_m"])
+                if info.get("linear_unit_m") is not None
+                else 1.0
+            ),
+            "header": {
+                "ncols": ncols,
+                "nrows": nrows,
+                "xllcorner": bounds[0],
+                "yllcorner": bounds[1],
+                "cellsize": cellsize,
+                "cellsize_y": cellsize_y,
+                "nodata_value": nodata,
+            },
+        }
+        try:
+            area = measure_raster_area(grid)
+        except ChangeError as exc:
+            raise DatasetError("cannot measure raster area: %s" % exc) from exc
+        return {
+            "dataset_id": dataset_id,
+            "path": path,
+            "format": "geotiff",
+            "read_mode": "streamed_blocks",
+            "bands": int(info.get("bands") or 1),
+            "band": int(info.get("band") or band),
+            "ncols": ncols,
+            "nrows": nrows,
+            "cellsize": cellsize,
+            "cellsize_y": cellsize_y,
+            "cell_area_m2": (
+                area["cell_area_m2"] if area["area_basis"] != "map_units" else None
+            ),
+            "footprint_area_m2": (
+                area["footprint_area_m2"] if area["area_basis"] != "map_units" else None
+            ),
+            "footprint_area_map_units": (
+                area["footprint_area_m2"] if area["area_basis"] == "map_units" else None
+            ),
+            "area_basis": area["area_basis"],
+            "xllcorner": bounds[0],
+            "yllcorner": bounds[1],
+            "bounds": [float(value) for value in bounds],
+            "crs": effective_crs,
+            "crs_model": effective_model,
+            "raster_type": info.get("raster_type", 1),
+            "linear_unit": str(info.get("linear_unit") or ""),
+            "linear_unit_code": info.get("linear_unit_code"),
+            "linear_unit_m": (
+                float(info["linear_unit_m"])
+                if info.get("linear_unit_m") is not None
+                else 1.0
+            ),
+            "nodata": nodata,
+            "valid_cells": int(info["valid_cells"]),
+            "nodata_cells": int(info["nodata_cells"]),
+            "non_finite_cells": int(info["non_finite_cells"]),
+            "min": info["min"],
+            "max": info["max"],
+            "mean": info["mean"],
         }

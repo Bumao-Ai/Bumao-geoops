@@ -140,6 +140,11 @@ def _sidecar_crs(path: str) -> Tuple[str, str]:
     return crs, model
 
 
+def read_sidecar_crs(path: str) -> Tuple[str, str]:
+    """Public access to the sidecar CRS/model used by the raster readers."""
+    return _sidecar_crs(path)
+
+
 def read_raster_grid(path: str, band: int = 1) -> Dict[str, Any]:
     """Read an ASCII grid or a classic/BigTIFF GeoTIFF (selected band, default 1)."""
     try:

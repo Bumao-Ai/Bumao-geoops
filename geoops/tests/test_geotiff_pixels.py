@@ -8,7 +8,14 @@ import tempfile
 import unittest
 import zlib
 
-from geoops.geotiff import GeoTiffError, probe_geotiff, read_geotiff_pixels, write_geotiff_mask
+from geoops.geotiff import (
+    GeoTiffError,
+    iter_geotiff_band_values,
+    probe_geotiff,
+    profile_geotiff_band,
+    read_geotiff_pixels,
+    write_geotiff_mask,
+)
 from geoops.survey.change import ChangeError, detect_changes, read_raster_grid
 
 try:
@@ -502,6 +509,49 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(image["crs_model"], "geographic")
         self.assertEqual(image["nodata"], -9999.0)
         self.assertEqual(image["values"], [1.0, 0.0, -9999.0, 1.0])
+
+    def test_streamed_band_values_match_full_decode_for_every_layout(self) -> None:
+        fixtures = [
+            ("strip", lambda p: _tiff(p, [1, 2, 3, 4])),
+            ("lzw", lambda p: _tiff(p, [1, 2, 3, 4], compression=5)),
+            ("deflate", lambda p: _tiff(p, [1, 2, 3, 4], compression=8)),
+            ("predictor8", lambda p: _deflate_predictor8_tiff(p, [200, 10, 50, 5])),
+            ("predictor16", lambda p: _deflate_predictor16_tiff(p, [40000, 100, 50000, 200])),
+            ("tiled", lambda p: _tiled_tiff(p, [1, 2, 3, 4])),
+            ("planar", lambda p: _planar_tiff(p, [1, 2, 3, 4], [5, 6, 7, 8])),
+            ("planar_tiled", lambda p: _planar_tiled_tiff(p, [1, 2, 3, 4], [5, 6, 7, 8])),
+            ("multiband", lambda p: _georeferenced_multiband_tiff(p, [1, 5, 2, 6, 3, 7, 4, 8])),
+            ("bigtiff", lambda p: _bigtiff(p, [1, 2, 3, 4])),
+        ]
+        for label, builder in fixtures:
+            with self.subTest(layout=label):
+                builder(self.path)
+                image = read_geotiff_pixels(self.path)
+                for band in range(1, image["bands"] + 1):
+                    expected = image["values"][band - 1::image["bands"]]
+                    streamed = list(iter_geotiff_band_values(self.path, band))
+                    self.assertEqual(streamed, expected)
+
+    def test_profile_geotiff_band_counts_nodata_without_full_decode(self) -> None:
+        write_geotiff_mask(
+            self.path,
+            width=2,
+            height=2,
+            cellsize=10.0,
+            xllcorner=0.0,
+            yllcorner=0.0,
+            crs="EPSG:4326",
+            crs_model="geographic",
+            values=[1.0, 0.0, -9999.0, 1.0],
+            nodata=-9999.0,
+        )
+        profile = profile_geotiff_band(self.path)
+        self.assertEqual(profile["valid_cells"], 3)
+        self.assertEqual(profile["nodata_cells"], 1)
+        self.assertEqual(profile["non_finite_cells"], 0)
+        self.assertEqual(profile["min"], 0.0)
+        self.assertEqual(profile["max"], 1.0)
+        self.assertAlmostEqual(profile["mean"], 2.0 / 3.0)
 
     def test_unsupported_compression_is_refused_explicitly(self) -> None:
         _tiff(self.path, [1, 2, 3, 4], compression=6)

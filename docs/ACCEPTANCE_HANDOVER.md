@@ -5,7 +5,7 @@
 
 ## 一、当前可核对的软件基线
 
-- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **356 tests OK**。
+- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **358 tests OK**。
 - 结构自检：`python -m geoops.smoke`，当前 **SMOKE PASS: 73 assertions**。
 - 控制台：`http://127.0.0.1:8790/ui/`；健康接口 `/api/v1/health`。
 - 等级：核心工程（CORE），登记在 `docs/ENGINEERING_TIER.md`。
@@ -77,7 +77,7 @@ Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/profile?band=1"
 Invoke-RestMethod "$b/api/v1/datasets/<dataset_id>/validate"
 ```
 
-`profile` 返回真实 `ncols/nrows/bands/cellsize/cellsize_y/cell_area_m2/footprint_area_m2/area_basis/bounds/crs/raster_type/linear_unit/valid_cells/nodata_cells/non_finite_cells/min/max/mean`；
+`profile` 返回真实 `ncols/nrows/bands/cellsize/cellsize_y/cell_area_m2/footprint_area_m2/area_basis/bounds/crs/raster_type/linear_unit/valid_cells/nodata_cells/non_finite_cells/min/max/mean`；GeoTIFF 走 `read_mode=streamed_blocks`，按条带/分块逐块统计，不把整幅影像读成 Python 浮点数组。
 `validate` 会重算 sha256，并比较注册时的 CRS、CRS 模型、宽、高、波段数、栅格类型与线性单位；sidecar 与 GeoTIFF 头声明不同 CRS/模型时记为 `metadata_conflict` 并 `FAIL`，变化检测与 profile 也会拒绝这种自相矛盾的输入。地理坐标系面积按逐行 WGS84 椭球计算；投影坐标系按 GeoKey 3076 声明的 metre/foot/yard/US survey foot 换算；未声明 CRS 模型时面积只以 map units 返回，不冒充平方米。没有声明 NODATA 的栅格不会把 -9999 当缺失值；NaN/Inf 单独计数，不进入统计。
 
 ## 四、真实外部 GIS 工具

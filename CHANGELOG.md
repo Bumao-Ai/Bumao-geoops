@@ -37,6 +37,10 @@ All notable changes to this project are documented in this file.
 - External GIS tools now require an absolute executable path, reject NUL bytes,
   non-scalar/non-finite placeholder values and a zero or >3600s timeout at load
   or run time; a bad argument is an explicit error, not a guessed default.
+- GeoTIFF files are memory-mapped instead of copied into a bytes object.
+  GeoTIFF dataset profiles now stream one band strip/tile by strip/tile
+  (`read_mode=streamed_blocks`), so a large image no longer needs width*height
+  Python floats in memory; real pixel counts and statistics are unchanged.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

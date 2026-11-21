@@ -17,6 +17,7 @@ library installed.
 from __future__ import annotations
 
 import math
+import mmap
 import os
 import struct
 import zlib
@@ -119,7 +120,10 @@ def _read_entries(path: str):
         else:
             raise GeoTiffError("not a TIFF file (magic %d)" % magic)
         handle.seek(0)
-        raw_file = handle.read()
+        try:
+            raw_file = mmap.mmap(handle.fileno(), 0, access=mmap.ACCESS_READ)
+        except (ValueError, OSError) as exc:
+            raise GeoTiffError("TIFF cannot be memory-mapped: %s" % exc) from exc
     entries = {}
     for tag, typ, n, raw in _iter_entries(raw_file, endian, ifd_offset, big=big):
         try:
@@ -163,6 +167,7 @@ def probe_geotiff(path: str, require_crs: bool = True) -> Dict[str, Any]:
         "linear_unit_m": metadata.get("linear_unit_m", 1.0),
         "bounds": metadata["bounds"],
         "pixel_size": metadata["pixel_size"],
+        "nodata": metadata.get("nodata"),
     }
 
 
@@ -430,6 +435,265 @@ def _pillow_pixels(
         "linear_unit": metadata.get("linear_unit", ""),
         "linear_unit_code": metadata.get("linear_unit_code"),
         "linear_unit_m": metadata.get("linear_unit_m", 1.0),
+    }
+
+
+def _decode_block(
+    raw_file: Any,
+    offset: int,
+    count: int,
+    *,
+    compression: int,
+    endian: str,
+    bits: int,
+    sample_format: int,
+    label: str,
+) -> List[float]:
+    """Decode one strip or tile; a missing or corrupt block is an error."""
+    if offset < 0 or count <= 0 or offset + count > len(raw_file):
+        raise GeoTiffError("TIFF %s points outside the file" % label)
+    raw = raw_file[int(offset):int(offset) + int(count)]
+    if compression == 5:
+        raw = _lzw_decode(raw)
+    elif compression in (8, 32946):
+        try:
+            raw = zlib.decompress(raw)
+        except zlib.error as exc:
+            raise GeoTiffError("Deflate %s is corrupt: %s" % (label, exc)) from exc
+    return _decode_samples(raw, endian, bits, sample_format)
+
+
+def iter_geotiff_band_values(path: str, band: int = 1):
+    """Yield one band's samples block by block, without materializing the image.
+
+    The caller can compute statistics over a large strip/tiled GeoTIFF with
+    memory proportional to one decoded block instead of width*height floats.
+    JPEG/JPEG2000 still go through Pillow, which decodes the whole image.
+    """
+    endian, raw_file, entries = _read_entries(path)
+    width = _first(entries.get(TAG_WIDTH))
+    height = _first(entries.get(TAG_HEIGHT))
+    samples = _first(entries.get(TAG_SAMPLES)) or 1
+    bit_values = entries.get(TAG_BITS) or []
+    bits = int(bit_values[0]) if bit_values else 8
+    compression = _first(entries.get(TAG_COMPRESSION)) or 1
+    planar = _first(entries.get(TAG_PLANAR_CONFIG)) or 1
+    predictor = _first(entries.get(TAG_PREDICTOR)) or 1
+    sample_format = _first(entries.get(TAG_SAMPLE_FORMAT)) or 1
+    if not width or not height:
+        raise GeoTiffError("TIFF has no image width/height")
+    try:
+        band = int(band)
+    except (TypeError, ValueError) as exc:
+        raise GeoTiffError("band must be a positive integer") from exc
+    if band < 1 or band > int(samples):
+        raise GeoTiffError(
+            "TIFF has %d band(s), not band %d" % (int(samples), band)
+        )
+    orientation = _first(entries.get(TAG_ORIENTATION)) or 1
+    if orientation != 1:
+        raise GeoTiffError(
+            "TIFF Orientation=%s is not supported; pixel order would be wrong" % orientation
+        )
+    if bits not in (8, 16, 32):
+        raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
+    if compression not in (1, 5, 7, 8, 32946, 34712):
+        raise GeoTiffError(
+            "unsupported TIFF compression %s; uncompressed, LZW, Deflate, JPEG or JPEG2000 only"
+            % compression
+        )
+    if compression in (7, 34712):
+        image = _pillow_pixels(path, int(width), int(height), int(samples), compression, bits, entries)
+        yield from image["values"][band - 1::int(samples)]
+        return
+    if planar not in (1, 2):
+        raise GeoTiffError("unsupported PlanarConfiguration: %s" % planar)
+    if predictor not in (1, 2):
+        raise GeoTiffError("unsupported TIFF predictor: %s" % predictor)
+    if predictor == 2 and sample_format == 3:
+        raise GeoTiffError("integer predictor is not defined for float samples")
+    if sample_format not in (1, 2, 3):
+        raise GeoTiffError("unsupported SampleFormat: %s" % sample_format)
+
+    width = int(width)
+    height = int(height)
+    samples = int(samples)
+    total_pixels = width * height
+    produced = 0
+    samples_per_block = 1 if planar == 2 else samples
+
+    tile_width = _first(entries.get(322))
+    tile_length = _first(entries.get(323))
+    tile_offsets = entries.get(324)
+    tile_counts = entries.get(325)
+    if 322 in entries or 323 in entries or 324 in entries or 325 in entries:
+        if not tile_width or not tile_length:
+            raise GeoTiffError("tiled TIFF has no TileWidth/TileLength")
+        if not isinstance(tile_offsets, list) or not tile_offsets:
+            raise GeoTiffError("TIFF has no TileOffsets")
+        if not isinstance(tile_counts, list) or len(tile_counts) != len(tile_offsets):
+            raise GeoTiffError("TIFF TileByteCounts do not match TileOffsets")
+        columns = (width + int(tile_width) - 1) // int(tile_width)
+        rows = (height + int(tile_length) - 1) // int(tile_length)
+        grid = columns * rows
+        required_tiles = grid * (samples if planar == 2 else 1)
+        if len(tile_offsets) < required_tiles:
+            raise GeoTiffError("TIFF has fewer tiles than its declared grid")
+        planes = [band - 1] if planar == 2 else [0]
+        for plane in planes:
+            for tile_index in range(grid):
+                block_index = plane * grid + tile_index if planar == 2 else tile_index
+                tile_values = _decode_block(
+                    raw_file,
+                    int(tile_offsets[block_index]),
+                    int(tile_counts[block_index]),
+                    compression=compression,
+                    endian=endian,
+                    bits=bits,
+                    sample_format=sample_format,
+                    label="tile %d" % block_index,
+                )
+                expected_tile = int(tile_width) * int(tile_length) * samples_per_block
+                if len(tile_values) < expected_tile:
+                    raise GeoTiffError(
+                        "TIFF tile %d decoded %d samples, expected %d"
+                        % (block_index, len(tile_values), expected_tile)
+                    )
+                if predictor == 2:
+                    _undo_predictor(
+                        tile_values,
+                        int(tile_width) * samples_per_block,
+                        samples_per_block,
+                        bits,
+                        sample_format,
+                    )
+                tile_row = tile_index // columns
+                tile_col = tile_index % columns
+                for row in range(
+                    min(int(tile_length), height - tile_row * int(tile_length))
+                ):
+                    for col in range(
+                        min(int(tile_width), width - tile_col * int(tile_width))
+                    ):
+                        source = (row * int(tile_width) + col) * samples_per_block
+                        if planar == 2:
+                            yield tile_values[source]
+                        else:
+                            yield tile_values[source + band - 1]
+                        produced += 1
+    else:
+        offsets = entries.get(TAG_STRIP_OFFSETS)
+        byte_counts = entries.get(TAG_STRIP_BYTE_COUNTS)
+        if not isinstance(offsets, list) or not offsets:
+            raise GeoTiffError("TIFF has no StripOffsets")
+        if not isinstance(byte_counts, list) or len(byte_counts) != len(offsets):
+            raise GeoTiffError("TIFF StripByteCounts do not match StripOffsets")
+        rows_per_strip = _first(entries.get(TAG_ROWS_PER_STRIP)) or height
+        rows_per_strip = int(rows_per_strip)
+        if rows_per_strip <= 0 or rows_per_strip > height:
+            raise GeoTiffError("TIFF RowsPerStrip is out of range")
+        needed_strips = (height + rows_per_strip - 1) // rows_per_strip
+        if planar == 2:
+            if len(offsets) % samples:
+                raise GeoTiffError("separate planar StripOffsets do not match bands")
+            strips_per_plane = len(offsets) // samples
+            if strips_per_plane < needed_strips:
+                raise GeoTiffError("TIFF has fewer strips than its declared rows")
+            for strip_index in range(needed_strips):
+                block_index = (band - 1) * strips_per_plane + strip_index
+                plane_values = _decode_block(
+                    raw_file,
+                    int(offsets[block_index]),
+                    int(byte_counts[block_index]),
+                    compression=compression,
+                    endian=endian,
+                    bits=bits,
+                    sample_format=sample_format,
+                    label="strip %d" % block_index,
+                )
+                strip_rows = min(
+                    rows_per_strip, height - strip_index * rows_per_strip
+                )
+                expected = strip_rows * width
+                if len(plane_values) < expected:
+                    raise GeoTiffError(
+                        "TIFF strip %d decoded %d samples, expected %d"
+                        % (block_index, len(plane_values), expected)
+                    )
+                if predictor == 2:
+                    _undo_predictor(plane_values, width, 1, bits, sample_format)
+                for index in range(expected):
+                    yield plane_values[index]
+                    produced += 1
+        else:
+            if len(offsets) < needed_strips:
+                raise GeoTiffError("TIFF has fewer strips than its declared rows")
+            for strip_index in range(needed_strips):
+                strip_values = _decode_block(
+                    raw_file,
+                    int(offsets[strip_index]),
+                    int(byte_counts[strip_index]),
+                    compression=compression,
+                    endian=endian,
+                    bits=bits,
+                    sample_format=sample_format,
+                    label="strip %d" % strip_index,
+                )
+                strip_rows = min(
+                    rows_per_strip, height - strip_index * rows_per_strip
+                )
+                expected = strip_rows * width * samples
+                if len(strip_values) < expected:
+                    raise GeoTiffError(
+                        "TIFF strip %d decoded %d samples, expected %d"
+                        % (strip_index, len(strip_values), expected)
+                    )
+                if predictor == 2:
+                    _undo_predictor(
+                        strip_values, width * samples, samples, bits, sample_format
+                    )
+                for pixel in range(strip_rows * width):
+                    yield strip_values[pixel * samples + band - 1]
+                    produced += 1
+
+    if produced != total_pixels:
+        raise GeoTiffError(
+            "TIFF streaming decode covered %d of %d pixels" % (produced, total_pixels)
+        )
+
+
+def profile_geotiff_band(path: str, band: int = 1) -> Dict[str, Any]:
+    """Profile one band while streaming blocks; returns real counts and stats."""
+    info = probe_geotiff(path, require_crs=False)
+    nodata = info.get("nodata")
+    valid = 0
+    nodata_cells = 0
+    non_finite_cells = 0
+    total = 0
+    minimum: Optional[float] = None
+    maximum: Optional[float] = None
+    total_value = 0.0
+    for value in iter_geotiff_band_values(path, band):
+        total += 1
+        if nodata is not None and value == nodata:
+            nodata_cells += 1
+        elif not math.isfinite(value):
+            non_finite_cells += 1
+        else:
+            valid += 1
+            total_value += value
+            minimum = value if minimum is None or value < minimum else minimum
+            maximum = value if maximum is None or value > maximum else maximum
+    return {
+        **info,
+        "band": int(band),
+        "cells": total,
+        "valid_cells": valid,
+        "nodata_cells": nodata_cells,
+        "non_finite_cells": non_finite_cells,
+        "min": minimum,
+        "max": maximum,
+        "mean": (total_value / valid) if valid else None,
     }
 
 
