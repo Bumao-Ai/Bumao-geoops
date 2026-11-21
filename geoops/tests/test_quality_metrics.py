@@ -78,6 +78,10 @@ class MetricsTests(unittest.TestCase):
         with self.assertRaises(MetricsError):
             compare_masks(self.reference, self.predicted, threshold=float("nan"))
 
+    def test_a_negative_threshold_is_refused(self) -> None:
+        with self.assertRaises(MetricsError):
+            compare_masks(self.reference, self.predicted, threshold=-1.0)
+
     def test_dimension_mismatch_is_refused(self) -> None:
         other = os.path.join(self.tmp.name, "other.asc")
         with open(other, "w", encoding="utf-8") as handle:

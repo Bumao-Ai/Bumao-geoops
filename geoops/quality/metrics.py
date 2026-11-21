@@ -246,6 +246,10 @@ def compare_masks(
         raise MetricsError("threshold must be a number") from exc
     if not math.isfinite(threshold):
         raise MetricsError("threshold must be finite")
+    if threshold < 0:
+        raise MetricsError(
+            "threshold must not be negative; a 0/1 mask would count background as positive"
+        )
     reference = mask_descriptor(reference_path)
     predicted = mask_descriptor(predicted_path)
     _validate_mask_alignment(reference, predicted)
