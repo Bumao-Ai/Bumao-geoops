@@ -18,6 +18,11 @@ was pushed to the remote.
 - `probe_geotiff` reports the TIFF compression code. A JPEG/JPEG2000 dataset
   profile is labelled `read_mode=pillow_full_image`; only decoded/streamed
   layouts claim `streamed_blocks`.
+- A sidecar CRS/model that contradicts the GeoTIFF header is now `INCOMPLETE`
+  and `metadata_conflict` at probe time, so the dataset registry refuses it at
+  registration instead of storing a conflict record as READY. A sidecar
+  `crs_model` outside `geographic`/`projected` is refused the same way rather
+  than silently dropped.
 
 ## Model runtime and quality guards
 
@@ -36,10 +41,13 @@ was pushed to the remote.
   NUL and control characters.
 - A relative `ArtifactStore` path must resolve inside the store root; `../` can
   no longer register a file outside it.
+- An accepted deliverable is no longer marked `archived` without a configured
+  archive directory and an actor identity; the state stays `accepted` until a
+  real copy and manifest are written.
 
 ## Verification
 
-- Full suite: `Ran 375 tests in 31.698s`, `OK`.
+- Full suite: `Ran 377 tests in 31.506s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - Working tree after the backend work contained only the other contributor's
   front-end changes; no backend file was left uncommitted.

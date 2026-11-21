@@ -199,12 +199,13 @@ class GeoTiffTests(unittest.TestCase):
         self.assertEqual(record.metadata_source, "geotiff-header")
         self.assertEqual(record.width, 4)
 
-    def test_sidecar_crs_does_not_drop_geotiff_dimensions(self) -> None:
+    def test_sidecar_crs_conflict_keeps_geotiff_dimensions(self) -> None:
         path = make_geotiff(os.path.join(self.tempdir, "c.tif"))
         with open(path + ".json", "w", encoding="utf-8") as handle:
             json.dump({"crs": "EPSG:4547"}, handle)
         record = register(path)
-        self.assertEqual(record.status, "READY")
+        self.assertEqual(record.status, "INCOMPLETE")
+        self.assertTrue(record.metadata_conflict)
         self.assertEqual(record.crs, "EPSG:4547")
         self.assertTrue(record.metadata_source.endswith(".tif.json"))
         self.assertIn("overrides GeoTIFF header EPSG:32650", record.reason)

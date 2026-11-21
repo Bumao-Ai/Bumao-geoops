@@ -62,6 +62,10 @@ All notable changes to this project are documented in this file.
   its projected GeoKey; the projected key now always decides the raster CRS,
   not key order. A user-defined `32767` CRS is refused instead of being
   mislabelled as EPSG, and a truncated GeoKey directory is a header error.
+- A sidecar CRS/model that contradicts the GeoTIFF header is `INCOMPLETE` at
+  probe time and is refused at dataset registration; a conflicting record can
+  no longer be stored with a READY status. A sidecar `crs_model` outside
+  `geographic`/`projected` is refused instead of being silently dropped.
 - Quality metrics refuse a negative mask threshold, which would count every
   0/1 background cell as positive and produce a meaningless matrix.
 - Model options reject fractional `max_tokens` and booleans instead of
@@ -69,9 +73,10 @@ All notable changes to this project are documented in this file.
   as `CONFIG_ERROR` instead of becoming 60 seconds unnoticed.
 - Object ids are used as archive folder names, so `register` and snapshot
   restore now refuse a path-like id such as `../escape`. A relative artifact
-  path must resolve inside the artifact store root. An accepted deliverable
-  without a configured archive directory is refused instead of becoming
-  `archived` with no copied file or manifest.
+  path must resolve inside the artifact store root.
+- An accepted deliverable without a configured archive directory is refused
+  instead of becoming `archived` with no copied file or manifest; an archive
+  also requires a non-empty actor identity.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

@@ -110,7 +110,9 @@ here.
   change, profiles and mask metrics, and undeclared NODATA is no longer assumed
   to be -9999. A sidecar CRS/model that contradicts the GeoTIFF header is
   recorded as `metadata_conflict`, fails re-validation and is refused by raster
-  reads instead of silently computing area on the wrong units.
+  reads instead of silently computing area on the wrong units. Since the
+  2026-11-21 hardening it is also `INCOMPLETE` at probe time, so the dataset
+  registry refuses to register it at all.
 - `threshold=0` now marks only real non-zero differences; a fractional NODATA
   sentinel is written consistently, and a non-finite one is refused.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
@@ -164,7 +166,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 375 tests in 31.7s`, `OK`.
+- Full suite: `Ran 377 tests in 31.5s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA
