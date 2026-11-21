@@ -23,6 +23,7 @@ variables; a real environment variable still wins over the file.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 import urllib.error
@@ -216,6 +217,28 @@ class ModelRuntime:
         prompt = str(prompt or "").strip()
         if not prompt:
             raise ModelRuntimeError("EMPTY_PROMPT", "prompt is empty")
+        try:
+            max_tokens_value = int(max_tokens)
+        except (TypeError, ValueError) as exc:
+            raise ModelRuntimeError("INVALID_OPTION", "max_tokens must be an integer") from exc
+        if max_tokens_value < 1 or max_tokens_value > 8192:
+            raise ModelRuntimeError("INVALID_OPTION", "max_tokens must be between 1 and 8192")
+        temperature_value = None
+        if temperature is not None:
+            try:
+                temperature_value = float(temperature)
+            except (TypeError, ValueError) as exc:
+                raise ModelRuntimeError("INVALID_OPTION", "temperature must be a number") from exc
+            if not math.isfinite(temperature_value):
+                raise ModelRuntimeError("INVALID_OPTION", "temperature must be finite")
+            if temperature_value < 0 or temperature_value > 2:
+                raise ModelRuntimeError("INVALID_OPTION", "temperature must be between 0 and 2")
+        try:
+            request_timeout = float(timeout_s) if timeout_s is not None else self.timeout_s
+        except (TypeError, ValueError) as exc:
+            raise ModelRuntimeError("INVALID_OPTION", "timeout_s must be a number") from exc
+        if not math.isfinite(request_timeout) or request_timeout < 1 or request_timeout > 300:
+            raise ModelRuntimeError("INVALID_OPTION", "timeout_s must be between 1 and 300")
         messages = []
         if str(system or "").strip():
             messages.append({"role": "system", "content": str(system).strip()})
@@ -225,10 +248,10 @@ class ModelRuntime:
             "model": self.model,
             "messages": messages,
             "stream": False,
-            "max_tokens": max(1, min(8192, int(max_tokens))),
+            "max_tokens": max_tokens_value,
         }
-        if temperature is not None:
-            payload["temperature"] = max(0.0, min(2.0, float(temperature)))
+        if temperature_value is not None:
+            payload["temperature"] = temperature_value
 
         data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         headers = {
@@ -244,7 +267,7 @@ class ModelRuntime:
         started = time.monotonic()
         try:
             with urllib.request.urlopen(
-                request, timeout=timeout_s or self.timeout_s
+                request, timeout=request_timeout
             ) as response:
                 body = response.read(2 * 1024 * 1024).decode("utf-8", "replace")
         except urllib.error.HTTPError as exc:

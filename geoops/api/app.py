@@ -591,11 +591,15 @@ def create_server(
                         prompt,
                         system=system,
                         temperature=payload.get("temperature"),
-                        max_tokens=payload.get("max_tokens") or 512,
+                        max_tokens=(
+                            512
+                            if payload.get("max_tokens") is None
+                            else payload.get("max_tokens")
+                        ),
                     )
                 except (ModelRuntimeError, TypeError, ValueError) as exc:
                     code = getattr(exc, "code", "BAD_REQUEST")
-                    status = 400 if code in ("NOT_CONFIGURED", "EMPTY_PROMPT") else 502
+                    status = 400 if code in ("NOT_CONFIGURED", "EMPTY_PROMPT", "INVALID_OPTION") else 502
                     self._deny(status, "%s: %s" % (code, exc), path)
                     return
                 audit_log.record("POST", path, self._token(), "allow", "model invocation", 200)

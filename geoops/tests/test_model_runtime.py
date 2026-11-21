@@ -158,6 +158,19 @@ class ModelRuntimeTests(unittest.TestCase):
         self.assertEqual(_Provider.last_body["messages"][0]["role"], "system")
         self.assertEqual(_Provider.last_body["messages"][1]["content"], "请回答 OK")
 
+    def test_invalid_options_are_refused_before_http(self):
+        for kwargs in (
+            {"temperature": float("nan")},
+            {"temperature": 5},
+            {"max_tokens": 0},
+            {"max_tokens": "many"},
+            {"timeout_s": -3},
+        ):
+            with self.assertRaises(ModelRuntimeError) as caught:
+                self.runtime.invoke("hello", **kwargs)
+            self.assertEqual(caught.exception.code, "INVALID_OPTION")
+        self.assertIsNone(_Provider.last_body)
+
     def test_provider_error_is_reported_without_credentials(self):
         _Provider.status = 401
         with self.assertRaises(ModelRuntimeError) as caught:
@@ -234,6 +247,14 @@ class ModelRuntimeApiTests(unittest.TestCase):
         )
         self.assertEqual(status, 200)
         self.assertEqual(payload["result"]["text"], "OK")
+
+    def test_chat_rejects_non_finite_temperature_as_bad_request(self):
+        status, payload = self.call(
+            "POST", "/api/v1/model-runtime/chat",
+            {"prompt": "请回答 OK", "temperature": float("nan")}, token="admin",
+        )
+        self.assertEqual(status, 400)
+        self.assertIn("INVALID_OPTION", payload["error"])
 
 
 if __name__ == "__main__":

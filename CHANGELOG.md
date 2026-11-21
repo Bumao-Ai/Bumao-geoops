@@ -30,6 +30,10 @@ All notable changes to this project are documented in this file.
 - Domain registry mutations, task transitions and review submission are now
   serialized with re-entrant locks, so concurrent requests cannot double-create
   an id, apply two conflicting task edges or sign off the same deliverable twice.
+- The model runtime now rejects a non-finite or out-of-range `temperature`,
+  non-integer/out-of-range `max_tokens` and invalid `timeout_s` as
+  `INVALID_OPTION`; `/model-runtime/chat` returns 400 instead of forwarding
+  malformed JSON or reporting a provider failure.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

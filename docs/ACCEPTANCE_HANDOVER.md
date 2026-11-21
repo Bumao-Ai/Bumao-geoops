@@ -5,7 +5,7 @@
 
 ## 一、当前可核对的软件基线
 
-- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **350 tests OK**。
+- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **352 tests OK**。
 - 结构自检：`python -m geoops.smoke`，当前 **SMOKE PASS: 73 assertions**。
 - 控制台：`http://127.0.0.1:8790/ui/`；健康接口 `/api/v1/health`。
 - 等级：核心工程（CORE），登记在 `docs/ENGINEERING_TIER.md`。
@@ -46,7 +46,7 @@ python -m geoops.ai probe
 python -m geoops.ai chat "用一句中文说明你能为测绘成果做什么"
 ```
 
-`status` 只显示配置状态和 `config_file`，不显示密钥；`probe` 与 `chat` 是真实 HTTP 请求。
+`status` 只显示配置状态和 `config_file`，不显示密钥；`probe` 与 `chat` 是真实 HTTP 请求。`chat` 的 `temperature` 必须是 0–2 的有限数，`max_tokens` 必须是 1–8192 的整数，超时 1–300 秒；否则返回 400 `INVALID_OPTION`，不会把 NaN 发给端点。
 服务重启后，`GET /api/v1/model-runtime` 应变为 `READY`，并显示真实模型与端点。
 
 ### 4. 常见端点
