@@ -144,6 +144,20 @@ class QualityDeliverableTests(unittest.TestCase):
             self.deliverables.get(self.deliverable.object_id).status, "accepted"
         )
 
+    def test_archive_requires_an_actor(self) -> None:
+        ReviewEngine(self.registry).submit(
+            self.task.task_id, self.deliverable.object_id, "reviewer", "APPROVE", "通过"
+        )
+        configured = DeliverableRegistry(
+            self.registry, archive_dir=os.path.join(self.tempdir, "archive")
+        )
+        with self.assertRaises(DeliverableError) as caught:
+            configured.archive(self.deliverable.object_id, actor="")
+        self.assertIn("actor identity", str(caught.exception))
+        self.assertEqual(
+            self.deliverables.get(self.deliverable.object_id).status, "accepted"
+        )
+
     def test_archive_refuses_a_file_changed_after_review(self) -> None:
         ReviewEngine(self.registry).submit(
             self.task.task_id, self.deliverable.object_id, "reviewer", "APPROVE", "通过"

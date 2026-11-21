@@ -290,6 +290,9 @@ class DeliverableRegistry:
             )
         if deliverable.payload.get("archived_at"):
             raise DeliverableError("deliverable is already archived: %s" % deliverable_id)
+        actor = str(actor or "").strip()
+        if not actor:
+            raise DeliverableError("archive requires the actor identity")
         source = str(deliverable.payload.get("path") or "").strip()
         if not source or not os.path.isfile(source):
             raise DeliverableError(
