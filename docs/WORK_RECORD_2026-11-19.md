@@ -164,7 +164,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 365 tests in 28.6s`, `OK`.
+- Full suite: `Ran 366 tests in 29.1s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

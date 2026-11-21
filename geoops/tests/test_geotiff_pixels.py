@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import struct
 import tempfile
@@ -312,6 +313,37 @@ def _packbits_encode(values) -> bytes:
         output.append(len(chunk) - 1)
         output.extend(chunk)
     return bytes(output)
+
+
+def _nan_nodata_tiff(path: str) -> None:
+    """A 2x2 float32 TIFF whose GDAL_NODATA sentinel is NaN."""
+    payload = struct.pack("<4f", 1.0, float("nan"), 2.0, 3.0)
+    count = 12
+    data_offset = 8 + 2 + count * 12 + 4
+    nodata_offset = data_offset + len(payload)
+    entries = [
+        (256, 3, 1, 2),
+        (257, 3, 1, 2),
+        (258, 3, 1, 32),
+        (259, 3, 1, 1),
+        (262, 3, 1, 1),
+        (273, 4, 1, data_offset),
+        (277, 3, 1, 1),
+        (278, 3, 1, 2),
+        (279, 4, 1, len(payload)),
+        (284, 3, 1, 1),
+        (339, 3, 1, 3),
+        (42113, 2, 8, nodata_offset),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += payload
+    body += b"nan\x00\x00\x00\x00\x00"
+    with open(path, "wb") as handle:
+        handle.write(body)
 
 
 def _float64_tiff(path: str, values) -> None:
@@ -671,6 +703,17 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(profile["min"], 0.0)
         self.assertEqual(profile["max"], 1.0)
         self.assertAlmostEqual(profile["mean"], 2.0 / 3.0)
+
+    def test_nan_gdal_nodata_sentinel_is_excluded_from_profile(self) -> None:
+        _nan_nodata_tiff(self.path)
+        profile = profile_geotiff_band(self.path)
+        self.assertEqual(profile["valid_cells"], 3)
+        self.assertEqual(profile["nodata_cells"], 1)
+        self.assertEqual(profile["non_finite_cells"], 0)
+        self.assertEqual(profile["min"], 1.0)
+        self.assertEqual(profile["max"], 3.0)
+        self.assertEqual(profile["mean"], 2.0)
+        self.assertTrue(math.isnan(profile["nodata"]))
 
     def test_unsupported_compression_is_refused_explicitly(self) -> None:
         _tiff(self.path, [1, 2, 3, 4], compression=6)
