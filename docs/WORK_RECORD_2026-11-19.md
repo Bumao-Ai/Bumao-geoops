@@ -107,7 +107,9 @@ here.
   also persist raster type and linear unit, and `GET /api/v1/audit/verify`
   re-checks the audit hash chain from disk. Non-finite cells are excluded from
   change, profiles and mask metrics, and undeclared NODATA is no longer assumed
-  to be -9999.
+  to be -9999. A sidecar CRS/model that contradicts the GeoTIFF header is
+  recorded as `metadata_conflict`, fails re-validation and is refused by raster
+  reads instead of silently computing area on the wrong units.
 - Archiving now re-checks the deliverable file: a missing file or a sha256
   that no longer matches registration is refused before the status is changed.
   When an archive directory is configured (the console uses `var/archive`),
@@ -130,7 +132,7 @@ here.
 
 ## Verification
 
-- Full suite: `Ran 337 tests in 28.1s`, `OK`.
+- Full suite: `Ran 339 tests in 29.0s`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - GeoTIFF writer round-trip: 2×2 float32 mask read back with EPSG:4326,
   pixel size 10 and bounds `[500000, 4500000, 500020, 4500020]`; NODATA

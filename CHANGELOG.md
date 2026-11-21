@@ -17,6 +17,9 @@ All notable changes to this project are documented in this file.
   re-probe. Raster profiles count non-finite cells separately instead of letting
   NaN/Inf poison min/max/mean; mask metrics exclude them from the confusion
   matrix, and an undeclared NODATA value is no longer assumed to be -9999.
+- A sidecar CRS or CRS model that contradicts the GeoTIFF header is recorded as
+  `metadata_conflict` and fails re-validation; raster reads refuse it instead of
+  choosing one source and silently computing area on the wrong units.
 
 - Workflow definition registry: typed nodes, atomic `var/workflows.json`,
   declared `inputs` alias mapping, `retry`, `failure_action=continue`,

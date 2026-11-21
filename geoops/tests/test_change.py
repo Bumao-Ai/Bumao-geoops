@@ -229,6 +229,19 @@ class ChangeTests(unittest.TestCase):
         self.assertEqual(grid["crs_model"], "projected")
         self.assertEqual(grid["values"], [1, 2, 3, 4])
 
+    def test_a_sidecar_crs_that_conflicts_with_the_header_is_refused(self) -> None:
+        path = os.path.join(self.tempdir, "conflict.tif")
+        write_geotiff_mask(
+            path, width=2, height=2, cellsize=10.0, cellsize_y=10.0,
+            xllcorner=0.0, yllcorner=0.0, crs="EPSG:4547",
+            crs_model="projected", values=[1.0, 2.0, 3.0, 4.0],
+        )
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4326", "crs_model": "geographic"}, handle)
+        with self.assertRaises(ChangeError) as caught:
+            read_raster_grid(path)
+        self.assertIn("conflicting CRS", str(caught.exception))
+
     def test_projected_cells_in_us_survey_feet_report_square_metres(self) -> None:
         baseline = os.path.join(self.tempdir, "feet-base.tif")
         comparison = os.path.join(self.tempdir, "feet-comp.tif")

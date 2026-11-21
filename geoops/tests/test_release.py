@@ -12,6 +12,7 @@ from geoops.catalog import Catalog, CatalogError
 from geoops.domain import DomainRegistry, ObjectType, TaskEngine
 from geoops.domain.datasets_store import DatasetError, DatasetRegistry
 from geoops.domain.survey_areas import SurveyAreaError, SurveyAreaRegistry
+from geoops.geotiff import write_geotiff_mask
 from geoops.tests.test_geotiff_pixels import (
     _bigtiff,
     _georeferenced_multiband_tiff,
@@ -152,6 +153,24 @@ class DatasetTests(unittest.TestCase):
         self.assertEqual(profile["min"], 1.0)
         self.assertEqual(profile["max"], 2.0)
         self.assertEqual(profile["mean"], 1.5)
+
+    def test_validate_flags_a_sidecar_crs_conflict(self) -> None:
+        path = os.path.join(self.tempdir, "conflict.tif")
+        write_geotiff_mask(
+            path, width=2, height=2, cellsize=10.0, cellsize_y=10.0,
+            xllcorner=0.0, yllcorner=0.0, crs="EPSG:4547",
+            crs_model="projected", values=[1.0, 2.0, 3.0, 4.0],
+        )
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4326", "crs_model": "geographic"}, handle)
+        dataset = self.datasets.register("PRJ-1", path)
+        self.assertTrue(dataset.payload["metadata_conflict"])
+        result = self.datasets.validate(dataset.object_id)
+        self.assertEqual(result["status"], "FAIL")
+        check = [row for row in result["checks"] if row["name"] == "metadata_conflict"][0]
+        self.assertEqual(check["status"], "FAIL")
+        with self.assertRaises(DatasetError):
+            self.datasets.profile(dataset.object_id)
 
     def test_profile_reads_real_geotiff_pixels(self) -> None:
         path = os.path.join(self.tempdir, "tile.tif")

@@ -69,6 +69,7 @@ class DatasetRegistry:
             "linear_unit": result.linear_unit,
             "linear_unit_code": result.linear_unit_code,
             "linear_unit_m": result.linear_unit_m,
+            "metadata_conflict": result.metadata_conflict,
             "metadata_source": result.metadata_source,
             "width": result.width,
             "height": result.height,
@@ -117,6 +118,10 @@ class DatasetRegistry:
             )
         else:
             checks.append({"name": "sha256", "status": "PASS", "detail": fresh.sha256})
+        if fresh.metadata_conflict:
+            checks.append(
+                {"name": "metadata_conflict", "status": "FAIL", "detail": fresh.reason}
+            )
         if not fresh.crs:
             checks.append({"name": "crs", "status": "FAIL", "detail": "CRS missing after re-probe"})
         elif payload.get("crs") and fresh.crs != payload.get("crs"):

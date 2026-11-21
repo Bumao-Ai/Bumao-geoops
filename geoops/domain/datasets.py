@@ -5,8 +5,9 @@ written reason so the caller can continue; an unreadable file returns
 ``ERROR``. Metadata comes from a sidecar ``<path>.json`` file when present.
 
 Metadata comes from the GeoTIFF header when readable, and from a sidecar
-``<path>.json`` for CRS overrides and non-GeoTIFF formats. The sidecar wins on
-an explicit CRS disagreement; no metadata is invented when neither source has it.
+``<path>.json`` for CRS overrides and non-GeoTIFF formats. A sidecar CRS that
+contradicts the header is recorded as a metadata conflict and fails
+re-validation; no metadata is invented when neither source has it.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ class DatasetRecord:
     linear_unit: str = ""
     linear_unit_code: Optional[int] = None
     linear_unit_m: Optional[float] = None
+    metadata_conflict: bool = False
     metadata_source: str = "none"
     reason: str = ""
     width: Optional[int] = None
@@ -59,6 +61,7 @@ class DatasetRecord:
             "linear_unit": self.linear_unit,
             "linear_unit_code": self.linear_unit_code,
             "linear_unit_m": self.linear_unit_m,
+            "metadata_conflict": self.metadata_conflict,
             "metadata_source": self.metadata_source,
             "reason": self.reason,
             "width": self.width,
@@ -117,6 +120,7 @@ def register(path: Optional[str]) -> DatasetRecord:
     if crs_model not in ("geographic", "projected"):
         crs_model = ""
     extra: Dict[str, Any] = {}
+    metadata_conflict = False
     reason = "" if crs else "CRS field is empty in sidecar metadata"
     if os.path.splitext(absolute)[1].lower() in (".tif", ".tiff"):
         try:
@@ -136,7 +140,15 @@ def register(path: Optional[str]) -> DatasetRecord:
                 reason = "" if crs else "GeoTIFF header has no EPSG GeoKey"
                 crs_model = crs_model or header_model
             elif header_crs and header_crs.upper().replace(" ", "") != crs.upper().replace(" ", ""):
-                reason = "sidecar CRS overrides GeoTIFF header %s" % header_crs
+                reason = "sidecar CRS %s overrides GeoTIFF header %s (metadata conflict)" % (
+                    crs, header_crs,
+                )
+                metadata_conflict = True
+            elif header_model and crs_model and header_model != crs_model:
+                reason = "sidecar CRS model %s conflicts with GeoTIFF header %s" % (
+                    crs_model, header_model,
+                )
+                metadata_conflict = True
             else:
                 crs_model = crs_model or header_model
     if not crs_model:
@@ -157,6 +169,7 @@ def register(path: Optional[str]) -> DatasetRecord:
         linear_unit=str(extra.get("linear_unit") or ""),
         linear_unit_code=extra.get("linear_unit_code"),
         linear_unit_m=extra.get("linear_unit_m"),
+        metadata_conflict=metadata_conflict,
         metadata_source=source,
         reason=reason,
         width=extra.get("width"),

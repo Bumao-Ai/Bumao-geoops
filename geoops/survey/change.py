@@ -169,17 +169,23 @@ def read_raster_grid(path: str, band: int = 1) -> Dict[str, Any]:
         sy = float(pixel_size[1]) if len(pixel_size) > 1 else sx
         if sx <= 0 or sy <= 0:
             raise ChangeError("GeoTIFF %s has a non-positive pixel size" % path)
-        crs = str(image.get("crs") or "")
-        crs_model = str(image.get("crs_model") or "")
-        if not crs or not crs_model:
-            try:
-                side_crs, side_model = _sidecar_crs(path)
-            except ChangeError:
-                if not crs:
-                    raise
-            else:
-                crs = crs or side_crs
-                crs_model = crs_model or side_model
+        header_crs = str(image.get("crs") or "").strip()
+        header_model = str(image.get("crs_model") or "").strip().lower()
+        side_crs, side_model = _sidecar_crs(path)
+        left = header_crs.upper().replace(" ", "")
+        right = side_crs.upper().replace(" ", "")
+        if left and right and left != right:
+            raise ChangeError(
+                "GeoTIFF %s has conflicting CRS: sidecar %s vs header %s"
+                % (path, side_crs, header_crs)
+            )
+        if header_model and side_model and header_model != side_model:
+            raise ChangeError(
+                "GeoTIFF %s has conflicting CRS model: sidecar %s vs header %s"
+                % (path, side_model, header_model)
+            )
+        crs = header_crs or side_crs
+        crs_model = header_model or side_model
         return {
             "path": path,
             "header": {
