@@ -127,6 +127,33 @@ class MetricsTests(unittest.TestCase):
         self.assertEqual(result["cells"]["fn"], 1)
         self.assertEqual(result["cells"]["tn"], 1)
 
+    def test_mixed_ascii_reference_and_geotiff_prediction_align(self) -> None:
+        reference = os.path.join(self.tmp.name, "mixed_ref.asc")
+        predicted = os.path.join(self.tmp.name, "mixed_pred.tif")
+        with open(reference, "w", encoding="utf-8") as handle:
+            handle.write(
+                "ncols 2\nnrows 2\nxllcorner 0\nyllcorner 0\ncellsize 10\n"
+                "NODATA_value -9999\n1 0\n0 1\n"
+            )
+        with open(reference + ".json", "w", encoding="utf-8") as handle:
+            handle.write('{"crs": "EPSG:4547", "crs_model": "projected"}')
+        write_geotiff_mask(
+            predicted,
+            width=2,
+            height=2,
+            cellsize=10.0,
+            xllcorner=0.0,
+            yllcorner=0.0,
+            crs="EPSG:4547",
+            crs_model="projected",
+            values=[1.0, 1.0, 0.0, 0.0],
+        )
+        result = compare_masks(reference, predicted)
+        self.assertEqual(result["cells"]["tp"], 1)
+        self.assertEqual(result["cells"]["fp"], 1)
+        self.assertEqual(result["cells"]["fn"], 1)
+        self.assertEqual(result["cells"]["tn"], 1)
+
     def test_geotiff_masks_with_different_origins_are_refused(self) -> None:
         reference = os.path.join(self.tmp.name, "ref_origin.tif")
         predicted = os.path.join(self.tmp.name, "pred_origin.tif")
