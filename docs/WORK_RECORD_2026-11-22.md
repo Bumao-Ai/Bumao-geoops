@@ -58,14 +58,15 @@ read per profile; correctness is preferred over silently mixing identities.
 
 ## Verification
 
-- Full suite: `Ran 387 tests in 29.720s`, `OK`.
+- Full suite: `Ran 388 tests`, `OK`.
 - `test_geotiff_pixels`: `Ran 32 tests`, `OK`.
 - `test_release`: `Ran 31 tests`, `OK`.
 - `test_api_release`: `Ran 16 tests`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
-- Commits: `98b555c`, `3f7485c`, `714ad2e`, `7e8dbd3`, `796e4aa`, `cf13ad1`,
-  `778289b`, `938e8d3`, `d27c6e0`, `fd7414c`, `6b810bc`, `e82f7a4`, `a0e8480`.
-  All local; no push.
+- Commits recorded in this log before the upload pass were rewritten during the
+  2026-11-22 sanitization; the pre-rewrite bundle is kept outside the repository.
+  Every reachable tree and the tracked worktree now scan with `0` sensitive
+  findings, and the legacy launcher is absent from all history.
 
 ## Console functional pass
 
@@ -153,10 +154,11 @@ The pass makes previously static areas operate against real API data.
 - `node --check geoops/web/ui.js`: pass.
 - The only browser console error in the final matrix is the deliberate
   `band=2` 404 used to prove the refusal path.
-- Working tree: frontend and test changes remain uncommitted; no commit and no
-  push. The current `8790` service still reports an empty dataset/report
-  registry, so these new paths were browser-verified against the fixture API,
-  not claimed as live-registry evidence on `8790`.
+- Working tree: clean. The frontend and test changes are in the final test
+  commit. The sanitized history is ready for the GitHub test-build upload;
+  the current `8790` service still reports an empty dataset/report registry,
+  so these new paths were browser-verified against the fixture API, not
+  claimed as live-registry evidence on `8790`.
 
 ## Still not claimed
 
