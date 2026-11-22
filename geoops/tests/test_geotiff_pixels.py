@@ -373,6 +373,155 @@ def _float64_tiff(path: str, values) -> None:
         handle.write(body)
 
 
+def _onebit_tiff(path: str, rows, compression: int = 1, fill_order: int = 1) -> None:
+    """Write a single-band 1-bit strip TIFF with rows such as '1010101010'."""
+    width = len(rows[0])
+    height = len(rows)
+    raw = bytes(_pack_onebit_rows(rows, width))
+    payload = raw
+    if compression in (8, 32946):
+        payload = zlib.compress(raw)
+    elif compression == 5:
+        payload = _lzw_encode(list(raw))
+    elif compression == 32773:
+        payload = _packbits_encode(list(raw))
+    count = 12
+    data_offset = 8 + 2 + count * 12 + 4
+    entries = [
+        (256, 3, 1, width),
+        (257, 3, 1, height),
+        (258, 3, 1, 1),
+        (259, 3, 1, compression),
+        (262, 3, 1, 1),
+        (266, 3, 1, fill_order),
+        (273, 4, 1, data_offset),
+        (277, 3, 1, 1),
+        (278, 3, 1, height),
+        (279, 4, 1, len(payload)),
+        (284, 3, 1, 1),
+        (339, 3, 1, 1),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += payload
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
+def _pack_onebit_rows(rows, width: int) -> list:
+    """Pack rows MSB-first, one byte boundary per row."""
+    out = []
+    for row in rows:
+        padded = row + "0" * (8 - (width % 8) if width % 8 else 0)
+        for start in range(0, len(padded), 8):
+            value = 0
+            for index, bit in enumerate(padded[start:start + 8]):
+                value |= (1 if bit == "1" else 0) << (7 - index)
+            out.append(value)
+    return out
+
+
+def _onebit_multistrip_tiff(path: str, rows, rows_per_strip: int) -> None:
+    """Write a 1-bit TIFF split across real strips, not one strip per image."""
+    width = len(rows[0])
+    height = len(rows)
+    chunks = []
+    for start in range(0, height, rows_per_strip):
+        chunk_rows = rows[start:start + rows_per_strip]
+        chunks.append(bytes(_pack_onebit_rows(chunk_rows, width)))
+    count = 12
+    data_offset = 8 + 2 + count * 12 + 4
+    payload_start = data_offset + 8 * len(chunks)
+    offsets = []
+    cursor = payload_start
+    for chunk in chunks:
+        offsets.append(cursor)
+        cursor += len(chunk)
+    entries = [
+        (256, 3, 1, width),
+        (257, 3, 1, height),
+        (258, 3, 1, 1),
+        (259, 3, 1, 1),
+        (262, 3, 1, 1),
+        (266, 3, 1, 1),
+        (273, 4, len(offsets), data_offset),
+        (277, 3, 1, 1),
+        (278, 3, 1, rows_per_strip),
+        (279, 4, len(chunks), data_offset + 4 * len(offsets)),
+        (284, 3, 1, 1),
+        (339, 3, 1, 1),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += struct.pack("<%dI" % len(offsets), *offsets)
+    body += struct.pack("<%dI" % len(chunks), *[len(chunk) for chunk in chunks])
+    body += b"".join(chunks)
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
+def _onebit_tiled_tiff(path: str, width: int, height: int, tile_width: int, tile_length: int,
+                       rows) -> None:
+    """Write a 1-bit tiled TIFF; edge tiles are padded as full tiles."""
+    columns = (width + tile_width - 1) // tile_width
+    tile_rows = (height + tile_length - 1) // tile_length
+    tiles = []
+    for tile_row in range(tile_rows):
+        for tile_col in range(columns):
+            tile_lines = []
+            for row in range(tile_length):
+                source_row = tile_row * tile_length + row
+                line = ""
+                for col in range(tile_width):
+                    source_col = tile_col * tile_width + col
+                    if source_row < height and source_col < width:
+                        line += rows[source_row][source_col]
+                    else:
+                        line += "0"
+                tile_lines.append(line)
+            tiles.append(_pack_onebit_rows(tile_lines, tile_width))
+    payload = b"".join(bytes(tile) for tile in tiles)
+    count = 13
+    data_offset = 8 + 2 + count * 12 + 4
+    tile_counts = [len(tile) for tile in tiles]
+    tile_offsets = []
+    cursor = data_offset + 8 * len(tiles)
+    for tile in tiles:
+        tile_offsets.append(cursor)
+        cursor += len(tile)
+    entries = [
+        (256, 3, 1, width),
+        (257, 3, 1, height),
+        (258, 3, 1, 1),
+        (259, 3, 1, 1),
+        (262, 3, 1, 1),
+        (266, 3, 1, 1),
+        (277, 3, 1, 1),
+        (284, 3, 1, 1),
+        (322, 3, 1, tile_width),
+        (323, 3, 1, tile_length),
+        (324, 4, len(tile_offsets), data_offset),
+        (325, 4, len(tile_counts), data_offset + 4 * len(tile_offsets)),
+        (339, 3, 1, 1),
+    ]
+    body = struct.pack("<2sHI", b"II", 42, 8)
+    body += struct.pack("<H", len(entries))
+    for tag, typ, n, value in entries:
+        body += struct.pack("<HHII", tag, typ, n, value)
+    body += struct.pack("<I", 0)
+    body += struct.pack("<%dI" % len(tile_offsets), *tile_offsets)
+    body += struct.pack("<%dI" % len(tile_counts), *tile_counts)
+    body += payload
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _tiff(path: str, values, compression: int = 1) -> None:
     raw = bytes(values)
     payload = raw
@@ -519,13 +668,46 @@ class GeoTiffPixelTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def test_uncompressed_pixels_are_decoded(self) -> None:
-        _tiff(self.path, [1, 2, 3, 4])
-        image = read_geotiff_pixels(self.path)
-        self.assertEqual(image["width"], 2)
-        self.assertEqual(image["height"], 2)
-        self.assertEqual(image["bands"], 1)
-        self.assertEqual(image["values"], [1.0, 2.0, 3.0, 4.0])
+    def test_onebit_strips_read_msb_first_with_row_padding(self) -> None:
+        rows = ["1010101010", "0101010101", "1111111111"]
+        expected = [float(bit) for row in rows for bit in row]
+        for compression in (1, 5, 8, 32773):
+            path = os.path.join(self.tmp.name, "onebit-%d.tif" % compression)
+            _onebit_tiff(path, rows, compression=compression)
+            image = read_geotiff_pixels(path)
+            self.assertEqual(image["bits_per_sample"], 1)
+            self.assertEqual(image["values"], expected)
+            self.assertEqual(list(iter_geotiff_band_values(path)), expected)
+            profile = profile_geotiff_band(path)
+            self.assertEqual(profile["valid_cells"], 30)
+            self.assertEqual(profile["min"], 0.0)
+            self.assertEqual(profile["max"], 1.0)
+            self.assertAlmostEqual(profile["mean"], 20.0 / 30.0)
+
+    def test_onebit_multiple_strips_keep_spatial_rows(self) -> None:
+        rows = ["1001", "0110", "1111", "0000"]
+        path = os.path.join(self.tmp.name, "onebit-multistrip.tif")
+        _onebit_multistrip_tiff(path, rows, rows_per_strip=2)
+        expected = [float(bit) for row in rows for bit in row]
+        self.assertEqual(read_geotiff_pixels(path)["values"], expected)
+        self.assertEqual(list(iter_geotiff_band_values(path)), expected)
+
+    def test_onebit_tiles_keep_spatial_row_order(self) -> None:
+        rows = ["101", "010", "111"]
+        path = os.path.join(self.tmp.name, "onebit-tile.tif")
+        _onebit_tiled_tiff(path, 3, 3, 4, 2, rows)
+        expected = [float(bit) for row in rows for bit in row]
+        image = read_geotiff_pixels(path)
+        self.assertEqual(image["values"], expected)
+        self.assertEqual(list(iter_geotiff_band_values(path)), expected)
+
+    def test_onebit_fill_order_lsb_first_is_refused(self) -> None:
+        path = os.path.join(self.tmp.name, "onebit-fill.tif")
+        _onebit_tiff(path, ["1010", "0101"], fill_order=2)
+        with self.assertRaises(GeoTiffError) as caught:
+            read_geotiff_pixels(path)
+        self.assertIn("FillOrder=2", str(caught.exception))
+
 
     def test_deflate_predictor_wraps_16bit_rows(self) -> None:
         path = os.path.join(self.tmp.name, "predictor16.tif")

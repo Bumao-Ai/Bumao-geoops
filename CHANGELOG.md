@@ -52,6 +52,9 @@ All notable changes to this project are documented in this file.
   truncated literal/repeat runs refused instead of yielding short pixel data.
 - GeoTIFF 64-bit samples are decoded for unsigned/signed integer and float
   SampleFormat, so Float64 rasters are no longer refused as unsupported bits.
+- Single-band 1-bit GeoTIFF strips and tiles are decoded MSB-first with byte
+  padding per row, across uncompressed/LZW/Deflate/PackBits blocks. Multi-band
+  1-bit, FillOrder=2, JPEG 1-bit and Predictor on 1-bit are explicit refusals.
 - An uncompressed GeoTIFF whose whole image is one strip is now read row by
   row from the mmap, so profile memory stays proportional to one image row
   instead of width*height floats.

@@ -30,6 +30,7 @@ TAG_COMPRESSION = 259
 TAG_PHOTOMETRIC = 262
 TAG_STRIP_OFFSETS = 273
 TAG_ORIENTATION = 274
+TAG_FILL_ORDER = 266
 TAG_SAMPLES = 277
 TAG_ROWS_PER_STRIP = 278
 TAG_STRIP_BYTE_COUNTS = 279
@@ -506,6 +507,25 @@ def _decode_block(
     label: str,
 ) -> List[float]:
     """Decode one strip or tile; a missing or corrupt block is an error."""
+    raw = _block_bytes(
+        raw_file,
+        offset,
+        count,
+        compression=compression,
+        label=label,
+    )
+    return _decode_samples(raw, endian, bits, sample_format)
+
+
+def _block_bytes(
+    raw_file: Any,
+    offset: int,
+    count: int,
+    *,
+    compression: int,
+    label: str,
+) -> bytes:
+    """Read and decompress one strip or tile without interpreting samples."""
     if offset < 0 or count <= 0 or offset + count > len(raw_file):
         raise GeoTiffError("TIFF %s points outside the file" % label)
     raw = raw_file[int(offset):int(offset) + int(count)]
@@ -518,7 +538,200 @@ def _decode_block(
             raw = zlib.decompress(raw)
         except zlib.error as exc:
             raise GeoTiffError("Deflate %s is corrupt: %s" % (label, exc)) from exc
-    return _decode_samples(raw, endian, bits, sample_format)
+    return raw
+
+
+def _unpack_1bit(
+    raw: bytes, row_width: int, rows: int, *, label: str
+) -> List[float]:
+    """Unpack TIFF 1-bit samples, MSB first, with a byte boundary per row."""
+    if row_width <= 0 or rows < 0:
+        raise GeoTiffError("1-bit %s has an invalid row geometry" % label)
+    row_bytes = (int(row_width) + 7) // 8
+    needed = row_bytes * int(rows)
+    if len(raw) < needed:
+        raise GeoTiffError(
+            "1-bit %s decoded %d bytes, expected at least %d for %d rows"
+            % (label, len(raw), needed, rows)
+        )
+    values: List[float] = []
+    for row in range(int(rows)):
+        base = row * row_bytes
+        for col in range(int(row_width)):
+            byte = raw[base + col // 8]
+            values.append(float((byte >> (7 - (col % 8))) & 1))
+    return values
+
+
+def _read_1bit_pixels(
+    entries: Dict[int, Any],
+    raw_file: Any,
+    width: int,
+    height: int,
+    compression: int,
+) -> List[float]:
+    """Read a single-band 1-bit TIFF strip/tile image into 0/1 values."""
+    total = int(width) * int(height)
+    values = [0.0] * total
+    tile_width = _first(entries.get(322))
+    tile_length = _first(entries.get(323))
+    tile_offsets = entries.get(324)
+    tile_counts = entries.get(325)
+    if 322 in entries or 323 in entries or 324 in entries or 325 in entries:
+        if not tile_width or not tile_length:
+            raise GeoTiffError("tiled TIFF has no TileWidth/TileLength")
+        if not isinstance(tile_offsets, list) or not tile_offsets:
+            raise GeoTiffError("TIFF has no TileOffsets")
+        if not isinstance(tile_counts, list) or len(tile_counts) != len(tile_offsets):
+            raise GeoTiffError("TIFF TileByteCounts do not match TileOffsets")
+        columns = (int(width) + int(tile_width) - 1) // int(tile_width)
+        rows = (int(height) + int(tile_length) - 1) // int(tile_length)
+        grid = columns * rows
+        if len(tile_offsets) < grid:
+            raise GeoTiffError("TIFF has fewer tiles than its declared grid")
+        for tile_index in range(grid):
+            raw = _block_bytes(
+                raw_file,
+                int(tile_offsets[tile_index]),
+                int(tile_counts[tile_index]),
+                compression=compression,
+                label="tile %d" % tile_index,
+            )
+            tile_values = _unpack_1bit(
+                raw,
+                int(tile_width),
+                int(tile_length),
+                label="tile %d" % tile_index,
+            )
+            tile_row = tile_index // columns
+            tile_col = tile_index % columns
+            for row in range(int(tile_length)):
+                target_row = tile_row * int(tile_length) + row
+                if target_row >= int(height):
+                    break
+                for col in range(int(tile_width)):
+                    target_col = tile_col * int(tile_width) + col
+                    if target_col >= int(width):
+                        break
+                    values[target_row * int(width) + target_col] = tile_values[
+                        row * int(tile_width) + col
+                    ]
+        return values
+
+    offsets = entries.get(TAG_STRIP_OFFSETS)
+    byte_counts = entries.get(TAG_STRIP_BYTE_COUNTS)
+    if not isinstance(offsets, list) or not offsets:
+        raise GeoTiffError("TIFF has no StripOffsets")
+    if not isinstance(byte_counts, list) or len(byte_counts) != len(offsets):
+        raise GeoTiffError("TIFF StripByteCounts do not match StripOffsets")
+    rows_per_strip = int(_first(entries.get(TAG_ROWS_PER_STRIP)) or int(height))
+    if rows_per_strip <= 0:
+        raise GeoTiffError("TIFF RowsPerStrip is out of range")
+    rows_per_strip = min(rows_per_strip, int(height))
+    needed_strips = (int(height) + rows_per_strip - 1) // rows_per_strip
+    if len(offsets) < needed_strips:
+        raise GeoTiffError("TIFF has fewer strips than its declared rows")
+    row = 0
+    for strip_index in range(needed_strips):
+        rows_here = min(rows_per_strip, int(height) - row)
+        raw = _block_bytes(
+            raw_file,
+            int(offsets[strip_index]),
+            int(byte_counts[strip_index]),
+            compression=compression,
+            label="strip %d" % strip_index,
+        )
+        strip_values = _unpack_1bit(
+            raw, int(width), rows_here, label="strip %d" % strip_index
+        )
+        base = row * int(width)
+        values[base:base + len(strip_values)] = strip_values
+        row += rows_here
+    return values
+
+
+def _iter_1bit_values(
+    entries: Dict[int, Any],
+    raw_file: Any,
+    width: int,
+    height: int,
+    compression: int,
+):
+    """Yield a single-band 1-bit TIFF in spatial row order, one block at a time."""
+    tile_width = _first(entries.get(322))
+    tile_length = _first(entries.get(323))
+    tile_offsets = entries.get(324)
+    tile_counts = entries.get(325)
+    if 322 in entries or 323 in entries or 324 in entries or 325 in entries:
+        if not tile_width or not tile_length:
+            raise GeoTiffError("tiled TIFF has no TileWidth/TileLength")
+        if not isinstance(tile_offsets, list) or not tile_offsets:
+            raise GeoTiffError("TIFF has no TileOffsets")
+        if not isinstance(tile_counts, list) or len(tile_counts) != len(tile_offsets):
+            raise GeoTiffError("TIFF TileByteCounts do not match TileOffsets")
+        columns = (int(width) + int(tile_width) - 1) // int(tile_width)
+        rows = (int(height) + int(tile_length) - 1) // int(tile_length)
+        grid = columns * rows
+        if len(tile_offsets) < grid:
+            raise GeoTiffError("TIFF has fewer tiles than its declared grid")
+        for tile_row in range(rows):
+            decoded: List[tuple] = []
+            tile_row_length = min(int(tile_length), int(height) - tile_row * int(tile_length))
+            for tile_col in range(columns):
+                tile_index = tile_row * columns + tile_col
+                raw = _block_bytes(
+                    raw_file,
+                    int(tile_offsets[tile_index]),
+                    int(tile_counts[tile_index]),
+                    compression=compression,
+                    label="tile %d" % tile_index,
+                )
+                tile_values = _unpack_1bit(
+                    raw,
+                    int(tile_width),
+                    int(tile_length),
+                    label="tile %d" % tile_index,
+                )
+                decoded.append(
+                    (
+                        tile_values,
+                        min(int(tile_width), int(width) - tile_col * int(tile_width)),
+                    )
+                )
+            for row in range(tile_row_length):
+                for tile_values, tile_cols in decoded:
+                    source_row = row * int(tile_width)
+                    for col in range(tile_cols):
+                        yield tile_values[source_row + col]
+        return
+
+    offsets = entries.get(TAG_STRIP_OFFSETS)
+    byte_counts = entries.get(TAG_STRIP_BYTE_COUNTS)
+    if not isinstance(offsets, list) or not offsets:
+        raise GeoTiffError("TIFF has no StripOffsets")
+    if not isinstance(byte_counts, list) or len(byte_counts) != len(offsets):
+        raise GeoTiffError("TIFF StripByteCounts do not match StripOffsets")
+    rows_per_strip = int(_first(entries.get(TAG_ROWS_PER_STRIP)) or int(height))
+    if rows_per_strip <= 0:
+        raise GeoTiffError("TIFF RowsPerStrip is out of range")
+    rows_per_strip = min(rows_per_strip, int(height))
+    needed_strips = (int(height) + rows_per_strip - 1) // rows_per_strip
+    if len(offsets) < needed_strips:
+        raise GeoTiffError("TIFF has fewer strips than its declared rows")
+    row = 0
+    for strip_index in range(needed_strips):
+        rows_here = min(rows_per_strip, int(height) - row)
+        raw = _block_bytes(
+            raw_file,
+            int(offsets[strip_index]),
+            int(byte_counts[strip_index]),
+            compression=compression,
+            label="strip %d" % strip_index,
+        )
+        yield from _unpack_1bit(
+            raw, int(width), rows_here, label="strip %d" % strip_index
+        )
+        row += rows_here
 
 
 def iter_geotiff_band_values(path: str, band: int = 1):
@@ -554,6 +767,38 @@ def iter_geotiff_band_values(path: str, band: int = 1):
         raise GeoTiffError(
             "TIFF Orientation=%s is not supported; pixel order would be wrong" % orientation
         )
+    if bits == 1:
+        if int(samples) != 1:
+            raise GeoTiffError(
+                "1-bit TIFF is only supported with one sample per pixel, not %s"
+                % samples
+            )
+        if planar not in (1, 2):
+            raise GeoTiffError("unsupported PlanarConfiguration: %s" % planar)
+        if predictor != 1:
+            raise GeoTiffError(
+                "Predictor=%s is not supported for 1-bit samples" % predictor
+            )
+        if sample_format != 1:
+            raise GeoTiffError(
+                "1-bit TIFF must use unsigned SampleFormat=1, not %s" % sample_format
+            )
+        if compression in (7, 34712):
+            raise GeoTiffError("JPEG/JPEG2000 1-bit TIFF decoding is not supported")
+        if compression not in (1, 5, 8, 32946, 32773):
+            raise GeoTiffError(
+                "unsupported TIFF compression %s for 1-bit samples" % compression
+            )
+        fill_order = _first(entries.get(TAG_FILL_ORDER)) or 1
+        if fill_order != 1:
+            raise GeoTiffError(
+                "TIFF FillOrder=%s is not supported; 1-bit pixels are read MSB first"
+                % fill_order
+            )
+        yield from _iter_1bit_values(
+            entries, raw_file, int(width), int(height), int(compression)
+        )
+        return
     if bits not in (8, 16, 32, 64):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
     if compression not in (1, 5, 7, 8, 32946, 32773, 34712):
@@ -861,6 +1106,56 @@ def read_geotiff_pixels(path: str) -> Dict[str, Any]:
         raise GeoTiffError(
             "TIFF Orientation=%s is not supported; pixel order would be wrong" % orientation
         )
+    if bits == 1:
+        if int(samples) != 1:
+            raise GeoTiffError(
+                "1-bit TIFF is only supported with one sample per pixel, not %s"
+                % samples
+            )
+        if planar not in (1, 2):
+            raise GeoTiffError("unsupported PlanarConfiguration: %s" % planar)
+        if predictor != 1:
+            raise GeoTiffError(
+                "Predictor=%s is not supported for 1-bit samples" % predictor
+            )
+        if sample_format != 1:
+            raise GeoTiffError(
+                "1-bit TIFF must use unsigned SampleFormat=1, not %s" % sample_format
+            )
+        if compression in (7, 34712):
+            raise GeoTiffError("JPEG/JPEG2000 1-bit TIFF decoding is not supported")
+        if compression not in (1, 5, 8, 32946, 32773):
+            raise GeoTiffError(
+                "unsupported TIFF compression %s for 1-bit samples" % compression
+            )
+        fill_order = _first(entries.get(TAG_FILL_ORDER)) or 1
+        if fill_order != 1:
+            raise GeoTiffError(
+                "TIFF FillOrder=%s is not supported; 1-bit pixels are read MSB first"
+                % fill_order
+            )
+        values = _read_1bit_pixels(
+            entries, raw_file, int(width), int(height), int(compression)
+        )
+        metadata = _raster_metadata(entries, int(width), int(height))
+        return {
+            "driver": "GTiff",
+            "width": int(width),
+            "height": int(height),
+            "bands": int(samples),
+            "bits_per_sample": 1,
+            "compression": int(compression),
+            "values": values[: int(width) * int(height)],
+            "nodata": metadata["nodata"],
+            "pixel_size": metadata["pixel_size"],
+            "bounds": metadata["bounds"],
+            "crs": metadata["crs"],
+            "crs_model": metadata["crs_model"],
+            "raster_type": metadata.get("raster_type", 1),
+            "linear_unit": metadata.get("linear_unit", ""),
+            "linear_unit_code": metadata.get("linear_unit_code"),
+            "linear_unit_m": metadata.get("linear_unit_m", 1.0),
+        }
     if bits not in (8, 16, 32, 64):
         raise GeoTiffError("unsupported BitsPerSample: %s" % bits)
     if compression not in (1, 5, 7, 8, 32946, 32773, 34712):

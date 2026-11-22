@@ -5,7 +5,7 @@
 
 ## 一、当前可核对的软件基线
 
-- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **377 tests OK**。
+- 全量测试：`python -m unittest discover -s geoops\tests -t .`，当前 **380 tests OK**。
 - 结构自检：`python -m geoops.smoke`，当前 **SMOKE PASS: 73 assertions**。
 - 控制台：`http://127.0.0.1:8790/ui/`；健康接口 `/api/v1/health`。
 - 等级：核心工程（CORE），登记在 `docs/ENGINEERING_TIER.md`。
@@ -62,7 +62,7 @@ python -m geoops.ai chat "用一句中文说明你能为测绘成果做什么"
 
 需要你提供：
 
-1. 真实 GeoTIFF/BigTIFF（或带 `.json` sidecar 的 ASCII）绝对路径。GeoTIFF 支持未压缩/LZW/Deflate/PackBits 条带或分块；JPEG/JPEG2000 需要 Pillow。
+1. 真实 GeoTIFF/BigTIFF（或带 `.json` sidecar 的 ASCII）绝对路径。GeoTIFF 支持未压缩/LZW/Deflate/PackBits 条带或分块；1-bit 限单波段（MSB first、FillOrder=1）；JPEG/JPEG2000 需要 Pillow。
 2. 坐标系：`crs`，以及 `crs_model=geographic|projected`（优先 sidecar，否则从 GeoTIFF 头读取；EPSG:4326/3857 可推断）。注册记录保存该字段，复核时一并比较。GeoTIFF 头读不出像元尺寸/范围时，即使 sidecar 给了 CRS 也只登记为 `INCOMPLETE`，不会 READY 一个无法定位的影像。
 3. 如果是多波段，说明用于变化检测的 `band` 序号。
 4. 如果有两期影像，需要同一 CRS、同一像元大小、同一原点、同一尺寸；线性单位也必须一致。
