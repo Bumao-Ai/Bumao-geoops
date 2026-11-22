@@ -532,6 +532,36 @@ def _onebit_tiled_tiff(path: str, width: int, height: int, tile_width: int, tile
         handle.write(body)
 
 
+def _onebit_bigtiff(path: str, rows) -> None:
+    """A minimal single-strip BigTIFF with one-bit samples."""
+    height = len(rows)
+    width = len(rows[0])
+    raw = bytes(_pack_onebit_rows(rows, width))
+    count = 11
+    data_start = 16 + 8 + count * 20 + 8
+    entries = [
+        (256, 3, 1, struct.pack("<H", width) + b"\0" * 6),
+        (257, 3, 1, struct.pack("<H", height) + b"\0" * 6),
+        (258, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (259, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (262, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (273, 16, 1, struct.pack("<Q", data_start)),
+        (277, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (278, 3, 1, struct.pack("<H", height) + b"\0" * 6),
+        (279, 16, 1, struct.pack("<Q", len(raw))),
+        (284, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+        (339, 3, 1, struct.pack("<H", 1) + b"\0" * 6),
+    ]
+    body = struct.pack("<2sHHHQ", b"II", 43, 8, 0, 16)
+    body += struct.pack("<Q", count)
+    for tag, typ, n, value_field in entries:
+        body += struct.pack("<HHQ", tag, typ, n) + value_field
+    body += struct.pack("<Q", 0)
+    body += raw
+    with open(path, "wb") as handle:
+        handle.write(body)
+
+
 def _tiff(path: str, values, compression: int = 1) -> None:
     raw = bytes(values)
     payload = raw
@@ -722,7 +752,20 @@ class GeoTiffPixelTests(unittest.TestCase):
             self.assertEqual(image["values"], expected)
             self.assertEqual(list(iter_geotiff_band_values(path)), expected)
 
+    def test_onebit_bigtiff_reads_the_same_bit_order(self) -> None:
+        rows = ["10101", "01110", "11001"]
+        path = os.path.join(self.tmp.name, "onebit-big.tif")
+        _onebit_bigtiff(path, rows)
+        expected = [float(bit) for row in rows for bit in row]
+        image = read_geotiff_pixels(path)
+        self.assertEqual(image["bits_per_sample"], 1)
+        self.assertEqual(image["values"], expected)
+        self.assertEqual(list(iter_geotiff_band_values(path)), expected)
+        profile = profile_geotiff_band(path)
+        self.assertEqual(profile["valid_cells"], 15)
+        self.assertAlmostEqual(profile["mean"], 9.0 / 15.0)
 
+    def test_onebit_fill_order_lsb_first_is_refused(self) -> None:
         path = os.path.join(self.tmp.name, "onebit-fill.tif")
         _onebit_tiff(path, ["1010", "0101"], fill_order=2)
         with self.assertRaises(GeoTiffError) as caught:
