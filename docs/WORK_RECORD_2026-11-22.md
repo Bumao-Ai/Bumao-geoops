@@ -155,11 +155,11 @@ The pass makes previously static areas operate against real API data.
 - The only browser console error in the final matrix is the deliberate
   `band=2` 404 used to prove the refusal path.
 - Working tree: clean. The frontend and test changes are in the final test
-  commit. The sanitized history is ready for the GitHub test-build upload;
-  the current `8790` service still reports an empty dataset/report registry,
+  commit. The sanitized history was uploaded to GitHub on 2026-11-22 as the
+  `v0.1.0-beta.4` test build; the final audit reports `0` sensitive findings.
+  The current `8790` service still reports an empty dataset/report registry,
   so these new paths were browser-verified against the fixture API, not
   claimed as live-registry evidence on `8790`.
-
 ## Still not claimed
 
 The fifteen 0.1 acceptance items are still not all met. One-bit support and
