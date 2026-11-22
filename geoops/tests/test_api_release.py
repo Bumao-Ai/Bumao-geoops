@@ -14,6 +14,7 @@ from geoops.api import AuditLog, PermissionPolicy, create_server
 from geoops.artifacts import ArtifactStore
 from geoops.domain import DomainRegistry, ObjectType, TaskEngine
 from geoops.domain.projects import ProjectRegistry
+from geoops.tests.test_geotiff_pixels import _onebit_tiff
 from geoops.workflow import RunJournal
 
 
@@ -129,7 +130,39 @@ class ReleaseApiTests(unittest.TestCase):
         status, _ = self.call("GET", "/api/v1/datasets/%s/profile?band=2" % dataset["object_id"])
         self.assertEqual(status, 404)
 
-    def test_dataset_without_a_project_is_refused(self) -> None:
+    def test_onebit_dataset_is_registered_and_profiled_through_http(self) -> None:
+        path = os.path.join(self.tempdir, "mask-1bit.tif")
+        _onebit_tiff(path, ["10101", "01110", "11001"], georef=True, pixel_size=10.0)
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
+        status, payload = self.call(
+            "POST", "/api/v1/datasets",
+            {"project_id": "PRJ-API-1", "path": path, "label": "二值掩膜"},
+            token="admin",
+        )
+        self.assertEqual(status, 201)
+        dataset = payload["dataset"]
+        self.assertEqual(dataset["payload"]["bands"], 1)
+        self.assertEqual(dataset["payload"]["pixel_size"], [10.0, 10.0])
+        status, validation = self.call(
+            "GET", "/api/v1/datasets/%s/validate" % dataset["object_id"]
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(validation["status"], "PASS")
+        status, profile = self.call(
+            "GET", "/api/v1/datasets/%s/profile" % dataset["object_id"]
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(profile["format"], "geotiff")
+        self.assertEqual(profile["read_mode"], "streamed_blocks")
+        self.assertEqual(profile["ncols"], 5)
+        self.assertEqual(profile["nrows"], 3)
+        self.assertEqual(profile["valid_cells"], 15)
+        self.assertEqual(profile["min"], 0.0)
+        self.assertEqual(profile["max"], 1.0)
+        self.assertAlmostEqual(profile["mean"], 9.0 / 15.0)
+
+
         status, payload = self.call(
             "POST", "/api/v1/datasets",
             {"project_id": "PRJ-NOPE", "path": os.path.join(self.tempdir, "none.asc")},
