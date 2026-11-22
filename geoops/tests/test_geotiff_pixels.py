@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import math
 import os
 import struct
@@ -373,7 +374,8 @@ def _float64_tiff(path: str, values) -> None:
         handle.write(body)
 
 
-def _onebit_tiff(path: str, rows, compression: int = 1, fill_order: int = 1) -> None:
+def _onebit_tiff(path: str, rows, compression: int = 1, fill_order: int = 1,
+                 georef: bool = False, pixel_size: float = 10.0) -> None:
     """Write a single-band 1-bit strip TIFF with rows such as '1010101010'."""
     width = len(rows[0])
     height = len(rows)
@@ -385,8 +387,14 @@ def _onebit_tiff(path: str, rows, compression: int = 1, fill_order: int = 1) -> 
         payload = _lzw_encode(list(raw))
     elif compression == 32773:
         payload = _packbits_encode(list(raw))
-    count = 12
-    data_offset = 8 + 2 + count * 12 + 4
+    count = 14 if georef else 12
+    base_offset = 8 + 2 + count * 12 + 4
+    if georef:
+        scale_offset = base_offset
+        tiepoint_offset = scale_offset + 24
+        data_offset = tiepoint_offset + 48
+    else:
+        data_offset = base_offset
     entries = [
         (256, 3, 1, width),
         (257, 3, 1, height),
@@ -401,11 +409,19 @@ def _onebit_tiff(path: str, rows, compression: int = 1, fill_order: int = 1) -> 
         (284, 3, 1, 1),
         (339, 3, 1, 1),
     ]
+    if georef:
+        entries.extend([
+            (33550, 12, 3, scale_offset),
+            (33922, 12, 6, tiepoint_offset),
+        ])
     body = struct.pack("<2sHI", b"II", 42, 8)
     body += struct.pack("<H", len(entries))
     for tag, typ, n, value in entries:
         body += struct.pack("<HHII", tag, typ, n, value)
     body += struct.pack("<I", 0)
+    if georef:
+        body += struct.pack("<3d", pixel_size, pixel_size, 0.0)
+        body += struct.pack("<6d", 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
     body += payload
     with open(path, "wb") as handle:
         handle.write(body)
@@ -765,7 +781,26 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(profile["valid_cells"], 15)
         self.assertAlmostEqual(profile["mean"], 9.0 / 15.0)
 
-    def test_onebit_fill_order_lsb_first_is_refused(self) -> None:
+    def test_onebit_masks_drive_change_detection_end_to_end(self) -> None:
+        baseline_rows = ["000", "111", "000"]
+        comparison_rows = ["010", "101", "000"]
+        baseline = os.path.join(self.tmp.name, "baseline-1bit.tif")
+        comparison = os.path.join(self.tmp.name, "comparison-1bit.tif")
+        _onebit_tiff(baseline, baseline_rows, georef=True, pixel_size=10.0)
+        _onebit_tiff(comparison, comparison_rows, georef=True, pixel_size=10.0)
+        for path in (baseline, comparison):
+            with open(path + ".json", "w", encoding="utf-8") as handle:
+                json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
+        result = detect_changes(baseline, comparison, threshold=1.0)
+        self.assertEqual(result["changed_cells"], 2)
+        self.assertEqual(result["cellsize"], 10.0)
+        self.assertEqual(result["cell_area_m2"], 100.0)
+        self.assertEqual(result["area_basis"], "projected")
+        self.assertEqual(len(result["patches"]), 1)
+        self.assertEqual(result["patches"][0]["cells"], 2)
+        self.assertEqual(result["patches"][0]["area_m2"], 200.0)
+
+
         path = os.path.join(self.tmp.name, "onebit-fill.tif")
         _onebit_tiff(path, ["1010", "0101"], fill_order=2)
         with self.assertRaises(GeoTiffError) as caught:
