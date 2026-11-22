@@ -391,7 +391,8 @@ def create_server(
                 try:
                     result = dataset_registry.profile(dataset_id, band=band)
                 except DatasetError as exc:
-                    self._json(404, {"error": str(exc)})
+                    status = 409 if "changed since registration" in str(exc) else 404
+                    self._json(status, {"error": str(exc)})
                     return
                 self._json(200, result)
                 return

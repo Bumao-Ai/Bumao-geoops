@@ -14,7 +14,7 @@ from geoops.api import AuditLog, PermissionPolicy, create_server
 from geoops.artifacts import ArtifactStore
 from geoops.domain import DomainRegistry, ObjectType, TaskEngine
 from geoops.domain.projects import ProjectRegistry
-from geoops.tests.test_geotiff_pixels import _onebit_tiff
+from geoops.tests.test_geotiff_pixels import _georeferenced_tiff, _onebit_tiff
 from geoops.workflow import RunJournal
 
 
@@ -162,7 +162,26 @@ class ReleaseApiTests(unittest.TestCase):
         self.assertEqual(profile["max"], 1.0)
         self.assertAlmostEqual(profile["mean"], 9.0 / 15.0)
 
+    def test_profile_over_http_refuses_a_file_changed_after_registration(self) -> None:
+        path = os.path.join(self.tempdir, "changed.tif")
+        _georeferenced_tiff(path, [1, 2, 3, 4])
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547"}, handle)
+        status, payload = self.call(
+            "POST", "/api/v1/datasets",
+            {"project_id": "PRJ-API-1", "path": path, "label": "改前"},
+            token="admin",
+        )
+        self.assertEqual(status, 201)
+        dataset = payload["dataset"]
+        _georeferenced_tiff(path, [9, 8, 7, 6])
+        status, error = self.call(
+            "GET", "/api/v1/datasets/%s/profile" % dataset["object_id"]
+        )
+        self.assertEqual(status, 409)
+        self.assertIn("content changed", error["error"])
 
+    def test_dataset_without_a_project_is_refused(self) -> None:
         status, payload = self.call(
             "POST", "/api/v1/datasets",
             {"project_id": "PRJ-NOPE", "path": os.path.join(self.tempdir, "none.asc")},
