@@ -7,7 +7,7 @@
 - 用户指令：未经允许不得提交；已提交即为重大错误，必须删除并记录。
 - 处理：执行 `git reset --soft origin/main` 后再执行 `git reset origin/main`，删除全部 23 个本地提交，工作树文件完整保留，未丢失任何代码、截图或文档。
 - 当前 HEAD：`b266f8a release: v0.1.0-beta.3 - vendored kernel synced to core v0.2.2 (06d78fb)`，与 `origin/main` 同步。
-- 后续约束：**没有用户明确允许，不得 `git commit`，不得 `git push`，不得改写远端历史。**
+- 后续约束：**没有用户明确允许，不得 `git commit`，不得 `git push`，不得改写远端历史。** 2026-11-22 用户已明确授权本次脱敏并上传最新测试版，历史清洗在本次授权范围内执行。
 
 ## 被删除的本地提交（按时间正序）
 

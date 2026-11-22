@@ -105,10 +105,24 @@ class ConsoleTests(unittest.TestCase):
         text = body.decode("utf-8")
         self.assertEqual(status, 200)
         self.assertTrue(ctype.startswith("text/html"))
-        self.assertIn("布猫", text)
-        self.assertIn("测绘智序", text)
+        self.assertIn("Bumao GeoOps", text)
         self.assertIn("overview", text)
         self.assertNotIn("http://", text, "the page must not pull anything from the network")
+
+    def test_console_exposes_functional_controls(self) -> None:
+        status, _, body = self.get("/ui/", raw=True)
+        text = body.decode("utf-8")
+        self.assertEqual(status, 200)
+        for marker in (
+            'id="datasetQuery"',
+            'id="datasetProfileCard"',
+            'id="qualityTargetList"',
+            'id="qualityAccuracyPanel"',
+            'name="reference_path"',
+            'name="threshold_pixel_accuracy"',
+            'data-goto="projects"',
+        ):
+            self.assertIn(marker, text)
 
     def test_stylesheet_and_script_are_served_with_their_types(self) -> None:
         _, css_type, css = self.get("/ui/ui.css", raw=True)

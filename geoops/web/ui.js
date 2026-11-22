@@ -1,4 +1,4 @@
-/* 布猫 · 测绘智序 — 前端骨架
+/* Bumao GeoOps — 前端骨架
    只渲染接口真实返回的内容；缺令牌、缺接口、无记录分别有各自的空态，不填演示数字。 */
 (function () {
   "use strict";
@@ -7,7 +7,8 @@
   var state = { section: "overview", status: "", taskQuery: "", artifactQuery: "", auditQuery: "",
                 overview: null, tasks: [], rules: null, artifacts: [], audit: null, runs: [],
                 projects: [], datasets: [], catalog: null, reviews: [], trace: null, token: "",
-                deliverables: [], qualityReports: [], settings: null, lastQuality: null, modelRuntime: null };
+                deliverables: [], qualityReports: [], settings: null, lastQuality: null, modelRuntime: null,
+                datasetQuery: "", profileDatasetId: "", workflows: [] };
 
   function readUi() {
     try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; }
@@ -37,24 +38,43 @@
     if (section === "tasks") loadTasks();
     if (section === "resources") { loadCatalog(); loadModelRuntime(); }
     if (section === "data") loadDatasets();
-    if (section === "runs") loadRuns();
+    if (section === "runs") { loadRuns(); loadWorkflows(); }
     if (section === "rules") loadRules();
-    if (section === "quality") loadQualityReports();
+    if (section === "quality") { loadQualityReports(); loadQualityTargets(); }
     if (section === "artifacts") { loadDeliverables(); loadArtifacts(); }
     if (section === "reviews") loadReviews();
     if (section === "trace") loadAudit();
     if (section === "settings") loadSettings();
   }
+
+  function go(section, jump) {
+    if (!document.getElementById(section)) return;
+    show(section);
+    try { history.replaceState(null, "", "#" + section); } catch (e) {}
+    if (jump) {
+      var target = document.getElementById(section);
+      if (target && target.scrollIntoView) target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
   navItems.forEach(function (el) {
     el.addEventListener("click", function (ev) {
       ev.preventDefault();
-      show(el.dataset.nav);
-      try { history.replaceState(null, "", "#" + el.dataset.nav); } catch (e) {}
+      go(el.dataset.nav, true);
     });
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-goto]"), function (el) {
+    function openKpi(ev) {
+      if (ev.type === "keydown" && ev.key !== "Enter" && ev.key !== " ") return;
+      if (ev.type === "keydown") ev.preventDefault();
+      go(el.getAttribute("data-goto"), true);
+    }
+    el.addEventListener("click", openKpi);
+    el.addEventListener("keydown", openKpi);
   });
   window.addEventListener("hashchange", function () {
     var target = location.hash.replace("#", "");
-    if (target && document.getElementById(target)) show(target);
+    if (target && document.getElementById(target)) go(target, true);
   });
 
   /* ---------- 主题 / 纸色 / 字号 ---------- */
@@ -138,6 +158,33 @@
     return (n / 1024 / 1024).toFixed(2) + " MB";
   }
   function shortHash(hash) { return hash ? String(hash).slice(0, 10) : "—"; }
+
+  function fmtNum(value, digits) {
+    if (value === null || value === undefined || value === "") return "—";
+    var number = Number(value);
+    if (!isFinite(number)) return "—";
+    if (digits === undefined) return number.toLocaleString("en-US", { maximumFractionDigits: 6 });
+    return number.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  }
+  function fmtRate(value) {
+    if (value === null || value === undefined || value === "") return "—";
+    var number = Number(value);
+    if (!isFinite(number)) return "—";
+    return (number * 100).toFixed(2) + "%";
+  }
+  function fmtThreshold(value) {
+    if (value === null || value === undefined) return "—";
+    var number = Number(value);
+    return isFinite(number) ? number.toFixed(3) : "—";
+  }
+  function fmtArea(area, basis) {
+    if (area === null || area === undefined || area === "") return "—";
+    var number = Number(area);
+    if (!isFinite(number)) return "—";
+    if (basis === "map_units") return fmtNum(number, 1) + " map-unit²";
+    if (number >= 1000000) return fmtNum(number / 1000000, 2) + " km²";
+    return fmtNum(number, 1) + " m²";
+  }
 
   function emptyBox(glyph, title, body) {
     return '<div class="empty"><div class="glyph">' + glyph + '</div><div><h4>' + title + '</h4><p>' + body + '</p></div></div>';
@@ -392,6 +439,128 @@
   }
   var runReload = document.getElementById("runReload");
   if (runReload) runReload.addEventListener("click", loadRuns);
+
+  /* ---------- 流程定义 ---------- */
+  function loadWorkflows() {
+    var box = document.getElementById("workflowTable");
+    box.innerHTML = emptyBox("阅", "读取中", "正在向 /api/v1/workflows 取流程定义。");
+    api("/api/v1/workflows").then(function (res) {
+      if (res.status === 404) {
+        document.getElementById("workflowCount").textContent = "未配置";
+        box.innerHTML = emptyBox("未", "流程定义接口未配置", "服务端没有流程定义库；不补演示定义。");
+        return;
+      }
+      if (res.status !== 200) {
+        document.getElementById("workflowCount").textContent = "接口 " + res.status;
+        box.innerHTML = emptyBox("未", "流程定义接口不可用", "接口返回 " + res.status + "。");
+        return;
+      }
+      state.workflows = (res.body && res.body.workflows) || [];
+      document.getElementById("workflowCount").textContent = state.workflows.length + " 份";
+      renderWorkflows();
+    }).catch(function () {
+      box.innerHTML = emptyBox("断", "取不到流程定义", "服务未启动或网络不可达。");
+    });
+  }
+
+  function renderWorkflows() {
+    var box = document.getElementById("workflowTable");
+    var select = document.getElementById("workflowSelect");
+    var previous = select.value;
+    if (!state.workflows.length) {
+      box.innerHTML = emptyBox("空", "还没有流程定义",
+        "先在右侧登记一份定义；节点会逐项校验后再允许执行。");
+      select.innerHTML = '<option value="">还没有流程定义</option>';
+      return;
+    }
+    box.innerHTML = state.workflows.slice().reverse().map(function (obj) {
+      var p = obj.payload || {};
+      var nodes = p.nodes || [];
+      return '<div class="run" data-workflow="' + esc(obj.object_id) + '">' +
+        '<div class="run-head"><span class="run-id">' + esc(obj.object_id) + "</span>" +
+        '<span class="pill info">' + esc(p.task_type || "—") + "</span>" +
+        '<span class="run-meta"><span>v' + esc(obj.version || "—") + "</span>" +
+        "<span>节点 " + nodes.length + "</span></span></div>" +
+        '<div class="run-meta" style="margin:5px 0 0;justify-content:flex-start">' +
+        "<span>" + esc(p.name || "") + "</span>" +
+        (p.description ? "<span>" + esc(p.description) + "</span>" : "") + "</div>" +
+        '<div class="note" style="margin:7px 0 0">' + nodes.map(function (node) {
+          return "<code>" + esc(node.node_id) + " · " + esc(node.type) + "</code>";
+        }).join(" ") + "</div></div>";
+    }).join("");
+    select.innerHTML = '<option value="">选择流程定义</option>' + state.workflows.map(function (obj) {
+      var p = obj.payload || {};
+      return '<option value="' + esc(obj.object_id) + '">' + esc(obj.object_id) + " · " + esc(p.name || "") + "</option>";
+    }).join("");
+    if (previous) select.value = previous;
+  }
+
+  var workflowReload = document.getElementById("workflowReload");
+  if (workflowReload) workflowReload.addEventListener("click", loadWorkflows);
+
+  var workflowForm = document.getElementById("workflowForm");
+  if (workflowForm) workflowForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var nodes;
+    try { nodes = JSON.parse(workflowForm.nodes.value || "[]"); }
+    catch (e) { setMsg("workflowMsg", "bad", "节点 JSON 解析失败：" + e.message); return; }
+    var body = {
+      workflow_id: (workflowForm.workflow_id.value || "").trim(),
+      name: (workflowForm.name.value || "").trim(),
+      task_type: (workflowForm.task_type.value || "").trim(),
+      description: (workflowForm.description.value || "").trim(),
+      nodes: nodes
+    };
+    setMsg("workflowMsg", "info", "登记中…");
+    api("/api/v1/workflows", { method: "POST", token: currentToken(), body: body }).then(function (res) {
+      if (res.status === 201) {
+        setMsg("workflowMsg", "ok", "已登记 " + body.workflow_id);
+        workflowForm.reset();
+        loadWorkflows();
+        return;
+      }
+      var reason = (res.body && res.body.error) || ("接口 " + res.status);
+      var prefix = res.status === 401 ? "令牌不被接受：" : res.status === 403 ? "缺 workflow:write 权限：" : "登记被拒：";
+      setMsg("workflowMsg", "bad", prefix + reason);
+    }).catch(function () { setMsg("workflowMsg", "bad", "网络或服务不可达"); });
+  });
+
+  var workflowRunForm = document.getElementById("workflowRunForm");
+  if (workflowRunForm) workflowRunForm.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    var workflowId = document.getElementById("workflowSelect").value;
+    if (!workflowId) { setMsg("workflowRunMsg", "bad", "先选择一份流程定义"); return; }
+    var context;
+    try { context = JSON.parse(workflowRunForm.context.value || "{}"); }
+    catch (e) { setMsg("workflowRunMsg", "bad", "执行上下文 JSON 解析失败：" + e.message); return; }
+    var body = { task_id: (workflowRunForm.task_id.value || "").trim(), context: context };
+    setMsg("workflowRunMsg", "info", "执行中…");
+    api("/api/v1/workflows/" + encodeURIComponent(workflowId) + "/execute", {
+      method: "POST", token: currentToken(), body: body
+    }).then(function (res) {
+      if (res.status === 200 && res.body && res.body.run) {
+        setMsg("workflowRunMsg", "ok", "运行已记录：" + res.body.run.run_id);
+        renderWorkflowRun(res.body);
+        loadRuns();
+        return;
+      }
+      var reason = (res.body && res.body.error) || ("接口 " + res.status);
+      var prefix = res.status === 401 ? "令牌不被接受：" : res.status === 403 ? "缺 workflow:execute 权限：" : "执行被拒：";
+      setMsg("workflowRunMsg", "bad", prefix + reason);
+    }).catch(function () { setMsg("workflowRunMsg", "bad", "网络或服务不可达"); });
+  });
+
+  function renderWorkflowRun(result) {
+    var out = document.getElementById("workflowRunOut");
+    var run = result.run || {};
+    var nodes = run.node_runs || [];
+    out.textContent = "run_id  " + (run.run_id || "—") + "\n" +
+      "status  " + (run.status || result.status || "—") + "\n" +
+      "task    " + (result.task_id || "未挂任务") + "\n" +
+      nodes.map(function (node) {
+        return "[" + (node.status || "—") + "] " + node.node_id + " · " + node.name + " · " + (node.detail || "");
+      }).join("\n");
+  }
 
   /* ---------- 规则 ---------- */
   function loadRules() {
@@ -652,6 +821,28 @@
   });
   document.getElementById("projectReload").addEventListener("click", loadProjects);
 
+  function datasetMatches(row, query) {
+    if (!query) return true;
+    var p = row.payload || {};
+    var haystack = [row.object_id, p.path, p.project_id, p.task_id, p.crs, p.label]
+      .filter(function (value) { return value !== null && value !== undefined; })
+      .join(" ").toLowerCase();
+    return haystack.indexOf(query) >= 0;
+  }
+
+  function filteredDatasets() {
+    var query = state.datasetQuery.trim().toLowerCase();
+    return state.datasets.filter(function (row) { return datasetMatches(row, query); });
+  }
+
+  function updateDatasetCount(shown) {
+    var pill = document.getElementById("datasetsCount");
+    if (!pill) return;
+    pill.textContent = state.datasetQuery.trim()
+      ? shown + " / " + state.datasets.length + " 个"
+      : state.datasets.length + " 个";
+  }
+
   function loadDatasets() {
     var box = document.getElementById("datasetRows");
     box.innerHTML = emptyBox("阅", "读取中", "正在向 /api/v1/datasets 取数据集清单。");
@@ -661,34 +852,137 @@
         return;
       }
       state.datasets = (res.body && res.body.datasets) || [];
-      document.getElementById("datasetsCount").textContent = state.datasets.length + " 个";
+      updateDatasetCount(filteredDatasets().length);
       renderDatasets();
     }).catch(function () { box.innerHTML = emptyBox("断", "取不到数据集", "服务未启动或网络不可达。"); });
   }
 
   function renderDatasets() {
     var box = document.getElementById("datasetRows");
+    var rows = filteredDatasets();
+    updateDatasetCount(rows.length);
     if (!state.datasets.length) {
       box.innerHTML = emptyBox("空", "还没有登记数据集", "登记会真实读文件：算 sha256、取 sidecar CRS；缺一项即拒绝。");
       return;
     }
-    var html = '<table class="tbl"><thead><tr><th>Dataset</th><th>Project</th><th>Task</th><th>CRS</th><th>sha256</th><th>Size</th><th></th></tr></thead><tbody>';
-    state.datasets.forEach(function (row) {
+    if (!rows.length) {
+      box.innerHTML = emptyBox("筛", "没有匹配的数据集", '当前关键词没有命中。调整筛选，或 <button class="btn ghost sm" data-clear-dataset type="button">清除筛选</button>。');
+      return;
+    }
+    var html = '<table class="tbl data-table"><thead><tr><th>Dataset</th><th>Project · Task</th><th>CRS</th><th>Size</th><th></th></tr></thead><tbody>';
+    rows.forEach(function (row) {
       var p = row.payload || {};
       html += "<tr>" +
         '<td class="id">' + esc(row.object_id) + '<div class="sub">' + esc(p.path) + "</div></td>" +
-        '<td class="id">' + esc(p.project_id) + "</td>" +
-        '<td class="id">' + esc(p.task_id || "—") + "</td>" +
+        '<td class="id">' + esc(p.project_id) + '<div class="sub">' + esc(p.task_id || "—") + "</div></td>" +
         '<td class="id">' + esc(p.crs) + "</td>" +
-        '<td class="dim">' + shortHash(p.sha256) + "…</td>" +
-        '<td class="num">' + bytes(p.size_bytes) + "</td>" +
-        '<td class="act"><button class="btn ghost sm" data-validate="' + esc(row.object_id) + '">复核</button></td>' +
+        '<td class="num">' + bytes(p.size_bytes) + '<div class="sub">#' + shortHash(p.sha256) + "</div></td>" +
+        '<td class="act dataset-actions"><button class="btn ghost sm" data-profile="' + esc(row.object_id) + '">统计</button>' +
+        '<button class="btn ghost sm" data-validate="' + esc(row.object_id) + '">复核</button></td>' +
         "</tr>";
     });
     box.innerHTML = html + "</tbody></table>";
   }
 
+  function renderDatasetProfile(profile) {
+    var body = document.getElementById("datasetProfileBody");
+    if (!body) return;
+    var p = profile || {};
+    var valid = Number(p.valid_cells);
+    var nodata = Number(p.nodata_cells);
+    var nonFinite = Number(p.non_finite_cells);
+    var total = valid + nodata + nonFinite;
+    if (!isFinite(total) || total <= 0) total = 0;
+    var validPct = total ? valid / total * 100 : 0;
+    var unit = p.linear_unit ? " " + p.linear_unit : "";
+    var bounds = Array.isArray(p.bounds)
+      ? "[" + p.bounds.map(function (value) { return fmtNum(value, 3); }).join(", ") + "]"
+      : "—";
+    var area = p.area_basis === "map_units" ? p.footprint_area_map_units : p.footprint_area_m2;
+    var cellArea = p.area_basis === "map_units" ? null : p.cell_area_m2;
+    var crsText = p.crs || "—";
+    var crsNote = [p.crs_model, p.linear_unit].filter(Boolean).join(" · ") || "—";
+    var gridSize = fmtNum(p.ncols, 0) + " × " + fmtNum(p.nrows, 0);
+    var cellsize = fmtNum(p.cellsize, 6) + " × " + fmtNum(p.cellsize_y, 6) + unit;
+
+    function cell(name, value, detail, extraClass) {
+      return '<div class="profile-cell' + (extraClass ? " " + extraClass : "") + '">' +
+        '<div class="k">' + esc(name) + '</div><div class="v">' + value + "</div>" +
+        (detail ? '<div class="d">' + detail + "</div>" : "") + "</div>";
+    }
+
+    body.innerHTML = '<div class="profile-grid">' +
+      cell("GRID", gridSize, "有效像元 " + fmtNum(valid, 0)) +
+      cell("BAND", fmtNum(p.band, 0) + " / " + fmtNum(p.bands, 0), "单波段读取") +
+      cell("CELL", esc(cellsize), "像元尺寸") +
+      cell("CRS", esc(crsText), esc(crsNote)) +
+      cell("VALID", fmtNum(valid, 0) + " · " + validPct.toFixed(2) + "%",
+        '<div class="meter"><i style="width:' + Math.max(0, Math.min(100, validPct)).toFixed(2) + '%"></i></div>') +
+      cell("NODATA", fmtNum(nodata, 0), "标记值 " + esc(fmtNum(p.nodata, 6)) + " · " + (total ? (nodata / total * 100).toFixed(2) + "%" : "—")) +
+      cell("NON-FINITE", fmtNum(nonFinite, 0), "NaN / Inf 已剔除，不参与值域") +
+      cell("RANGE", esc(fmtNum(p.min, 6)) + " … " + esc(fmtNum(p.max, 6)), "NODATA 已剔除") +
+      cell("MEAN", esc(fmtNum(p.mean, 6)), "有效像元均值") +
+      cell("FOOTPRINT", esc(fmtArea(area, p.area_basis)),
+        cellArea === null || cellArea === undefined ? esc(p.area_basis || "—") : "单元 " + esc(fmtArea(cellArea, "m2")) ) +
+      cell("I/O", '<span class="pill info">' + esc(p.format || "—") + '</span>', esc(p.read_mode || "—"), "wide") +
+      cell("BOUNDS", '<span style="font-size:calc(12px * var(--fs-zoom))">' + esc(bounds) + '</span>', "xmin, ymin, xmax, ymax", "full") +
+      "</div>";
+  }
+
+  function loadDatasetProfile(id, band) {
+    var card = document.getElementById("datasetProfileCard");
+    var body = document.getElementById("datasetProfileBody");
+    if (!card || !body || !id) return Promise.resolve();
+    var row = state.datasets.filter(function (item) { return item.object_id === id; })[0] || {};
+    var p = row.payload || {};
+    var bandInput = document.getElementById("datasetProfileBand");
+    band = band || (state.profileDatasetId === id && bandInput ? Number(bandInput.value) : 1);
+    if (!isFinite(band) || band < 1 || band !== Math.floor(band)) {
+      body.innerHTML = '<div class="profile-error"><b>波段无效</b>：必须是正整数。</div>';
+      return Promise.resolve();
+    }
+    state.profileDatasetId = id;
+    card.hidden = false;
+    document.getElementById("datasetProfileName").textContent = id + (p.label ? " · " + p.label : "");
+    document.getElementById("datasetProfilePath").textContent = p.path || "—";
+    if (bandInput) {
+      bandInput.value = String(band);
+      bandInput.max = String(p.bands || 1);
+    }
+    body.innerHTML = '<div class="profile-empty"><div class="empty-mini">读取真实像元中…</div></div>';
+    return api("/api/v1/datasets/" + encodeURIComponent(id) + "/profile?band=" + encodeURIComponent(band))
+      .then(function (res) {
+        if (res.status === 200) {
+          renderDatasetProfile(res.body || {});
+          setMsg("datasetMsg", "ok", id + " · band " + band + " 统计已读取");
+          return;
+        }
+        var reason = (res.body && res.body.error) || ("profile 返回 " + res.status);
+        var label = res.status === 409 ? "文件在登记后被改写，请重新登记" : res.status === 404 ? "统计不可用" : "统计失败";
+        body.innerHTML = '<div class="profile-error"><b>' + esc(label) + "</b>：" + esc(reason) + "</div>";
+        setMsg("datasetMsg", "bad", id + " 统计 " + res.status + "：" + reason);
+      }).catch(function () {
+        body.innerHTML = '<div class="profile-error"><b>网络或服务不可达</b>：统计请求没有返回。</div>';
+        setMsg("datasetMsg", "bad", "统计请求失败：网络或服务不可达");
+      });
+  }
+
   document.getElementById("datasetRows").addEventListener("click", function (ev) {
+    var clear = ev.target.closest("[data-clear-dataset]");
+    if (clear) {
+      var queryInput = document.getElementById("datasetQuery");
+      if (queryInput) queryInput.value = "";
+      state.datasetQuery = "";
+      renderDatasets();
+      return;
+    }
+    var profileButton = ev.target.closest("[data-profile]");
+    if (profileButton) {
+      var profileId = profileButton.getAttribute("data-profile");
+      profileButton.disabled = true;
+      loadDatasetProfile(profileId, 1).then(function () { profileButton.disabled = false; });
+      return;
+    }
     var button = ev.target.closest("[data-validate]");
     if (!button) return;
     var id = button.getAttribute("data-validate");
@@ -702,6 +996,38 @@
       else setMsg("datasetMsg", "bad", id + " 复核 " + (result.status || "FAIL") + "：" + failed.map(function (check) { return check.name + " " + check.detail; }).join("；"));
     }).catch(function () { button.disabled = false; setMsg("datasetMsg", "bad", "网络或服务不可达"); });
   });
+
+  var datasetQuery = document.getElementById("datasetQuery");
+  if (datasetQuery) {
+    datasetQuery.addEventListener("input", function () {
+      state.datasetQuery = datasetQuery.value || "";
+      renderDatasets();
+    });
+    datasetQuery.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") {
+        datasetQuery.value = "";
+        state.datasetQuery = "";
+        renderDatasets();
+      }
+    });
+  }
+  var datasetProfileRead = document.getElementById("datasetProfileRead");
+  if (datasetProfileRead) {
+    datasetProfileRead.addEventListener("click", function () {
+      if (!state.profileDatasetId) return;
+      datasetProfileRead.disabled = true;
+      var band = Number(document.getElementById("datasetProfileBand").value);
+      loadDatasetProfile(state.profileDatasetId, band).then(function () { datasetProfileRead.disabled = false; });
+    });
+  }
+  var datasetProfileClose = document.getElementById("datasetProfileClose");
+  if (datasetProfileClose) {
+    datasetProfileClose.addEventListener("click", function () {
+      var card = document.getElementById("datasetProfileCard");
+      if (card) card.hidden = true;
+      state.profileDatasetId = "";
+    });
+  }
 
   document.getElementById("datasetForm").addEventListener("submit", function (ev) {
     ev.preventDefault();
@@ -995,6 +1321,117 @@
     return '<span class="pill ' + (map[status] || "idle") + '">' + esc(status || "—") + "</span>";
   }
 
+  function refreshQualityTargets() {
+    var list = document.getElementById("qualityTargetList");
+    var typeSelect = document.getElementById("qualityTargetType");
+    if (!list || !typeSelect) return;
+    var type = typeSelect.value === "deliverable" ? "deliverable" : "dataset";
+    var rows = type === "deliverable" ? state.deliverables : state.datasets;
+    list.innerHTML = rows.map(function (row) {
+      var p = row.payload || {};
+      var label = type === "deliverable"
+        ? [p.name, p.kind, p.task_id].filter(Boolean).join(" · ")
+        : [p.project_id, p.task_id, p.crs].filter(Boolean).join(" · ");
+      return '<option value="' + esc(row.object_id) + '" label="' + esc(label || row.object_id) + '"></option>';
+    }).join("");
+  }
+
+  function syncQualityTargetMode() {
+    var select = document.getElementById("qualityTargetType");
+    var panel = document.getElementById("qualityAccuracyPanel");
+    if (!select) return;
+    var deliverable = select.value === "deliverable";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-deliverable-only]"), function (el) {
+      el.disabled = !deliverable;
+    });
+    if (panel) panel.classList.toggle("is-disabled", !deliverable);
+    var hint = document.getElementById("qualityAccuracyHint");
+    if (hint) {
+      hint.textContent = deliverable
+        ? "精度对比只对成果开放：参考真值掩膜必填，预测掩膜留空时使用成果登记路径；不填参考则报告写「未计算」。"
+        : "精度对比只对成果开放：当前目标是数据集，参考 / 预测 / 阈值均不提交；切到成果后可启用。";
+    }
+    refreshQualityTargets();
+  }
+
+  function loadQualityTargets() {
+    return Promise.all([
+      api("/api/v1/datasets"),
+      api("/api/v1/deliverables")
+    ]).then(function (results) {
+      var datasets = results[0];
+      var deliverables = results[1];
+      if (datasets.status === 200) state.datasets = (datasets.body && datasets.body.datasets) || [];
+      if (deliverables.status === 200) state.deliverables = (deliverables.body && deliverables.body.deliverables) || [];
+      refreshQualityTargets();
+    }).catch(function () { refreshQualityTargets(); });
+  }
+
+  function accuracyMetrics(p) {
+    var accuracy = p.accuracy || {};
+    return accuracy.metrics || {};
+  }
+
+  function accuracySummary(p) {
+    var accuracy = p.accuracy || {};
+    if (accuracy.status === "ERROR") return "ERROR";
+    var metrics = accuracyMetrics(p);
+    if (metrics.pixel_accuracy === null || metrics.pixel_accuracy === undefined) return "—";
+    return "PA " + fmtRate(metrics.pixel_accuracy) + " · F1 " + fmtRate(metrics.f1);
+  }
+
+  function renderAccuracy(accuracy, reportPayload) {
+    var p = reportPayload || {};
+    if (!accuracy) {
+      var reason = p.target_type === "deliverable"
+        ? "未计算：本次没有提供参考真值掩膜。"
+        : "未开放：精度对比的目标类型必须是成果（deliverable）。";
+      return '<div class="accbox"><div class="acc-head"><span>ACCURACY</span><span class="dim">' +
+        esc(reason) + "</span></div></div>";
+    }
+    if (accuracy.status === "ERROR") {
+      return '<div class="accbox"><div class="acc-head"><span>ACCURACY</span>' +
+        qualityPill("ERROR") + '</div><div class="acc-error"><b>精度计算失败</b>：' +
+        esc(accuracy.error || "参考与预测掩膜无法对齐或无法读取") + "</div></div>";
+    }
+    var metrics = accuracy.metrics || {};
+    var cells = accuracy.cells || {};
+    var thresholds = accuracy.thresholds || {};
+    var grid = accuracy.grid || {};
+    var synthetic = accuracy.synthetic_reference ? '<span class="pill warn">SYNTHETIC REFERENCE</span>' : "";
+    var metricRows = [
+      ["PA", metrics.pixel_accuracy],
+      ["Precision", metrics.precision],
+      ["Recall", metrics.recall],
+      ["F1", metrics.f1],
+      ["IoU", metrics.iou]
+    ].map(function (row) {
+      return '<div class="acc-metric"><div class="k">' + esc(row[0]) + '</div><div class="v">' + fmtRate(row[1]) + "</div></div>";
+    }).join("");
+    var thresholdText = Object.keys(thresholds).map(function (key) {
+      var names = { pixel_accuracy: "PA", precision: "Precision", recall: "Recall", f1: "F1", iou: "IoU" };
+      return esc(names[key] || key) + " ≥ " + fmtThreshold(thresholds[key]);
+    }).join(" · ");
+    var matrix = '<table class="matrix"><thead><tr><th></th><th>Ref 1</th><th>Ref 0</th></tr></thead><tbody>' +
+      '<tr><th>Pred 1</th><td class="hit">TP ' + fmtNum(cells.tp, 0) + '</td><td class="miss">FP ' + fmtNum(cells.fp, 0) + "</td></tr>" +
+      '<tr><th>Pred 0</th><td class="miss">FN ' + fmtNum(cells.fn, 0) + '</td><td class="hit">TN ' + fmtNum(cells.tn, 0) + "</td></tr>" +
+      "</tbody></table>";
+    var skipText = "Valid " + fmtNum(cells.valid, 0) +
+      " · NODATA " + fmtNum(cells.skipped_nodata, 0) +
+      " · non-finite " + fmtNum(cells.skipped_non_finite, 0);
+    var gridText = grid.ncols === undefined ? "—" : fmtNum(grid.ncols, 0) + " × " + fmtNum(grid.nrows, 0) +
+      " · cell " + fmtNum(grid.cellsize, 4);
+    return '<div class="accbox"><div class="acc-head"><span>ACCURACY</span><span class="dim">' +
+      esc(gridText) + "</span></div>" +
+      (synthetic ? '<div style="margin-top:8px">' + synthetic + "</div>" : "") +
+      '<div class="acc-metrics">' + metricRows + "</div>" +
+      '<div class="acc-grid">' + matrix +
+      '<div class="acc-side"><div class="acc-thresholds">' + (thresholdText ? "Thresholds<br>" + thresholdText : "Thresholds · 未设") +
+      "<br>" + esc(skipText) + "</div>" +
+      '<div class="acc-thresholds">Ref: ' + esc(accuracy.reference_path || "—") +
+      "<br>Pred: " + esc(accuracy.predicted_path || "—") + "</div></div></div></div>";
+  }
+
   function renderQuality(report) {
     var box = document.getElementById("qualityResult");
     if (!box) return;
@@ -1004,9 +1441,12 @@
     }
     var p = report.payload || report;
     var layers = p.layers || {};
+    var target = p.target || {};
+    var targetId = target.dataset_id || target.deliverable_id || p.target_id || "";
     var html = '<div class="quality-result">' +
       '<div class="wrow">' + qualityPill(p.status) +
       '<span class="dim">' + esc(p.report_id || report.object_id || "") + "</span>" +
+      '<span class="dim">' + esc(p.target_type || "") + (targetId ? " · " + esc(targetId) : "") + "</span>" +
       '<span class="dim">' + esc(p.generated_at || "") + "</span></div>";
     ["file", "spatial", "professional"].forEach(function (key) {
       var layer = layers[key] || { status: "NOT_RECORDED", checks: [] };
@@ -1014,13 +1454,15 @@
       html += '<div class="layerbox"><div class="lh"><b>' + esc(key.toUpperCase()) + "</b>" +
         esc(names[key]) + qualityPill(layer.status) + "</div>";
       html += (layer.checks || []).map(function (check) {
-        return '<div class="qcheck"><span class="qn">' + esc(check.name) + "</span>" +
+        var checkName = esc(check.name).replace(/_/g, "_<wbr>");
+        return '<div class="qcheck"><span class="qn">' + checkName + "</span>" +
           qualityPill(check.status) + '<span class="qd">' + esc(check.detail || "") + "</span></div>";
       }).join("") || '<div class="empty-mini">该层没有记录</div>';
       html += "</div>";
     });
+    html += renderAccuracy(p.accuracy, p);
     if (p.report_path) {
-      html += '<div class="note">报告已落盘：<code>' + esc(p.report_path) + "</code></div>";
+      html += '<div class="note">报告已落盘： <code>' + esc(p.report_path) + "</code></div>";
     }
     html += "</div>";
     box.innerHTML = html;
@@ -1039,8 +1481,17 @@
       var count = document.getElementById("qualityCount");
       if (count) count.textContent = state.qualityReports.length + " 份";
       if (state.qualityReports.length) {
-        state.lastQuality = state.qualityReports[0];
+        var current = null;
+        if (state.lastQuality && state.lastQuality.object_id) {
+          current = state.qualityReports.filter(function (row) {
+            return row.object_id === state.lastQuality.object_id;
+          })[0];
+        }
+        state.lastQuality = current || state.qualityReports[state.qualityReports.length - 1];
         renderQuality(state.lastQuality);
+      } else {
+        state.lastQuality = null;
+        renderQuality(null);
       }
       renderQualityReports();
     }).catch(function () { box.innerHTML = emptyBox("断", "取不到质检报告", "服务未启动或网络不可达。"); });
@@ -1052,22 +1503,77 @@
       box.innerHTML = emptyBox("空", "还没有质检报告", "执行三层质检后，报告会写入 var/quality 并登记为 QualityReport。");
       return;
     }
-    var html = '<table class="tbl"><thead><tr><th>Report</th><th>Target</th><th>Task</th><th>Status</th><th>Layers</th><th>Generated</th><th>Path</th></tr></thead><tbody>';
-    state.qualityReports.forEach(function (row) {
+    var html = '<table class="tbl"><thead><tr><th>Report</th><th>Target</th><th>Task</th><th>Status</th><th>Accuracy</th><th>Layers</th><th>Generated</th><th>Path</th></tr></thead><tbody>';
+    state.qualityReports.slice().reverse().forEach(function (row) {
       var p = row.payload || {};
       var target = p.target || {};
       var layers = p.layers || {};
       html += "<tr>" +
-        '<td class="id">' + esc(row.object_id) + "</td>" +
+        '<td class="id"><button class="report-open" type="button" data-open-report="' + esc(row.object_id) + '">' + esc(row.object_id) + "</button></td>" +
         '<td class="id">' + esc(target.dataset_id || target.deliverable_id || "—") + "</td>" +
         '<td class="id">' + esc(p.task_id || "—") + "</td>" +
         "<td>" + qualityPill(p.status) + "</td>" +
+        '<td class="dim">' + esc(accuracySummary(p)) + "</td>" +
         '<td class="dim">' + ["file", "spatial", "professional"].map(function (k) { return k + ":" + esc((layers[k] || {}).status || "—"); }).join(" · ") + "</td>" +
         '<td class="dim">' + esc(p.generated_at || "") + "</td>" +
         '<td class="wrap">' + esc(p.report_path || "—") + "</td>" +
         "</tr>";
     });
     box.innerHTML = html + "</tbody></table>";
+  }
+
+  var qualityReportRows = document.getElementById("qualityReportRows");
+  if (qualityReportRows) {
+    qualityReportRows.addEventListener("click", function (ev) {
+      var button = ev.target.closest("[data-open-report]");
+      if (!button) return;
+      var id = button.getAttribute("data-open-report");
+      var report = state.qualityReports.filter(function (row) { return row.object_id === id; })[0];
+      if (!report) return;
+      state.lastQuality = report;
+      renderQuality(report);
+      var result = document.getElementById("qualityResult");
+      if (result && result.scrollIntoView) result.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }
+
+  function readAccuracyThresholds() {
+    var fields = [
+      ["pixel_accuracy", "threshold_pixel_accuracy"],
+      ["precision", "threshold_precision"],
+      ["recall", "threshold_recall"],
+      ["f1", "threshold_f1"],
+      ["iou", "threshold_iou"]
+    ];
+    var values = {};
+    for (var i = 0; i < fields.length; i++) {
+      var input = document.querySelector('[name="' + fields[i][1] + '"]');
+      var raw = input ? input.value.trim() : "";
+      if (!raw) continue;
+      var number = Number(raw);
+      if (!isFinite(number) || number < 0 || number > 1) {
+        return { values: values, error: "阈值 " + fields[i][0] + " 必须在 0–1 之间" };
+      }
+      values[fields[i][0]] = number;
+    }
+    return { values: values, error: "" };
+  }
+
+  var qualityTargetType = document.getElementById("qualityTargetType");
+  if (qualityTargetType) {
+    qualityTargetType.addEventListener("change", syncQualityTargetMode);
+    syncQualityTargetMode();
+  }
+  var qualityTargetId = document.getElementById("qualityTargetId");
+  if (qualityTargetId) {
+    qualityTargetId.addEventListener("change", function () {
+      var type = qualityTargetType ? qualityTargetType.value : "dataset";
+      var rows = type === "deliverable" ? state.deliverables : state.datasets;
+      var row = rows.filter(function (item) { return item.object_id === qualityTargetId.value.trim(); })[0];
+      var taskInput = document.getElementById("qualityTaskId");
+      var task = row && row.payload ? row.payload.task_id : "";
+      if (task && taskInput && !taskInput.value.trim()) taskInput.value = task;
+    });
   }
 
   var qualityForm = document.getElementById("qualityForm");
@@ -1079,14 +1585,28 @@
       var values = formValues(ev.target);
       var sample = document.getElementById("qualitySample").checked;
       if (sample && !values.sample_note) { setMsg("qualityMsg", "bad", "人工抽样必须写依据"); return; }
+      var targetType = values.target_type;
+      var referencePath = targetType === "deliverable" ? (values.reference_path || "").trim() : "";
+      var predictedPath = targetType === "deliverable" ? (values.predicted_path || "").trim() : "";
+      var thresholds = targetType === "deliverable" ? readAccuracyThresholds() : { values: {}, error: "" };
+      if (thresholds.error) { setMsg("qualityMsg", "bad", thresholds.error); return; }
+      if (Object.keys(thresholds.values).length && !referencePath) {
+        setMsg("qualityMsg", "bad", "精度阈值必须先给参考真值掩膜"); return;
+      }
       var body = {
-        target_type: values.target_type,
+        target_type: targetType,
         target_id: values.target_id,
         task_id: values.task_id,
         professional_sample: sample,
         sample_note: values.sample_note || "",
         actor: values.actor || ""
       };
+      if (targetType === "deliverable") {
+        body.reference_path = referencePath;
+        body.predicted_path = predictedPath;
+        body.synthetic_reference = document.getElementById("qualitySynthetic").checked;
+        body.accuracy_thresholds = thresholds.values;
+      }
       setMsg("qualityMsg", "", "质检执行中…");
       api("/api/v1/quality-reports", { method: "POST", token: token, body: body }).then(function (res) {
         if (res.status === 201) {
@@ -1318,4 +1838,95 @@
     show("trace");
     loadTrace();
   }
+})();
+
+/* == GEOOPS i18n == 整节点精确匹配优先；短串才做子串替换；
+   长句（>=8 汉字）只认整句，绝不拆碎成半中半英。 */
+(function () {
+  "use strict";
+  var KEY = "geoops.ui";
+  var MAP = {"序":"OV","总览":"Overview","项目":"Projects","任务":"Tasks","AI 资源":"AI Resources","数据":"Data","流程":"Workflows","规则":"Rules","质量":"Quality","成果":"Deliverables","审核":"Reviews","追溯":"Trace","设置":"Settings","核心":"Core","缺口按验收表逐项清理":"Gaps cleared item by item against the acceptance list","连接中":"Connecting","域对象":"Objects","测绘任务":"Survey tasks","已载规则":"Rules loaded","登记成果":"Registered deliverables","运行原则":"Run principle","规则门在前 · 登记在后":"Gate first · registration second","文件 / 空间 / 专业三层":"File / spatial / professional","人工签认才置 accepted":"Human sign-off before accepted","缺环写 NOT_RECORDED":"Missing link = NOT_RECORDED","十二模块":"Twelve modules","I · 治理":"I · Governance","总览 · 项目 · 任务":"Overview · Projects · Tasks","II · 作业":"II · Operations","III · 验收":"III · Acceptance","质量 · 成果 · 审核":"Quality · Deliverables · Reviews","IV · 证据":"IV · Evidence","追溯 · 设置":"Trace · Settings","工程身份":"Engineering","核心工程 · CORE":"Core project · CORE","未发布":"Not published","未清门槛":"Open gaps","真实遥感影像与专业抽样待用户提供":"Real imagery and professional sampling to be supplied","跨进程文件锁未做":"Cross-process file lock not implemented","统一身份源未接，轮换靠人工":"No unified identity source; rotation is manual","未发布：等级 ≠ 发布资格":"Not published: tier ≠ release readiness","登记":"Register","项":"PRJ","项目册":"Project registry","刷新":"Refresh","登记项目":"Register project","项目 id":"Project id","项目编号":"Project code","项目名称":"Project name","项目类型":"Project type","区域":"Area","坐标参考":"CRS","高程基准":"Vertical datum","需要":"requires","台账":"Ledger","务":"TSK","全部":"All","草稿":"Draft","就绪":"Ready","运行":"Running","完成":"Completed","失败":"Failed","写操作":"Write actions","需令牌":"Token required","新建任务":"New task","任务名称":"Task name","任务类型":"Task type","创建":"Create","迁移状态":"Transition","任务 id":"Task id","目标状态":"Target status","先填任务":"Fill task first","理由":"Reason","迁移":"Transition","资源":"Resources","器":"CAT","资源目录":"Resource catalog","真实模型运行时":"Model runtime","读取中":"Loading","测试提示词":"Test prompt","测试连接":"Test connection","运行模型":"Run model","服务端只从环境变量读端点与密钥：":"Server reads endpoint and key from env only:","登记资源":"Register resource","资源 id":"Resource id","类型":"Type","模型 Model":"Model","工具 Tool":"Tool","名称":"Name","版本":"Version","适配器 / 路径":"Adapter / path","模型类型 / 工具类别":"Model type / tool class","模型 · algorithm":"Model · algorithm","模型 · ai-model":"Model · ai-model","工具 · gis":"Tool · gis","工具 · raster":"Tool · raster","工具 · vector":"Tool · vector","工具 · conversion":"Tool · conversion","能力 / 类别":"Capability / class","接入":"Intake","据":"DS","数据集":"Datasets","登记数据集":"Register dataset","任务 id（可选）":"Task id (optional)","文件路径":"File path","文件绝对路径":"Absolute file path","标签":"Label","读取并登记":"Read and register","同名 sidecar":"Sidecar","需写":"Write required","流":"WF","流程定义":"Workflow definitions","登记流程定义":"Register workflow","流程编号":"Workflow id","说明":"Description","节点 JSON":"Node JSON","登记定义":"Register definition","可用节点：":"Available nodes:","按定义执行":"Execute definition","任务编号（可选）":"Task id (optional)","执行上下文 JSON":"Execution context JSON","执行流程":"Execute workflow","运行历史":"Run history","运行完成才写一行日志（":"A line is written only after a run completes (","登记链路":"Chain","规则门":"Rule gate","变化检测":"Change detection","掩膜写出":"Mask write","成果登记":"Deliverable registration","包":"RULE","规":"RULE","已载规则包":"Loaded rule packs","检查":"Check","质":"QA","发起质检":"Run check","检查对象":"Target type","数据集 Dataset":"Dataset","成果 Deliverable":"Deliverable","对象 id":"Object id","任务 id（可空）":"Task id (optional)","操作人":"Actor","已完成人工抽样 / 专业核验":"Manual sampling / professional verification done","专业抽样依据（勾选后必填）":"Sampling evidence (required when checked)","执行三层质检":"Run three-layer check","。质检报告会写入":". The quality report is written to","本次判定":"Latest result","待":"WAIT","尚未执行":"Not run yet","质检报告":"Quality reports","簿":"DLV","果":"DLV","已登记成果":"Registered deliverables","成果名称":"Deliverable name","成果类型":"Deliverable kind","备注":"Notes","文件簿":"Registered files","签认":"Sign-off","审":"REV","审核记录":"Review records","提交审核":"Submit review","成果 id":"Deliverable id","审核人":"Reviewer","结论":"Decision","通过":"Approve","驳回":"Reject","返工":"Rerun","意见（驳回 / 返工必填）":"Opinion (required for reject / rerun)","写入审核记录":"Write review","反向":"Reverse","溯":"TRC","生成追溯链":"Build trace","生成":"Build","还没有生成追溯链":"No trace built yet","审计记录":"Audit rows","最近审计":"Recent audit","未":"NONE","尚未读取":"Not read yet","审计接口需要":"The audit endpoint requires","系统":"System","设":"SYS","调用方":"Caller","令牌只存本页":"Token is kept in this page only","，不会写入磁盘。权限由服务端":", never written to disk. Permissions come from the server's","存储与策略":"Storage","角色与权限":"Role matrix","权限键":"Permission keys","主导航":"Main navigation","写入口与审计读取需要令牌；令牌只存在本页 sessionStorage":"Write and audit endpoints need a token; it stays in this page's sessionStorage","输入访问令牌":"Enter access token","字号":"Font size","缩小字号":"Decrease font size","放大字号":"Increase font size","切换字重":"Switch font weight","字重：细 / 常规 / 中 / 粗":"Weight: light / regular / medium / bold","配色":"Palette","白":"White","黑":"Black","粉":"Pink","莱茵蓝":"Rhine blue","橙":"Orange","切换明暗":"Toggle light / dark","深空 / 纸面":"Deep space / Paper","内部唯一编号":"Internal unique code","项目全称":"Full project name","行政区或测区":"Administrative area or survey block","1985 国家高程基准":"1985 national vertical datum","按状态筛选":"Filter by status","按 id / 名称 / 项目筛选":"Filter by id / name / project","筛选任务":"Filter tasks","变化检测 2026-11":"Change detection 2026-11","从下表点「迁移」带入":"Filled by clicking Transition below","完成 / 取消必须写理由":"Completion / cancellation needs a reason","资源显示名称":"Display name","builtin:... 或 external:绝对路径":"builtin:... or external:absolute path","已登记项目":"Registered project","绑定到任务后进入追溯链":"Binds to a task and joins the trace chain","例如 一期影像":"e.g. phase-1 imagery","例如 变化检测标准流程":"e.g. standard change detection workflow","可选；会写入定义记录":"Optional; stored in the definition record","TSK-...；填写时任务必须为 RUNNING":"TSK-...; the task must be RUNNING","DS-xxxx 或 DLV-xxxx":"DS-xxxx or DLV-xxxx","绑定追溯链":"Bind to trace chain","姓名或工号":"Name or employee id","抽样位置、样本编号、核验结论":"Sample location, sample id, verification result","变化检测成果 v1":"Change detection deliverable v1","范围、来源、限制":"Scope, source, limits","按成果 id / 文件名 / 任务筛选":"Filter by deliverable id / file name / task","筛选成果":"Filter deliverables","具体问题与依据":"Specific issue and evidence","输入任务 id，例如 TSK-xxxx":"Enter a task id, e.g. TSK-xxxx","按路径 / 原由 / 令牌前缀筛选":"Filter by path / reason / token prefix","筛选审计":"Filter audit","登记于 docs/ENGINEERING_TIER.md":"Registered in docs/ENGINEERING_TIER.md","规则先行、判定留痕、成果可核。只展示接口真实返回的内容：没有记录就写「未记录」，没有接口就写「未开放」。":"Rules first, decisions on record, deliverables checkable. Only what the API actually returns is shown: no record means \"not recorded\", no endpoint means \"not available\".","任何一层没有证据，结果只能是 PARTIAL 或 FAIL；不用推断补链，不用占位冒充真实。":"Without evidence at any layer the result can only be PARTIAL or FAIL; no inferred links, no placeholders posing as real.","AI 资源 · 数据 · 流程 · 规则":"AI resources · Data · Workflows · Rules","真实 AI 模型与外部 GIS 适配器待接":"Real AI model and external GIS adapter still to be connected","Agent 自动执行器仍只做目录登记":"Agent executor still only registers in the catalog","项目编号、名称、类型、区域、坐标参考、高程基准六项必填；编号唯一，缺一项即拒绝。":"Six required fields: code, name, type, area, CRS, vertical datum. Codes are unique; any missing field is rejected.","项目是任务、数据集、成果追溯的根。登记后不可用同编号重复建项。":"A project is the root of tasks, datasets and deliverable traceability. The same code cannot be registered twice.","。缺字段或编号重复时服务端原文拒绝，不落半条记录。":". Missing fields or duplicate codes are rejected verbatim by the server; nothing is half-written.","七态状态机：非法迁移被拒且不落半条记录；完成与取消必须写理由。":"Seven-state machine: illegal transitions are rejected with nothing half-written; completion and cancellation need a reason.","。服务端在读 body 之前校验令牌；没有权限就写不进去。":". The server checks the token before reading the body; without permission nothing is written.","。目标状态只列该任务当前允许迁移的项，非法边会被服务端拒绝。":". Target status lists only transitions allowed from the current state; illegal edges are rejected by the server.","模型、工具、Agent 分开登记。builtin 必须是真实实现，external 路径不存在即标不可用；Agent 引用未知依赖直接拒绝。":"Models, tools and agents are registered separately. builtin must be a real implementation; a missing external path is marked unavailable; an agent referencing an unknown dependency is rejected.","可用性不是标签：builtin 适配器必须是本仓真实实现，external 必须指向存在的路径；不可用会带原因。Agent 引用未登记的模型或工具会被拒绝。":"Availability is not a label: a builtin adapter must exist in this repository, an external one must point to a real path; unavailable entries carry a reason. An agent referencing an unregistered model or tool is rejected.","尚未调用。配置环境变量并重启服务后，这里显示真实模型回复；没有配置时不会生成占位内容。":"Not called yet. After configuring the environment and restarting, the real model reply appears here; without configuration no placeholder is produced.","。密钥不进浏览器、不写入仓库。测试与运行需要":". The key never enters the browser or the repository. Test and run require","Agent 依赖（模型 id 与工具 id，逗号分隔）":"Agent dependencies (model ids and tool ids, comma separated)","。外部路径必须已存在且可读；不可用的资源仍会入册，但会写明原因，不会伪装可用。":". An external path must exist and be readable; unavailable resources are still registered but carry the reason and are never faked as available.","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 classic GeoTIFF 头；复核重探测，文件内容变化即 FAIL。":"Dataset registration reads the real file for sha256; CRS comes from the sidecar or a classic GeoTIFF header; re-validation re-probes and FAILs if the content changed.","；无 CRS 或文件不存在会被拒绝。BigTIFF 与像元解码明确不支持。":"; missing CRS or a missing file is rejected. BigTIFF and pixel decoding are explicitly unsupported.","一次运行里规则门在前、登记在后：判定不过，成果不会被登记。":"In a run the rule gate comes first and registration second: if the gate fails, no deliverable is registered.","定义是登记过的数据：节点 id、类型、阈值都先校验；执行时按这份记录建节点，不另写一套隐藏流程。":"A definition is registered data: node ids, types and thresholds are validated first; execution builds nodes from that record, not from a hidden parallel flow.","。模型节点在未配置端点时会明确记 ERROR，不会假装通过。":". A model node records ERROR when no endpoint is configured and never pretends to pass.","尚未执行；这里只显示真实运行返回，不预填结果。":"Not executed yet; only real run output appears here, never prefilled.","执行会产生真实运行记录；规则门不过、路径缺失或模型未配置都会落成 FAIL / ERROR。任务编号留空时只独立运行，不写任务关联。":"Execution writes a real run record; a failed gate, missing path or unconfigured model lands as FAIL / ERROR. With no task id it runs standalone and writes no task link.","后才返回）；重复 run_id 拒绝，坏行整份拒载。":"before returning); duplicate run_ids are rejected and a corrupt line rejects the whole file.","· CRS / 格距 / 两期一致性":"· CRS / cell size / two-epoch consistency","· 逐格差分 + 4 邻域斑块 + 最小面积":"· Cell-wise difference + 4-neighbour patches + minimum area","· 源头信息保留，nodata 仍为 nodata":"· Source metadata preserved, nodata stays nodata","· 真文件、真 sha256、绑已登记成果":"· Real file, real sha256, bound to a registered deliverable","规则是数据不是代码：校验器缺失或异常判 ERROR，条件不满足判 SKIPPED，两者都不升格为 PASS。":"Rules are data, not code: a missing or failing checker is ERROR, an unmet condition is SKIPPED, and neither is promoted to PASS.","规则包整包校验后装载：缺字段、severity 非法、id 重复、与已载冲突都会整包拒绝，不半装。":"A rule pack is validated as a whole before loading: missing fields, illegal severity, duplicate ids or conflicts with a loaded pack reject the whole pack, never half-load.","文件与结构、空间数据、专业成果验证三层。第三层没有人工抽样与书面依据，只能是 NOT_RECORDED，汇总结果只能是 PARTIAL。":"Three layers: file and structure, spatial data, professional verification. Without manual sampling and written evidence the third layer is NOT_RECORDED and the aggregate can only be PARTIAL.","并以 QualityReport 入域，不是只在前端算一遍。":"and enters the domain as a QualityReport, not just a front-end calculation.","选择数据集或成果后执行三层质检；结果、逐项证据与报告路径会出现在这里。":"Pick a dataset or deliverable and run the three-layer check; the verdict, per-item evidence and report path appear here.","成果登记读真实文件：哈希、大小、路径当场记录；人工审核通过后才 accepted，之后才允许归档。":"Deliverable registration reads the real file: hash, size and path recorded on the spot; only a passing human review makes it accepted, and only then can it be archived.","「归档」只在 accepted 后开放。归档不会改动文件，只把成果状态与归档人、时间写入域对象。":"Archive opens only after accepted. Archiving never touches the file; it records the status, archiver and time on the domain object.","。路径必须存在且为普通文件；符号链接与目录一律拒绝。":". The path must exist and be a regular file; symlinks and directories are rejected.","成果只有经人工通过才置为 accepted；驳回或返工必须写意见，已签认的成果拒绝二次审核。":"A deliverable becomes accepted only through human approval; reject or rerun requires an opinion, and a signed-off deliverable refuses a second review.","需要 review:write。记录写入同时改成果状态；通过即最终验收，驳回或返工不签认。":"Requires review:write. The record and the deliverable status change together; approval is final acceptance, reject or rerun signs nothing.","从任务串回项目、数据集、运行、规则、成果、文件与审核；缺失的一环写 NOT_RECORDED，不拿推断补链。":"Traces from a task back through project, datasets, runs, rules, deliverables, files and reviews; a missing link is NOT_RECORDED, never inferred.","输入已登记任务 id，系统按项目→数据集→运行→规则→成果→文件→审核逐环取证。":"Enter a registered task id; the system evidences each link: project → datasets → runs → rules → deliverables → files → reviews.","权限的令牌。在右上角填入令牌后，这里会显示真实记录。":"permission. Enter a token at the top right to see real records here.","鉴权发生在读取请求体之前；拒绝也留痕，令牌只记哈希前八位。":"Authorization happens before the body is read; refusals are logged too, and only the first eight hash characters of a token are kept.","这里展示服务端真实权限矩阵与调用方令牌授权，不在前端伪造角色。没有令牌就只能读公开接口。":"This shows the server's real permission matrix and the caller's token grants; roles are never faked in the front end. Without a token only public endpoints are readable.","的 PERMISSIONS 与授权文件决定。":"PERMISSIONS and the grant file.","域对象、运行日志、成果簿与质检报告的真实配置状态在这里展示；未配置就写「未配置」。":"The real configuration state of domain objects, run journal, deliverable book and quality reports appears here; unconfigured is written as \"not configured\".","权限键是写操作的边界。GET 公开接口不要求令牌；审计读取与所有写入口都要求对应权限。":"Permission keys bound every write. Public GET endpoints need no token; audit reads and all write entries require the matching permission.","条 /":"items /","中…":"ing…","：三层判定":": three-layer verdict","已创建":"Created","已生成":"Built","已登记":"Registered","已记录":"Recorded","已连接":"Connected","已归档：":"Archived: ","未提供":"Not provided","未记录":"Not recorded","未配置":"Not configured","未挂任务":"No task","只读":"Read-only","离线":"Offline","异常":"Error","拒绝":"Rejected","部分":"Partial","执行中…":"Running…","登记中…":"Registering…","创建被拒：":"Create rejected: ","迁移被拒：":"Transition rejected: ","登记被拒：":"Registration rejected: ","审核被拒：":"Review rejected: ","归档被拒：":"Archive rejected: ","质检被拒：":"Quality check rejected: ","执行被拒：":"Execution rejected: ","资源登记被拒：":"Resource registration rejected: ","成果登记被拒：":"Deliverable registration rejected: ","调用失败：":"Call failed: ","令牌不被接受：":"Token rejected: ","没有这个任务：":"No such task: ","提示词不能为空。":"Prompt cannot be empty.","真实端点已配置":"Real endpoint configured","无密钥（本地端点）":"No key (local endpoint)","成果接口未配置":"Deliverable endpoint not configured","运行已记录：":"Run recorded: ","已迁移到":"Transitioned to ","追溯链完整":"Trace complete","追溯链不完整：缺":"Trace incomplete: missing ","人工抽样必须写依据":"Manual sampling requires evidence","先选择一份流程定义":"Select a workflow definition first","网络或服务不可达":"Network or service unreachable","共":"Total ","页":"page","当前":"Current","全选":"Select all","未配置： 缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\n在服务进程的环境里设置变量后重启；服务端不会生成占位回复。":"Not configured: missing GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\nSet them in the service environment and restart; the server never fabricates a reply.","空":"EMPTY","逐格差分":"Cell-wise difference","尚未配置":"Not configured","目录还是空的":"The registry is still empty","登记模型 / 工具 / Agent 后，这里按可用性列出；不可用的带原因。":"After registering models, tools or agents they are listed by availability; unavailable ones carry the reason.","规则包是数据文件，装载前会整包校验。":"A rule pack is a data file and is validated as a whole before loading.","没有已载规则包":"No rule packs loaded","还没有审核记录":"No review records yet","人工通过才置 accepted；驳回与返工必须写意见。":"Only human approval sets accepted; reject and rerun require an opinion.","提交中…":"Submitting…","读取文件中…":"Reading file…","质检执行中…":"Quality check running…","读取中…":"Loading…","缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME":"missing GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME","在服务进程的环境里设置变量后重启；服务端不会生成占位回复。":"Set them in the service environment and restart; the server never fabricates a reply.","未配置：":"Not configured: ","还没有运行记录":"No runs yet","还没有流程定义":"No workflow definitions yet","还没有登记成果":"No deliverables registered yet","还没有审计记录":"No audit records yet","还没有登记项目":"No projects registered yet","还没有登记数据集":"No datasets registered yet","没有符合条件的任务":"No tasks match the filter","没有符合条件的审计记录":"No audit records match the filter","钥":"KEY","成果簿需要令牌":"The deliverable book requires a token","审计流需要令牌":"The audit stream requires a token","令牌不被接受":"Token rejected","服务端原由：":"Server reason: ","读取":"Read","权限。在右上角填入令牌后再刷新。":"permission. Enter a token at the top right and refresh.","在右上角填入令牌后读取 ":"Enter a token at the top right, then read ","成果必须是真实文件；登记时读 sha256 和大小，审核通过后才能归档。":"A deliverable must be a real file; registration reads sha256 and size, and archiving only follows approval.","项目是任务的前置：先登记编号、类型、区域、CRS 与高程基准。":"A project precedes a task: register code, type, area, CRS and vertical datum first.","服务端没有声明权限键。":"The server declares no permission keys.","统计":"Profile","栅格统计":"Raster profile","读取统计":"Read profile","关闭":"Close","波段":"Band","没有匹配的数据集":"No matching datasets","清除筛选":"Clear filter","精度核验":"Accuracy","参考真值掩膜":"Reference truth mask","预测掩膜（可空）":"Predicted mask (optional)","留空则使用成果登记路径":"Blank uses the registered deliverable path","参考为合成真值（报告会保留标记）":"Synthetic reference (kept in the report)","精度阈值":"Accuracy thresholds","像元尺寸":"Cell size","单波段读取":"Single-band read","有效像元均值":"Mean of valid cells","NaN / Inf 已剔除，不参与值域":"NaN / Inf excluded from value statistics","读取真实像元中…":"Reading real pixels…","文件在登记后被改写，请重新登记":"Dataset file changed after registration; register again","统计不可用":"Profile unavailable","统计失败":"Profile failed","统计请求失败：网络或服务不可达":"Profile request failed: network or service unreachable","精度阈值必须先给参考真值掩膜":"Accuracy thresholds require a reference truth mask","报告已落盘：":"Report written to:","未计算：本次没有提供参考真值掩膜。":"Not computed: no reference truth mask was supplied.","未开放：精度对比的目标类型必须是成果（deliverable）。":"Not available: accuracy comparison requires a deliverable target.","精度计算失败":"Accuracy calculation failed","参考与预测掩膜无法对齐或无法读取":"reference and predicted masks could not be aligned or read","当前关键词没有命中。调整筛选，或":"No dataset matches the current filter. Adjust it, or","精度对比只对成果开放：当前目标是数据集，参考 / 预测 / 阈值均不提交；切到成果后可启用。":"Accuracy comparison is deliverable-only: the current target is a dataset, so reference / predicted / thresholds are not submitted. Switch to a deliverable to enable them.","精度对比只对成果开放：参考真值掩膜必填，预测掩膜留空时使用成果登记路径；不填参考则报告写「未计算」。":"Accuracy comparison is deliverable-only: reference truth is required; leave the predicted path blank to use the registered deliverable path. Without a reference the report says not computed.","「统计」按波段读真实像元，给出有效 / NODATA / 非有限值与值域；「复核」只重探测哈希与 CRS，不会改动文件。":"Profile reads real pixels by band and reports valid / NODATA / non-finite counts and range; Validate only re-probes the hash and CRS and never changes the file.","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 GeoTIFF 头；复核重探测，文件内容变化即 FAIL。":"Dataset registration reads the real file for sha256; CRS comes from the sidecar or GeoTIFF header; re-validation re-probes and FAILs if the content changed.","0–1，可空":"0–1, optional","非有限值":"non-finite","包围盒":"bounds","统计已读取":"Profile loaded","有效像元 ":"valid cells ","标记值 ":"NODATA value ","必须在 0–1 之间":" must be between 0 and 1","阈值 ":"Threshold ","NODATA 已剔除":"NODATA excluded","空间数据":"Spatial data","专业成果验证":"Professional verification","文件与结构":"File and structure","Ref：":"Ref:","Pred：":"Pred:"};
+  var SUBKEYS = ["未配置： 缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\n在服务进程的环境里设置变量后重启；服务端不会生成占位回复。","可用性不是标签：builtin 适配器必须是本仓真实实现，external 必须指向存在的路径；不可用会带原因。Agent 引用未登记的模型或工具会被拒绝。","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 classic GeoTIFF 头；复核重探测，文件内容变化即 FAIL。","模型、工具、Agent 分开登记。builtin 必须是真实实现，external 路径不存在即标不可用；Agent 引用未知依赖直接拒绝。","文件与结构、空间数据、专业成果验证三层。第三层没有人工抽样与书面依据，只能是 NOT_RECORDED，汇总结果只能是 PARTIAL。","执行会产生真实运行记录；规则门不过、路径缺失或模型未配置都会落成 FAIL / ERROR。任务编号留空时只独立运行，不写任务关联。","规则是数据不是代码：校验器缺失或异常判 ERROR，条件不满足判 SKIPPED，两者都不升格为 PASS。","从任务串回项目、数据集、运行、规则、成果、文件与审核；缺失的一环写 NOT_RECORDED，不拿推断补链。","规则先行、判定留痕、成果可核。只展示接口真实返回的内容：没有记录就写「未记录」，没有接口就写「未开放」。","规则包整包校验后装载：缺字段、severity 非法、id 重复、与已载冲突都会整包拒绝，不半装。","成果登记读真实文件：哈希、大小、路径当场记录；人工审核通过后才 accepted，之后才允许归档。","定义是登记过的数据：节点 id、类型、阈值都先校验；执行时按这份记录建节点，不另写一套隐藏流程。","「归档」只在 accepted 后开放。归档不会改动文件，只把成果状态与归档人、时间写入域对象。","任何一层没有证据，结果只能是 PARTIAL 或 FAIL；不用推断补链，不用占位冒充真实。","成果只有经人工通过才置为 accepted；驳回或返工必须写意见，已签认的成果拒绝二次审核。","需要 review:write。记录写入同时改成果状态；通过即最终验收，驳回或返工不签认。","这里展示服务端真实权限矩阵与调用方令牌授权，不在前端伪造角色。没有令牌就只能读公开接口。","缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME","尚未调用。配置环境变量并重启服务后，这里显示真实模型回复；没有配置时不会生成占位内容。","权限键是写操作的边界。GET 公开接口不要求令牌；审计读取与所有写入口都要求对应权限。","域对象、运行日志、成果簿与质检报告的真实配置状态在这里展示；未配置就写「未配置」。","项目编号、名称、类型、区域、坐标参考、高程基准六项必填；编号唯一，缺一项即拒绝。","输入已登记任务 id，系统按项目→数据集→运行→规则→成果→文件→审核逐环取证。","。外部路径必须已存在且可读；不可用的资源仍会入册，但会写明原因，不会伪装可用。","；无 CRS 或文件不存在会被拒绝。BigTIFF 与像元解码明确不支持。","登记模型 / 工具 / Agent 后，这里按可用性列出；不可用的带原因。","成果必须是真实文件；登记时读 sha256 和大小，审核通过后才能归档。","写入口与审计读取需要令牌；令牌只存在本页 sessionStorage","选择数据集或成果后执行三层质检；结果、逐项证据与报告路径会出现在这里。","项目是任务、数据集、成果追溯的根。登记后不可用同编号重复建项。","七态状态机：非法迁移被拒且不落半条记录；完成与取消必须写理由。","项目是任务的前置：先登记编号、类型、区域、CRS 与高程基准。","。目标状态只列该任务当前允许迁移的项，非法边会被服务端拒绝。","。模型节点在未配置端点时会明确记 ERROR，不会假装通过。","并以 QualityReport 入域，不是只在前端算一遍。","。服务端在读 body 之前校验令牌；没有权限就写不进去。","一次运行里规则门在前、登记在后：判定不过，成果不会被登记。","鉴权发生在读取请求体之前；拒绝也留痕，令牌只记哈希前八位。","在服务进程的环境里设置变量后重启；服务端不会生成占位回复。","登记于 docs/ENGINEERING_TIER.md","builtin:... 或 external:绝对路径","Agent 依赖（模型 id 与工具 id，逗号分隔）","人工通过才置 accepted；驳回与返工必须写意见。","后才返回）；重复 run_id 拒绝，坏行整份拒载。","。路径必须存在且为普通文件；符号链接与目录一律拒绝。","权限的令牌。在右上角填入令牌后，这里会显示真实记录。","。缺字段或编号重复时服务端原文拒绝，不落半条记录。","· 源头信息保留，nodata 仍为 nodata","TSK-...；填写时任务必须为 RUNNING","尚未执行；这里只显示真实运行返回，不预填结果。","。密钥不进浏览器、不写入仓库。测试与运行需要","· 逐格差分 + 4 邻域斑块 + 最小面积","的 PERMISSIONS 与授权文件决定。","真实 AI 模型与外部 GIS 适配器待接","· 真文件、真 sha256、绑已登记成果","AI 资源 · 数据 · 流程 · 规则","按成果 id / 文件名 / 任务筛选","输入任务 id，例如 TSK-xxxx","DS-xxxx 或 DLV-xxxx","Agent 自动执行器仍只做目录登记","· CRS / 格距 / 两期一致性","规则包是数据文件，装载前会整包校验。","字重：细 / 常规 / 中 / 粗","按路径 / 原由 / 令牌前缀筛选","缺环写 NOT_RECORDED","真实遥感影像与专业抽样待用户提供","服务端只从环境变量读端点与密钥：","按 id / 名称 / 项目筛选","权限。在右上角填入令牌后再刷新。","人工签认才置 accepted","工具 · conversion","文件 / 空间 / 专业三层","模型 · algorithm","成果 Deliverable","已完成人工抽样 / 专业核验","，不会写入磁盘。权限由服务端","抽样位置、样本编号、核验结论","统一身份源未接，轮换靠人工","未发布：等级 ≠ 发布资格","模型 · ai-model","专业抽样依据（勾选后必填）","意见（驳回 / 返工必填）","规则门在前 · 登记在后","总览 · 项目 · 任务","质量 · 成果 · 审核","变化检测 2026-11","完成 / 取消必须写理由","在右上角填入令牌后读取 ","核心工程 · CORE","模型类型 / 工具类别","工具 · raster","工具 · vector","运行完成才写一行日志（","数据集 Dataset","1985 国家高程基准","绑定到任务后进入追溯链","例如 变化检测标准流程","没有符合条件的审计记录","服务端没有声明权限键。","缺口按验收表逐项清理","同名 sidecar","执行上下文 JSON","从下表点「迁移」带入","可选；会写入定义记录","任务 id（可选）","任务 id（可空）","变化检测成果 v1","无密钥（本地端点）","人工抽样必须写依据","先选择一份流程定义","没有符合条件的任务","III · 验收","跨进程文件锁未做","模型 Model","适配器 / 路径","工具 · gis","任务编号（可选）","。质检报告会写入","还没有生成追溯链","范围、来源、限制","提示词不能为空。","追溯链不完整：缺","网络或服务不可达","还没有登记数据集","II · 作业","IV · 证据","追溯 · 设置","真实模型运行时","工具 Tool","能力 / 类别","节点 JSON","深空 / 纸面","例如 一期影像","具体问题与依据","资源登记被拒：","成果登记被拒：","令牌不被接受：","没有这个任务：","真实端点已配置","成果接口未配置","没有已载规则包","还没有审核记录","还没有运行记录","还没有流程定义","还没有登记成果","还没有审计记录","还没有登记项目","成果簿需要令牌","审计流需要令牌","I · 治理","文件绝对路径","登记流程定义","执行三层质检","写入审核记录","审计接口需要","令牌只存本页","输入访问令牌","内部唯一编号","行政区或测区","资源显示名称","运行已记录：","目录还是空的","读取文件中…","质检执行中…","令牌不被接受","服务端原由：","AI 资源","项目 id","任务 id","测试提示词","资源 id","登记数据集","读取并登记","可用节点：","按定义执行","已载规则包","对象 id","已登记成果","成果 id","生成追溯链","存储与策略","角色与权限","按状态筛选","已登记项目","绑定追溯链","姓名或工号","：三层判定","创建被拒：","迁移被拒：","登记被拒：","审核被拒：","归档被拒：","质检被拒：","执行被拒：","调用失败：","追溯链完整","测绘任务","已载规则","登记成果","运行原则","十二模块","工程身份","未清门槛","登记项目","项目编号","项目名称","项目类型","坐标参考","高程基准","新建任务","任务名称","任务类型","迁移状态","目标状态","先填任务","资源目录","测试连接","运行模型","登记资源","流程定义","流程编号","登记定义","执行流程","运行历史","登记链路","变化检测","掩膜写出","成果登记","发起质检","检查对象","本次判定","尚未执行","质检报告","成果名称","成果类型","审核记录","提交审核","审计记录","最近审计","尚未读取","缩小字号","放大字号","切换字重","切换明暗","项目全称","筛选任务","筛选成果","筛选审计","已归档：","未挂任务","执行中…","登记中…","已迁移到","逐格差分","尚未配置","提交中…","读取中…","未配置：","连接中","域对象","未发布","项目册","写操作","需令牌","读取中","数据集","规则门","操作人","文件簿","审核人","调用方","权限键","主导航","莱茵蓝","条 /","已创建","已生成","已登记","已记录","已连接","未提供","未记录","未配置","总览","项目","任务","数据","流程","规则","质量","成果","审核","追溯","设置","核心","登记","刷新","区域","需要","台账","全部","草稿","就绪","运行","完成","失败","创建","理由","迁移","资源","类型","名称","版本","接入","标签","需写","说明","检查","备注","签认","结论","通过","驳回","返工","反向","生成","系统","字号","配色","中…","只读","离线","异常","拒绝","部分","当前","全选","读取","统计已读取","有效像元 ","标记值 ","必须在 0–1 之间","阈值 ","精度阈值"];
+  function readUi() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
+  var LANG = (function () {
+    var q = (location.search.match(/[?&]lang=(en|zh)/) || [])[1];
+    return q || readUi().lang || "zh";
+  })();
+  document.documentElement.lang = LANG === "en" ? "en" : "zh-CN";
+  document.documentElement.dataset.lang = LANG;
+
+  var langBtn = document.getElementById("langBtn");
+  if (langBtn) {
+    langBtn.textContent = LANG === "en" ? "ZH" : "EN";
+    langBtn.title = LANG === "en" ? "Chinese / English" : "中文 / English";
+    langBtn.setAttribute("aria-label", LANG === "en" ? "Switch to Chinese" : "Switch to English");
+    langBtn.addEventListener("click", function () {
+      var st = readUi();
+      st.lang = LANG === "en" ? "zh" : "en";
+      try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {}
+      // 地址栏带着 ?lang= 时，reload 会被查询参数再次覆盖，看起来像「点了没反应」。
+      // 切换时把 lang 参数摘掉，让 localStorage 的唯一真身生效。
+      var href = location.href.replace(/([?&])lang=(en|zh)(&?)/, function (m, a, b, c) {
+        return c ? a : "";
+      }).replace(/[?&]$/, "").replace(/\?($|#)/, "$1");
+      try { location.replace(href); } catch (e) { location.reload(); }
+    });
+  }
+  if (LANG !== "en") return;
+
+  var reCJK = /[\u4e00-\u9fff]/;
+  function tr(s) {
+    if (!s || !reCJK.test(s)) return s;
+    var lead = s.match(/^\s*/)[0], tail = s.match(/\s*$/)[0];
+    var core = s.trim();
+    if (!core) return s;
+    if (MAP[core] !== undefined) return lead + MAP[core] + tail;
+    var cjk = (core.match(/[\u4e00-\u9fff]/g) || []).length;
+    if (cjk >= 8) return s;
+    var out = core;
+    for (var i = 0; i < SUBKEYS.length; i++) {
+      var k = SUBKEYS[i];
+      if (out.indexOf(k) >= 0) out = out.split(k).join(MAP[k]);
+      if (!reCJK.test(out)) break;
+    }
+    out = out
+      .replace(/(\d+)\s*个/g, "$1").replace(/(\d+)\s*件/g, "$1")
+      .replace(/(\d+)\s*份/g, "$1").replace(/(\d+)\s*项/g, "$1")
+      .replace(/(\d+)\s*条/g, "$1").replace(/(\d+)\s*包/g, "$1")
+      .replace(/(\d+)\s*条\s*\/\s*/g, "$1 items / ")
+      .replace(/\s{2,}/g, " ");
+    return lead + out + tail;
+  }
+  var SKIP = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEXTAREA: 1 };
+  function walk(node) {
+    for (var c = node.firstChild; c; c = c.nextSibling) {
+      if (c.nodeType === 3) {
+        var v = c.nodeValue;
+        if (v && reCJK.test(v)) { var t = tr(v); if (t !== v) c.nodeValue = t; }
+      } else if (c.nodeType === 1 && !SKIP[c.tagName]) walk(c);
+    }
+  }
+  function doAttrs(root) {
+    var list = root.querySelectorAll("[placeholder],[title],[aria-label]");
+    for (var i = 0; i < list.length; i++) {
+      (function (el) {
+        ["placeholder", "title", "aria-label"].forEach(function (a) {
+          var v = el.getAttribute(a);
+          if (v && reCJK.test(v)) { var t = tr(v); if (t !== v) el.setAttribute(a, t); }
+        });
+      })(list[i]);
+    }
+  }
+  function once() {
+    walk(document.body);
+    doAttrs(document.body);
+    var f = document.getElementById("fwBtn");
+    if (f) f.title = "Font weight " + (Number(readUi().weight) || 400) + ": light / regular / medium / bold";
+  }
+  once();
+  var timer = null;
+  new MutationObserver(function () {
+    if (timer) return;
+    timer = setTimeout(function () { timer = null; once(); }, 30);
+  }).observe(document.body, { childList: true, subtree: true, characterData: true });
 })();

@@ -20,3 +20,9 @@ credentials*
 
 # Internal product specification kept locally, not published
 docs/PRODUCT_SPEC_0.1.md
+
+# Local verification screenshots, debug scripts and shortcut backups
+geoops/web/_*
+geoops/web/_shots/
+geoops/web/.bak-aesthetic/
+assets/lnk-backup/

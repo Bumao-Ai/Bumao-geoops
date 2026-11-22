@@ -1,9 +1,10 @@
 # Work record — 2026-11-22
 
-Scope: `bumao_geoops` backend, tests and documentation only. The console under
-`geoops/web/` is being refactored by another contributor; none of its files,
-`README.md` or the launcher assets were modified or committed here. Nothing
-was pushed to the remote.
+Scope: `bumao_geoops` backend and tests, plus the later console functional
+pass recorded at the end of this file. The console's deep-space visual system
+was authored by another contributor and is preserved: this pass adds controls
+and data flows without replacing that visual system. Nothing was pushed to
+the remote.
 
 ## Single-band one-bit GeoTIFF
 
@@ -65,6 +66,97 @@ read per profile; correctness is preferred over silently mixing identities.
 - Commits: `98b555c`, `3f7485c`, `714ad2e`, `7e8dbd3`, `796e4aa`, `cf13ad1`,
   `778289b`, `938e8d3`, `d27c6e0`, `fd7414c`, `6b810bc`, `e82f7a4`, `a0e8480`.
   All local; no push.
+
+## Console functional pass
+
+The console keeps its twelve sections and the existing deep-space palette.
+The pass makes previously static areas operate against real API data.
+
+### Overview to working sections
+
+- The four overview KPIs carry `data-goto` targets: projects, tasks, rules,
+  artifacts.
+- One `go(section, jump)` path now drives both the left nav and the KPI
+  entries, updates the hash and scrolls the destination into view. KPI entries
+  respond to click, Enter and Space and keep a visible focus ring. Left-nav
+  clicks use the same jump, so switching sections no longer leaves the old
+  scroll offset and clips the new masthead.
+
+### Dataset profile and filtering
+
+- The dataset toolbar gained a live filter over id, path and project/task;
+  Esc clears it and an empty result offers a `Clear filter` action.
+- The dataset table was reduced to five columns so its actions stay inside the
+  card: dataset, project/task, CRS, size/hash, actions. Stats and Validate are
+  stacked vertically.
+- `Profile` calls the real
+  `GET /api/v1/datasets/<id>/profile?band=N`. The full-width profile card shows
+  grid, band, cell size, CRS, valid/NODATA/non-finite counts, range, mean,
+  footprint, read mode and bounds. The valid percentage, NODATA percentage and
+  mean are computed from the API counts; no placeholder numbers are used.
+- A single-band ASCII raster asked for `band=2` returns the backend refusal;
+  the UI reports `Profile unavailable` instead of inventing statistics.
+- The data masthead now says `GeoTIFF header`. The registration note records
+  the real capabilities: Classic TIFF and BigTIFF, strips and tiles, 1-bit
+  single-band; multi-band 1-bit, FillOrder=2 and JPEG are refused.
+- The card note states that Profile reads real pixels and Validate only
+  re-probes the hash and CRS without changing the file.
+
+### Quality accuracy
+
+- The quality form now exposes `reference_path`, optional `predicted_path`,
+  `synthetic_reference` and five optional thresholds
+  (`pixel_accuracy`, `precision`, `recall`, `f1`, `iou`), validated as 0–1.
+- These controls are enabled only for `target_type=deliverable`; switching to
+  a dataset disables them and explains that the backend refuses that
+  combination. A threshold without a reference path is blocked in the browser.
+- Target ids are populated from `/api/v1/datasets` and
+  `/api/v1/deliverables`; selecting an object fills an empty task id.
+- The result card renders PA, precision, recall, F1 and IoU, the TP/FP/FN/TN
+  matrix, valid/NODATA/non-finite cells, thresholds, reference and prediction
+  paths, and the synthetic-reference flag. A missing reference and an unsupported
+  dataset target are shown as distinct states; backend ERROR text is shown as
+  ERROR.
+- The report table gained an Accuracy column. Report ids are buttons and load
+  that report back into the result card. Report ordering is newest first.
+- A pre-existing selection bug was fixed: `loadQualityReports` no longer always
+  selects `reports[0]`, so a newly generated report is not overwritten by an
+  older one.
+- The three-column quality check layout now breaks names at explicit `<wbr>`
+  points and keeps the status pill and evidence text from overlapping.
+
+### Responsive and bilingual checks
+
+- At 1280 px the data and quality grids stack their working card above the
+  form. The dataset table then uses the full 897 px and needs no horizontal
+  scroll; the quality result card is 897 px wide and check names get a 168 px
+  column.
+- At 390 px the page has `overflowX=0`; the profile grid is one column and
+  accuracy metrics use three columns. The dataset table scrolls inside its
+  card instead of widening the page.
+- The English pass covers the new dataset, profile, quality and accuracy
+  labels. A browser pass reports no Chinese UI leftovers in the checked
+  controls. Backend/user data (dataset label and sample note) stays in its
+  original language.
+
+### Verification
+
+- Browser fixture: a real local API built with `create_server`, a five-by-four
+  ASCII dataset, a deliverable and a reference mask. Chrome/Puppeteer checks
+  covered the 12 sections, four KPI jumps, dataset filter and clear, real
+  profile, the deliberate band-2 refusal, dataset/deliverable quality modes,
+  a real `POST /api/v1/quality-reports`, 100% PA/F1/IoU, report selection and
+  390 px layout. Separate submits proved the browser refuses an out-of-range
+  threshold and a threshold without a reference path before calling the API.
+- Full suite after this pass: `Ran 388 tests in 31.788s`, `OK`.
+- Smoke: `SMOKE PASS: 73 assertions`.
+- `node --check geoops/web/ui.js`: pass.
+- The only browser console error in the final matrix is the deliberate
+  `band=2` 404 used to prove the refusal path.
+- Working tree: frontend and test changes remain uncommitted; no commit and no
+  push. The current `8790` service still reports an empty dataset/report
+  registry, so these new paths were browser-verified against the fixture API,
+  not claimed as live-registry evidence on `8790`.
 
 ## Still not claimed
 

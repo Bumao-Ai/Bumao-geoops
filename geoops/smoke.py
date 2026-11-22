@@ -1229,7 +1229,7 @@ def main() -> int:
     checks.append(
         (
             "the console shell is served with its twelve sections",
-            console_status == 200 and "布猫" in console_html and len(nav_hits) == 12,
+            console_status == 200 and "Bumao GeoOps" in console_html and len(nav_hits) == 12,
         )
     )
     checks.append(
