@@ -376,7 +376,8 @@ def _float64_tiff(path: str, values) -> None:
 
 
 def _onebit_tiff(path: str, rows, compression: int = 1, fill_order: int = 1,
-                 georef: bool = False, pixel_size: float = 10.0) -> None:
+                 georef: bool = False, pixel_size: float = 10.0,
+                 samples: int = 1, sample_format: int = 1) -> None:
     """Write a single-band 1-bit strip TIFF with rows such as '1010101010'."""
     width = len(rows[0])
     height = len(rows)
@@ -404,11 +405,11 @@ def _onebit_tiff(path: str, rows, compression: int = 1, fill_order: int = 1,
         (262, 3, 1, 1),
         (266, 3, 1, fill_order),
         (273, 4, 1, data_offset),
-        (277, 3, 1, 1),
+        (277, 3, 1, samples),
         (278, 3, 1, height),
         (279, 4, 1, len(payload)),
         (284, 3, 1, 1),
-        (339, 3, 1, 1),
+        (339, 3, 1, sample_format),
     ]
     if georef:
         entries.extend([
@@ -819,6 +820,18 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertAlmostEqual(result["metrics"]["f1"], 0.75)
         self.assertAlmostEqual(result["metrics"]["iou"], 0.6)
         self.assertAlmostEqual(result["metrics"]["pixel_accuracy"], 7.0 / 9.0)
+
+    def test_onebit_multiband_and_non_unsigned_samples_are_refused(self) -> None:
+        multiband = os.path.join(self.tmp.name, "onebit-multiband.tif")
+        _onebit_tiff(multiband, ["1010", "0101"], samples=2)
+        with self.assertRaises(GeoTiffError) as caught:
+            read_geotiff_pixels(multiband)
+        self.assertIn("one sample per pixel", str(caught.exception))
+        signed = os.path.join(self.tmp.name, "onebit-signed.tif")
+        _onebit_tiff(signed, ["1010", "0101"], sample_format=3)
+        with self.assertRaises(GeoTiffError) as caught:
+            read_geotiff_pixels(signed)
+        self.assertIn("SampleFormat=1", str(caught.exception))
 
     def test_onebit_fill_order_lsb_first_is_refused(self) -> None:
         path = os.path.join(self.tmp.name, "onebit-fill.tif")
