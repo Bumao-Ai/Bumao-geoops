@@ -20,6 +20,7 @@ from geoops.geotiff import (
     write_geotiff_mask,
 )
 from geoops.survey.change import ChangeError, detect_changes, read_raster_grid
+from geoops.quality.metrics import compare_masks
 
 try:
     from PIL import Image
@@ -800,7 +801,26 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(result["patches"][0]["cells"], 2)
         self.assertEqual(result["patches"][0]["area_m2"], 200.0)
 
+    def test_onebit_masks_compare_through_quality_metrics(self) -> None:
+        reference = os.path.join(self.tmp.name, "truth-1bit.tif")
+        predicted = os.path.join(self.tmp.name, "prediction-1bit.tif")
+        _onebit_tiff(reference, ["110", "101", "000"], georef=True, pixel_size=10.0)
+        _onebit_tiff(predicted, ["100", "111", "000"], georef=True, pixel_size=10.0)
+        for path in (reference, predicted):
+            with open(path + ".json", "w", encoding="utf-8") as handle:
+                json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
+        result = compare_masks(reference, predicted, threshold=0.0)
+        self.assertEqual(result["cells"]["tp"], 3)
+        self.assertEqual(result["cells"]["fp"], 1)
+        self.assertEqual(result["cells"]["fn"], 1)
+        self.assertEqual(result["cells"]["tn"], 4)
+        self.assertAlmostEqual(result["metrics"]["precision"], 0.75)
+        self.assertAlmostEqual(result["metrics"]["recall"], 0.75)
+        self.assertAlmostEqual(result["metrics"]["f1"], 0.75)
+        self.assertAlmostEqual(result["metrics"]["iou"], 0.6)
+        self.assertAlmostEqual(result["metrics"]["pixel_accuracy"], 7.0 / 9.0)
 
+    def test_onebit_fill_order_lsb_first_is_refused(self) -> None:
         path = os.path.join(self.tmp.name, "onebit-fill.tif")
         _onebit_tiff(path, ["1010", "0101"], fill_order=2)
         with self.assertRaises(GeoTiffError) as caught:
