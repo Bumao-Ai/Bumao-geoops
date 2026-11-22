@@ -218,7 +218,18 @@ class DatasetTests(unittest.TestCase):
         with self.assertRaises(DatasetError):
             self.datasets.profile(dataset.object_id, band=3)
 
-    def test_bigtiff_dataset_keeps_dimensions_and_profile(self) -> None:
+    def test_profile_refuses_a_same_size_file_changed_after_registration(self) -> None:
+        path = os.path.join(self.tempdir, "changed.tif")
+        _georeferenced_tiff(path, [1, 2, 3, 4])
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547"}, handle)
+        dataset = self.datasets.register("PRJ-1", path)
+        _georeferenced_tiff(path, [9, 8, 7, 6])
+        with self.assertRaises(DatasetError) as caught:
+            self.datasets.profile(dataset.object_id)
+        self.assertIn("content changed", str(caught.exception))
+
+
         path = os.path.join(self.tempdir, "big.tif")
         _bigtiff(path, [1, 2, 3, 4])
         with open(path + ".json", "w", encoding="utf-8") as handle:

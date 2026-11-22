@@ -61,6 +61,9 @@ All notable changes to this project are documented in this file.
 - API JSON responses replace non-finite floats (for example a NaN NODATA
   sentinel) with null and encode with `allow_nan=False`, so clients receive
   valid JSON instead of Python's `NaN`/`Infinity` literals.
+- A dataset profile re-hashes the file before reading pixels. A file replaced
+  or rewritten at the same size after registration is refused, so statistics
+  cannot be attached to a stale dataset identity.
 - A projected GeoTIFF normally declares both its base geographic GeoKey and
   its projected GeoKey; the projected key now always decides the raster CRS,
   not key order. A user-defined `32767` CRS is refused instead of being

@@ -182,6 +182,20 @@ class DatasetRegistry:
         path = str(obj.payload.get("path") or "")
         if not path or not os.path.isfile(path):
             raise DatasetError("dataset file is missing: %s" % dataset_id)
+        try:
+            if os.path.getsize(path) != int(obj.payload.get("size_bytes") or -1):
+                raise DatasetError(
+                    "dataset file size changed since registration; re-register: %s"
+                    % dataset_id
+                )
+            digest = probe._sha256(path)
+        except OSError as exc:
+            raise DatasetError("cannot read dataset file: %s" % exc) from exc
+        if digest != str(obj.payload.get("sha256") or ""):
+            raise DatasetError(
+                "dataset file content changed since registration; re-register: %s"
+                % dataset_id
+            )
         suffix = os.path.splitext(path)[1].lower()
         if suffix in (".tif", ".tiff"):
             return self._profile_geotiff(dataset_id, obj, path, band)
