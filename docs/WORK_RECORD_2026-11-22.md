@@ -53,16 +53,18 @@ read per profile; correctness is preferred over silently mixing identities.
   returning `409` instead of conflating integrity failure with a missing
   dataset.
 - Profile refusal of a same-size file rewritten after registration.
+- Explicit refusal of multi-band and signed one-bit samples.
 
 ## Verification
 
-- Full suite: `Ran 386 tests in 30.173s`, `OK`.
-- `test_geotiff_pixels`: `Ran 31 tests`, `OK`.
+- Full suite: `Ran 387 tests in 29.720s`, `OK`.
+- `test_geotiff_pixels`: `Ran 32 tests`, `OK`.
 - `test_release`: `Ran 31 tests`, `OK`.
 - `test_api_release`: `Ran 16 tests`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
 - Commits: `98b555c`, `3f7485c`, `714ad2e`, `7e8dbd3`, `796e4aa`, `cf13ad1`,
-  `778289b`, `938e8d3`, `d27c6e0`, `fd7414c`, `6b810bc`. All local; no push.
+  `778289b`, `938e8d3`, `d27c6e0`, `fd7414c`, `6b810bc`, `e82f7a4`, `a0e8480`.
+  All local; no push.
 
 ## Still not claimed
 
