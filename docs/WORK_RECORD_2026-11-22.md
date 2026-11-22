@@ -44,17 +44,19 @@ read per profile; correctness is preferred over silently mixing identities.
 - LSB-first one-bit refusal.
 - Two georeferenced one-bit masks driven through `detect_changes`: changed
   cells, projected cell area, one connected patch and patch area.
+- One-bit truth and prediction masks through `compare_masks`: TP/FP/FN/TN,
+  precision, recall, F1, IoU and pixel accuracy.
 - Dataset registration and profile of a georeferenced one-bit mask.
 - Profile refusal of a same-size file rewritten after registration.
 
 ## Verification
 
-- Full suite: `Ran 382 tests in 28.605s`, `OK`.
-- `test_geotiff_pixels`: `Ran 29 tests`, `OK`.
+- Full suite: `Ran 384 tests in 29.228s`, `OK`.
+- `test_geotiff_pixels`: `Ran 31 tests`, `OK`.
 - `test_release`: `Ran 31 tests`, `OK`.
 - Smoke: `SMOKE PASS: 73 assertions`.
-- Commits: `98b555c`, `3f7485c`, `714ad2e`, `7e8dbd3`, `796e4aa`, `cf13ad1`.
-  All local; no push.
+- Commits: `98b555c`, `3f7485c`, `714ad2e`, `7e8dbd3`, `796e4aa`, `cf13ad1`,
+  `778289b`, `938e8d3`. All local; no push.
 
 ## Still not claimed
 
