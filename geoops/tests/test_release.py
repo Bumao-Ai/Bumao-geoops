@@ -17,6 +17,7 @@ from geoops.tests.test_geotiff_pixels import (
     _bigtiff,
     _georeferenced_multiband_tiff,
     _georeferenced_tiff,
+    _onebit_tiff,
 )
 from geoops.domain.projects import ProjectError, ProjectRegistry
 from geoops.review import ReviewEngine, ReviewError
@@ -218,7 +219,23 @@ class DatasetTests(unittest.TestCase):
         with self.assertRaises(DatasetError):
             self.datasets.profile(dataset.object_id, band=3)
 
-    def test_profile_refuses_a_same_size_file_changed_after_registration(self) -> None:
+    def test_onebit_dataset_registers_and_profiles_real_mask(self) -> None:
+        path = os.path.join(self.tempdir, "mask.tif")
+        _onebit_tiff(path, ["10101", "01110", "11001"], georef=True, pixel_size=10.0)
+        with open(path + ".json", "w", encoding="utf-8") as handle:
+            json.dump({"crs": "EPSG:4547", "crs_model": "projected"}, handle)
+        dataset = self.datasets.register("PRJ-1", path)
+        self.assertEqual(dataset.payload["width"], 5)
+        self.assertEqual(dataset.payload["height"], 3)
+        self.assertEqual(dataset.payload["bands"], 1)
+        self.assertEqual(dataset.payload["pixel_size"], [10.0, 10.0])
+        profile = self.datasets.profile(dataset.object_id)
+        self.assertEqual(profile["valid_cells"], 15)
+        self.assertEqual(profile["min"], 0.0)
+        self.assertEqual(profile["max"], 1.0)
+        self.assertAlmostEqual(profile["mean"], 9.0 / 15.0)
+
+
         path = os.path.join(self.tempdir, "changed.tif")
         _georeferenced_tiff(path, [1, 2, 3, 4])
         with open(path + ".json", "w", encoding="utf-8") as handle:
