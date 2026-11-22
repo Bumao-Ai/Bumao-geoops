@@ -467,7 +467,7 @@ def _onebit_multistrip_tiff(path: str, rows, rows_per_strip: int) -> None:
 
 
 def _onebit_tiled_tiff(path: str, width: int, height: int, tile_width: int, tile_length: int,
-                       rows) -> None:
+                       rows, compression: int = 1) -> None:
     """Write a 1-bit tiled TIFF; edge tiles are padded as full tiles."""
     columns = (width + tile_width - 1) // tile_width
     tile_rows = (height + tile_length - 1) // tile_length
@@ -485,7 +485,17 @@ def _onebit_tiled_tiff(path: str, width: int, height: int, tile_width: int, tile
                     else:
                         line += "0"
                 tile_lines.append(line)
-            tiles.append(_pack_onebit_rows(tile_lines, tile_width))
+            raw = bytes(_pack_onebit_rows(tile_lines, tile_width))
+            if compression == 1:
+                tiles.append(raw)
+            elif compression == 5:
+                tiles.append(_lzw_encode(raw))
+            elif compression in (8, 32946):
+                tiles.append(zlib.compress(raw))
+            elif compression == 32773:
+                tiles.append(_packbits_encode(raw))
+            else:
+                raise ValueError("unsupported test compression")
     payload = b"".join(bytes(tile) for tile in tiles)
     count = 13
     data_offset = 8 + 2 + count * 12 + 4
@@ -499,7 +509,7 @@ def _onebit_tiled_tiff(path: str, width: int, height: int, tile_width: int, tile
         (256, 3, 1, width),
         (257, 3, 1, height),
         (258, 3, 1, 1),
-        (259, 3, 1, 1),
+        (259, 3, 1, compression),
         (262, 3, 1, 1),
         (266, 3, 1, 1),
         (277, 3, 1, 1),
@@ -701,7 +711,18 @@ class GeoTiffPixelTests(unittest.TestCase):
         self.assertEqual(image["values"], expected)
         self.assertEqual(list(iter_geotiff_band_values(path)), expected)
 
-    def test_onebit_fill_order_lsb_first_is_refused(self) -> None:
+    def test_onebit_tiled_blocks_decompress_before_bit_order(self) -> None:
+        rows = ["101", "010", "111"]
+        expected = [float(bit) for row in rows for bit in row]
+        for compression in (5, 8, 32946, 32773):
+            path = os.path.join(self.tmp.name, "onebit-tile-%d.tif" % compression)
+            _onebit_tiled_tiff(path, 3, 3, 4, 2, rows, compression=compression)
+            image = read_geotiff_pixels(path)
+            self.assertEqual(image["compression"], compression)
+            self.assertEqual(image["values"], expected)
+            self.assertEqual(list(iter_geotiff_band_values(path)), expected)
+
+
         path = os.path.join(self.tmp.name, "onebit-fill.tif")
         _onebit_tiff(path, ["1010", "0101"], fill_order=2)
         with self.assertRaises(GeoTiffError) as caught:
