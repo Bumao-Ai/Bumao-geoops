@@ -464,6 +464,98 @@ class WorkflowApiTests(unittest.TestCase):
         self.assertEqual(payload["run"]["node_runs"][0]["status"], "SKIP")
         self.assertIn(payload["run"]["run_id"], self.tasks.get(self.task.task_id).workflow_run_ids)
 
+    def test_update_definition_in_place(self):
+        created = self.call(
+            "POST", "/api/v1/workflows",
+            {
+                "workflow_id": "WF-API-EDIT",
+                "name": "接口流程",
+                "task_type": "change_detection",
+                "nodes": [{"node_id": "R1", "name": "规则门", "type": "rule_check"}],
+            },
+            token="admin",
+        )
+        self.assertEqual(created[0], 201)
+        updated = self.call(
+            "POST", "/api/v1/workflows/WF-API-EDIT",
+            {
+                "name": "接口流程 v2",
+                "task_type": "change_detection",
+                "description": "updated from the console",
+                "nodes": [
+                    {"node_id": "R1", "name": "规则门", "type": "rule_check"},
+                    {"node_id": "C2", "name": "逐格差分", "type": "change_detection", "threshold": 1.0},
+                ],
+            },
+            token="admin",
+        )
+        self.assertEqual(updated[0], 200)
+        self.assertEqual(updated[1]["workflow"]["version"], 2)
+        self.assertEqual(updated[1]["workflow"]["payload"]["name"], "接口流程 v2")
+        self.assertEqual(updated[1]["workflow"]["payload"]["description"], "updated from the console")
+        self.assertEqual(len(updated[1]["workflow"]["payload"]["nodes"]), 2)
+        status, payload = self.call("GET", "/api/v1/workflows/WF-API-EDIT")
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["workflow"]["version"], 2)
+        self.assertEqual(payload["workflow"]["payload"]["node_count"], 2)
+        self.assertEqual(
+            self.call("POST", "/api/v1/workflows/WF-API-EDIT", {"name": "x"}, token=None)[0],
+            401,
+        )
+        self.assertEqual(
+            self.call("POST", "/api/v1/workflows/WF-MISSING", {"name": "x"}, token="admin")[0],
+            404,
+        )
+
+    def test_resume_failed_run_over_http(self):
+        directory = tempfile.mkdtemp(prefix="geoops-api-resume-")
+        raster_path = os.path.join(directory, "grid.asc")
+        with open(raster_path, "w", encoding="utf-8") as handle:
+            handle.write("ncols 2\nnrows 2\nxllcorner 0\nyllcorner 0\ncellsize 10\n")
+            handle.write("1 2\n3 4\n")
+        status, payload = self.call(
+            "POST", "/api/v1/workflows",
+            {
+                "workflow_id": "WF-API-RESUME",
+                "name": "接口恢复流程",
+                "task_type": "change_detection",
+                "nodes": [
+                    {
+                        "node_id": "G1",
+                        "name": "栅格统计",
+                        "type": "gis_tool_call",
+                        "tool_id": "builtin:ascii_grid_profile",
+                        "path_key": "raster_path",
+                    }
+                ],
+            },
+            token="admin",
+        )
+        self.assertEqual(status, 201)
+        status, first = self.call(
+            "POST", "/api/v1/workflows/WF-API-RESUME/execute",
+            {"context": {}},
+            token="admin",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(first["status"], "FAIL")
+        previous = first["run"]["run_id"]
+        status, resumed = self.call(
+            "POST", "/api/v1/workflow-runs/%s/resume" % previous,
+            {"workflow_id": "WF-API-RESUME", "context": {"raster_path": raster_path}},
+            token="admin",
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(resumed["status"], "PASS")
+        self.assertEqual(resumed["run"]["resumed_from"], previous)
+        self.assertEqual(resumed["run"]["node_runs"][0]["status"], "PASS")
+        rows = self.service.journal.rows()
+        self.assertEqual(rows[-1]["workflow_id"], "WF-API-RESUME")
+        self.assertEqual(
+            self.call("POST", "/api/v1/workflow-runs/%s/resume" % previous, {"context": {}}, token="admin")[0],
+            400,
+        )
+
     def test_create_needs_permission_and_context_is_checked(self):
         self.assertEqual(
             self.call("POST", "/api/v1/workflows", {"workflow_id": "WF-2", "name": "x", "task_type": "x", "nodes": []})[0],

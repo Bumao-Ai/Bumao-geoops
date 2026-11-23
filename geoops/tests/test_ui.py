@@ -121,6 +121,15 @@ class ConsoleTests(unittest.TestCase):
             'name="reference_path"',
             'name="threshold_pixel_accuracy"',
             'data-goto="projects"',
+            'id="workflowIdInput"',
+            'id="workflowSubmitBtn"',
+            'id="workflowCancelBtn"',
+            'id="workflowEditNote"',
+            'id="resumeRunSelect"',
+            'id="resumeHint"',
+            'id="workflowExecuteBtn"',
+            'id="runQuery"',
+            'data-node-template="rule_check"',
         ):
             self.assertIn(marker, text)
 
@@ -131,6 +140,14 @@ class ConsoleTests(unittest.TestCase):
         _, js_type, js = self.get("/ui/ui.js", raw=True)
         self.assertIn("application/javascript", js_type)
         self.assertIn(b"/api/v1/overview", js)
+        self.assertIn(b"data-workflow-edit", js)
+        self.assertIn(b"/api/v1/workflows/", js)
+        self.assertIn(b"data-node-template", js)
+        self.assertIn(b"data-run-resume", js)
+        self.assertIn(b"/api/v1/workflow-runs/", js)
+        self.assertIn(b"pill editing", js)
+        self.assertIn(b"is-editing", js)
+        self.assertIn(b"filteredRuns", js)
 
     def test_unknown_ui_path_is_404(self) -> None:
         status, _ = self.get("/ui/../../app.py")

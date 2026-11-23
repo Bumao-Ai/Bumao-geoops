@@ -46,12 +46,19 @@ class JournalTests(unittest.TestCase):
     # ----------------------------------------------------------- recording
     def test_recording_keeps_run_and_node_facts(self) -> None:
         journal = RunJournal()
-        row = journal.record(_make_run(), task_id="TSK-1", project_id="PRJ-1", actor="test")
+        row = journal.record(
+            _make_run(),
+            task_id="TSK-1",
+            project_id="PRJ-1",
+            actor="test",
+            workflow_id="WF-1",
+        )
         self.assertEqual(row["run_id"], "RUN-1")
         self.assertEqual(row["status"], "PASS")
         self.assertEqual(row["task_id"], "TSK-1")
         self.assertEqual(row["project_id"], "PRJ-1")
         self.assertEqual(row["actor"], "test")
+        self.assertEqual(row["workflow_id"], "WF-1")
         self.assertEqual(len(row["node_runs"]), 1)
         self.assertEqual(row["node_runs"][0]["status"], "PASS")
         self.assertEqual(len(journal), 1)

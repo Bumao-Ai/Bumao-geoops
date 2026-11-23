@@ -47,6 +47,7 @@ class RunJournal:
         task_id: str = "",
         project_id: str = "",
         actor: str = "",
+        workflow_id: str = "",
     ) -> Dict[str, Any]:
         """Append one finished run; returns the row that was written."""
         if not hasattr(run, "to_dict"):
@@ -62,6 +63,7 @@ class RunJournal:
                 "task_id": str(task_id or ""),
                 "project_id": str(project_id or ""),
                 "actor": str(actor or ""),
+                "workflow_id": str(workflow_id or ""),
                 "recorded_at": _utc_now(),
             }
         )

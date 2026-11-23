@@ -479,13 +479,22 @@ html[data-lang="en"] .card h3 .h-en{display:none}
 
 /* ============ 12. 运行 / 节点 ============ */
 .run{border-top:1px solid var(--line);padding:13px 0 14px}
+.workflow-card.is-editing{
+  position:relative;background:color-mix(in srgb,var(--accent) 6%,transparent);
+  box-shadow:inset 3px 0 0 color-mix(in srgb,var(--accent) 62%,transparent);
+  padding-left:13px;margin-left:-13px;padding-right:10px;margin-right:-10px;border-radius:var(--r-sm);
+}
+.pill.editing{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 48%,transparent);background:color-mix(in srgb,var(--accent) 14%,transparent)}
 .workflow-exec{margin-top:16px}
 .workflow-exec .runtime-output{min-height:62px}
 .workflow-exec .stack{gap:12px}
+.workflow-exec .resume-hint{margin-top:0;flex:1;min-width:210px;line-height:1.65}
 .run:first-child{border-top:0;padding-top:2px}
 .run-head{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
 .run-id{font-family:var(--mono);font-size:calc(11.5px * var(--fs-zoom));letter-spacing:.03em;color:var(--text)}
 .run-meta{margin-left:auto;font-family:var(--mono);font-size:calc(10px * var(--fs-zoom));letter-spacing:.04em;color:var(--text-3);display:flex;gap:9px;flex-wrap:wrap}
+.run-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:8px}
+.run-actions .btn{padding:4px 11px;font-size:calc(12px * var(--fs-zoom));letter-spacing:.04em}
 .nodes{margin:10px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:5px}
 .node-row{display:grid;grid-template-columns:64px 58px minmax(0,1fr);gap:10px;align-items:baseline;font-size:calc(12px * var(--fs-zoom));padding:5px 0;border-bottom:1px dashed var(--line)}
 .node-row:last-child{border-bottom:0}
@@ -553,6 +562,7 @@ html[data-lang="en"] .card h3 .h-en{display:none}
   transition:border-color var(--dur) var(--ease),background var(--dur) var(--ease),box-shadow var(--dur) var(--ease);
 }
 .field input::placeholder,.field textarea::placeholder{color:var(--text-3)}
+.field input[readonly]{opacity:.72;cursor:not-allowed}
 .field input:focus,.field select:focus,.field textarea:focus{
   border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 14%,transparent);
   background:color-mix(in srgb,var(--bg-1) 22%,transparent);
@@ -567,6 +577,7 @@ html[data-lang="en"] .card h3 .h-en{display:none}
 .field.inline{flex-direction:row;align-items:center;gap:8px;text-transform:none;font-family:var(--font);font-size:calc(13px * var(--fs-zoom));letter-spacing:.01em;color:var(--text-2)}
 .field.inline input[type="checkbox"]{width:15px;height:15px;accent-color:var(--accent)}
 .wrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.workflow-templates .tpl-label{font-family:var(--mono);font-size:calc(10.5px * var(--fs-zoom));letter-spacing:.08em;color:var(--text-3)}
 .wmsg{font-family:var(--mono);font-size:calc(12px * var(--fs-zoom));letter-spacing:.02em;color:var(--text-3);overflow-wrap:anywhere}
 .wmsg.ok{color:var(--ok)} .wmsg.bad{color:var(--danger)}
 

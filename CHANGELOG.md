@@ -2,6 +2,35 @@
 
 All notable changes to this project are documented in this file.
 
+## v0.1.0-beta.5 — 2026-11-23 — workflow console edit and resume
+
+### Added
+
+- Workflow definition cards in the console can be edited in place through the
+  existing update endpoint, with the workflow id locked and a cancel path back
+  to create mode. The active card carries an accent edge and an `编辑中…` badge
+  so the form and the list agree on which record is open. Four node templates
+  insert valid `rule_check`, `change_detection`, `artifact_register` and
+  `model_chat` nodes without overwriting the existing list.
+- Failed or errored runs can be resumed from the run history. The action reuses
+  the execute form, requires the operator to re-enter context (the journal does
+  not store it), posts to the real resume endpoint, and renders the new run.
+- Run journal rows now record `workflow_id`; older rows remain readable.
+- Run history has a local search over run id, status, task, workflow, resumed
+  run and node text. The count shows `shown / total`, `Esc` clears the filter,
+  and the resume selector still uses the unfiltered journal.
+- Two legacy documentation command examples now call `python` directly instead
+  of embedding a machine-specific interpreter path; the working-tree scan for
+  local paths and identifiers is clean.
+
+### Verification
+
+- Full suite: `Ran 390 tests`, `OK`.
+- Smoke: `SMOKE PASS: 73 assertions`.
+- Browser matrix: definition edit to v2, node-template insertion, cancel,
+  failed-run resume to `PASS`, 1280 px and 390 px without horizontal overflow,
+  English labels and no page errors.
+
 ## Unreleased — 2026-11-18 — workflow execution, accuracy metrics and trace binding
 
 ### Added

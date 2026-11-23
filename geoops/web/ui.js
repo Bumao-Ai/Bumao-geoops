@@ -8,7 +8,7 @@
                 overview: null, tasks: [], rules: null, artifacts: [], audit: null, runs: [],
                 projects: [], datasets: [], catalog: null, reviews: [], trace: null, token: "",
                 deliverables: [], qualityReports: [], settings: null, lastQuality: null, modelRuntime: null,
-                datasetQuery: "", profileDatasetId: "", workflows: [] };
+                datasetQuery: "", profileDatasetId: "", workflows: [], workflowEditId: "", runQuery: "" };
 
   function readUi() {
     try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; }
@@ -380,6 +380,14 @@
   });
 
   /* ---------- 流程 ---------- */
+  function clearResumeRuns() {
+    var select = document.getElementById("resumeRunSelect");
+    if (!select) return;
+    select.innerHTML = '<option value="">新建运行</option>';
+    select.value = "";
+    updateResumeButton();
+  }
+
   function loadRuns() {
     var box = document.getElementById("runTable");
     box.innerHTML = emptyBox("阅", "读取中", "正在向 /api/v1/runs 取运行日志。");
@@ -387,18 +395,21 @@
       if (res.status === 404) {
         document.getElementById("runsCount").textContent = "未配置";
         box.innerHTML = emptyBox("未", "运行日志未配置", "服务端没有挂载运行日志（<code>--runs</code>），不伪造运行记录。");
+        clearResumeRuns();
         return;
       }
       if (res.status !== 200) {
         document.getElementById("runsCount").textContent = "接口 " + res.status;
         box.innerHTML = emptyBox("未", "运行接口不可用", "接口返回 " + res.status + "。");
+        clearResumeRuns();
         return;
       }
       state.runs = (res.body && res.body.runs) || [];
-      document.getElementById("runsCount").textContent = state.runs.length + " 次";
+      populateResumeRuns();
       renderRuns();
     }).catch(function () {
       box.innerHTML = emptyBox("断", "取不到运行日志", "服务未启动或网络不可达。");
+      clearResumeRuns();
     });
   }
 
@@ -407,21 +418,51 @@
     return '<span class="pill ' + (map[status] || "idle") + '">' + esc(status || "—") + "</span>";
   }
 
+  function runMatches(run, query) {
+    var parts = [run.run_id, run.status, run.task_id, run.workflow_id, run.resumed_from, run.recorded_at];
+    (run.node_runs || []).forEach(function (node) {
+      parts.push(node.node_id, node.name, node.status, node.detail);
+    });
+    return parts.join(" ").toLowerCase().indexOf(query) >= 0;
+  }
+
+  function filteredRuns() {
+    var rows = state.runs.slice().reverse();
+    var query = (state.runQuery || "").trim().toLowerCase();
+    return query ? rows.filter(function (run) { return runMatches(run, query); }) : rows;
+  }
+
+  function updateRunsCount(shown) {
+    var pill = document.getElementById("runsCount");
+    if (!pill) return;
+    pill.textContent = (state.runQuery || "").trim()
+      ? shown + " / " + state.runs.length + " 次"
+      : state.runs.length + " 次";
+  }
+
   function renderRuns() {
     var box = document.getElementById("runTable");
-    var rows = state.runs.slice().reverse();
+    var rows = filteredRuns();
+    updateRunsCount(rows.length);
     if (!rows.length) {
-      box.innerHTML = emptyBox("空", "还没有运行记录",
-        "运行完成才会写日志；这里没有记录时就是没有跑过，不补示例。");
+      if ((state.runQuery || "").trim()) {
+        box.innerHTML = emptyBox("筛", "没有匹配的运行",
+          "当前关键词没有命中。按 Esc 清空筛选。");
+      } else {
+        box.innerHTML = emptyBox("空", "还没有运行记录",
+          "运行完成才会写日志；这里没有记录时就是没有跑过，不补示例。");
+      }
       return;
     }
     var html = "";
     rows.forEach(function (run) {
       var nodes = run.node_runs || [];
+      var resumable = run.status === "FAIL" || run.status === "ERROR";
       html += '<div class="run">' +
         '<div class="run-head"><span class="run-id">' + esc(run.run_id) + "</span>" +
         runPill(run.status) +
         '<span class="run-meta"><span>' + esc(run.task_id || "未挂任务") + "</span>" +
+        (run.workflow_id ? "<span>WF " + esc(run.workflow_id) + "</span>" : "") +
         "<span>节点 " + nodes.length + "</span>" +
         "<span>跳过 " + esc(run.skipped || 0) + "</span>" +
         (run.resumed_from ? "<span>恢复自 " + esc(run.resumed_from) + "</span>" : "") +
@@ -433,12 +474,102 @@
             '<span class="ndetail"><b>' + esc(node.name) + "</b> · " + esc(node.detail || "") + "</span></li>";
         }).join("") + "</ul>";
       }
+      if (resumable) {
+        html += '<div class="run-actions">' +
+          '<button class="btn ghost sm" type="button" data-run-resume="' + esc(run.run_id) + '">恢复运行</button>' +
+          "</div>";
+      }
       html += "</div>";
     });
     box.innerHTML = html;
   }
+
+  function updateResumeButton() {
+    var select = document.getElementById("resumeRunSelect");
+    var button = document.getElementById("workflowExecuteBtn");
+    if (!select || !button) return;
+    button.textContent = select.value ? "恢复运行" : "执行流程";
+  }
+
+  function applyResumeDefaults() {
+    var select = document.getElementById("resumeRunSelect");
+    if (!select) return;
+    if (!select.value) {
+      updateResumeButton();
+      return;
+    }
+    var run = state.runs.filter(function (row) { return row.run_id === select.value; })[0];
+    if (!run) {
+      select.value = "";
+      updateResumeButton();
+      return;
+    }
+    var workflowSelect = document.getElementById("workflowSelect");
+    if (run.workflow_id && workflowSelect) {
+      var found = Array.prototype.some.call(workflowSelect.options, function (option) {
+        return option.value === run.workflow_id;
+      });
+      if (found) workflowSelect.value = run.workflow_id;
+    }
+    var form = document.getElementById("workflowRunForm");
+    if (form && form.task_id && !form.task_id.value && run.task_id) form.task_id.value = run.task_id;
+    updateResumeButton();
+  }
+
+  function populateResumeRuns() {
+    var select = document.getElementById("resumeRunSelect");
+    if (!select) return;
+    var previous = select.value;
+    var resumable = state.runs.filter(function (run) {
+      return run.status === "FAIL" || run.status === "ERROR";
+    });
+    select.innerHTML = '<option value="">新建运行</option>' + resumable.map(function (run) {
+      return '<option value="' + esc(run.run_id) + '">' + esc(run.run_id) + " · " + esc(run.status) +
+        " · " + esc(run.task_id || "未挂任务") + "</option>";
+    }).join("");
+    var keep = previous && resumable.some(function (run) { return run.run_id === previous; });
+    if (keep) select.value = previous;
+    applyResumeDefaults();
+  }
+
+  function selectResumeRun(runId) {
+    var select = document.getElementById("resumeRunSelect");
+    if (!select) return;
+    select.value = runId;
+    applyResumeDefaults();
+    var form = document.getElementById("workflowRunForm");
+    if (form && form.scrollIntoView) form.scrollIntoView({ behavior: "smooth", block: "center" });
+    setMsg("workflowRunMsg", "info", "已带入恢复：" + runId);
+  }
+
+  var runTable = document.getElementById("runTable");
+  if (runTable) runTable.addEventListener("click", function (ev) {
+    var target = ev.target;
+    if (!target || !target.closest) return;
+    var resume = target.closest("[data-run-resume]");
+    if (resume) selectResumeRun(resume.getAttribute("data-run-resume"));
+  });
+
+  var resumeSelect = document.getElementById("resumeRunSelect");
+  if (resumeSelect) resumeSelect.addEventListener("change", applyResumeDefaults);
+
   var runReload = document.getElementById("runReload");
   if (runReload) runReload.addEventListener("click", loadRuns);
+
+  var runQuery = document.getElementById("runQuery");
+  if (runQuery) {
+    runQuery.addEventListener("input", function () {
+      state.runQuery = runQuery.value || "";
+      renderRuns();
+    });
+    runQuery.addEventListener("keydown", function (ev) {
+      if (ev.key === "Escape") {
+        runQuery.value = "";
+        state.runQuery = "";
+        renderRuns();
+      }
+    });
+  }
 
   /* ---------- 流程定义 ---------- */
   function loadWorkflows() {
@@ -476,9 +607,11 @@
     box.innerHTML = state.workflows.slice().reverse().map(function (obj) {
       var p = obj.payload || {};
       var nodes = p.nodes || [];
-      return '<div class="run" data-workflow="' + esc(obj.object_id) + '">' +
+      var editing = state.workflowEditId === obj.object_id;
+      return '<div class="run workflow-card' + (editing ? " is-editing" : "") + '" data-workflow="' + esc(obj.object_id) + '">' +
         '<div class="run-head"><span class="run-id">' + esc(obj.object_id) + "</span>" +
         '<span class="pill info">' + esc(p.task_type || "—") + "</span>" +
+        (editing ? '<span class="pill editing">编辑中…</span>' : "") +
         '<span class="run-meta"><span>v' + esc(obj.version || "—") + "</span>" +
         "<span>节点 " + nodes.length + "</span></span></div>" +
         '<div class="run-meta" style="margin:5px 0 0;justify-content:flex-start">' +
@@ -486,17 +619,162 @@
         (p.description ? "<span>" + esc(p.description) + "</span>" : "") + "</div>" +
         '<div class="note" style="margin:7px 0 0">' + nodes.map(function (node) {
           return "<code>" + esc(node.node_id) + " · " + esc(node.type) + "</code>";
-        }).join(" ") + "</div></div>";
+        }).join(" ") + "</div>" +
+        '<div class="run-actions">' +
+        '<button class="btn ghost sm" type="button" data-workflow-edit="' + esc(obj.object_id) + '">编辑</button>' +
+        '<button class="btn ghost sm" type="button" data-workflow-use="' + esc(obj.object_id) + '">带入执行</button>' +
+        "</div></div>";
     }).join("");
     select.innerHTML = '<option value="">选择流程定义</option>' + state.workflows.map(function (obj) {
       var p = obj.payload || {};
       return '<option value="' + esc(obj.object_id) + '">' + esc(obj.object_id) + " · " + esc(p.name || "") + "</option>";
     }).join("");
     if (previous) select.value = previous;
+    applyResumeDefaults();
+  }
+
+  function workflowObject(workflowId) {
+    return state.workflows.filter(function (obj) { return obj.object_id === workflowId; })[0] || null;
+  }
+
+  function setWorkflowMode(editingId) {
+    state.workflowEditId = editingId || "";
+    var form = document.getElementById("workflowForm");
+    var idInput = document.getElementById("workflowIdInput");
+    var submit = document.getElementById("workflowSubmitBtn");
+    var cancel = document.getElementById("workflowCancelBtn");
+    var note = document.getElementById("workflowEditNote");
+    var noteId = document.getElementById("workflowEditId");
+    if (!form || !idInput || !submit || !cancel || !note || !noteId) return;
+    idInput.readOnly = !!state.workflowEditId;
+    idInput.setAttribute("aria-readonly", state.workflowEditId ? "true" : "false");
+    submit.textContent = state.workflowEditId ? "更新定义" : "登记定义";
+    cancel.hidden = !state.workflowEditId;
+    note.hidden = !state.workflowEditId;
+    noteId.textContent = state.workflowEditId || "";
+    markWorkflowEditing();
+  }
+
+  function markWorkflowEditing() {
+    Array.prototype.forEach.call(document.querySelectorAll("[data-workflow]"), function (card) {
+      var editing = card.getAttribute("data-workflow") === state.workflowEditId;
+      card.classList.toggle("is-editing", editing);
+      var badge = card.querySelector(".pill.editing");
+      if (!editing) {
+        if (badge) badge.remove();
+        return;
+      }
+      if (badge) return;
+      var head = card.querySelector(".run-head");
+      if (!head) return;
+      badge = document.createElement("span");
+      badge.className = "pill editing";
+      badge.textContent = "编辑中…";
+      var meta = head.querySelector(".run-meta");
+      head.insertBefore(badge, meta || null);
+    });
+  }
+
+  function fitWorkflowNodes() {
+    var form = document.getElementById("workflowForm");
+    if (!form || !form.nodes) return;
+    form.nodes.rows = Math.min(16, Math.max(7, (form.nodes.value || "").split("\n").length));
+  }
+
+  function resetWorkflowForm() {
+    var form = document.getElementById("workflowForm");
+    if (!form) return;
+    form.reset();
+    if (form.nodes) form.nodes.rows = 7;
+    setWorkflowMode("");
+    setMsg("workflowMsg", "", "");
+  }
+
+  function fillWorkflowForm(obj) {
+    var form = document.getElementById("workflowForm");
+    if (!form || !obj) return;
+    var p = obj.payload || {};
+    form.reset();
+    form.workflow_id.value = obj.object_id;
+    form.name.value = p.name || "";
+    form.task_type.value = p.task_type || "";
+    form.description.value = p.description || "";
+    form.nodes.value = JSON.stringify(p.nodes || [], null, 2);
+    fitWorkflowNodes();
+    setWorkflowMode(obj.object_id);
+    setMsg("workflowMsg", "info", "编辑中…");
+    var card = document.getElementById("workflowFormCard");
+    if (card && card.scrollIntoView) card.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (form.name.focus) form.name.focus();
+  }
+
+  function addNodeTemplate(type, label) {
+    var form = document.getElementById("workflowForm");
+    if (!form) return;
+    var nodes;
+    try { nodes = JSON.parse(form.nodes.value || "[]"); }
+    catch (e) { setMsg("workflowMsg", "bad", "节点 JSON 解析失败：" + e.message); return; }
+    if (!Array.isArray(nodes)) { setMsg("workflowMsg", "bad", "节点 JSON 必须是数组"); return; }
+    var templates = {
+      rule_check: { node_id: "R1", name: "规则门", type: "rule_check", task_type: form.task_type.value || "change_detection" },
+      change_detection: { node_id: "C2", name: "逐格差分", type: "change_detection", threshold: 1.0, min_area_m2: 150 },
+      artifact_register: { node_id: "A3", name: "成果登记", type: "artifact_register", path_key: "deliverable_path", kind: "change_mask" },
+      model_chat: { node_id: "M4", name: "模型说明", type: "model_chat", prompt: "描述本次变化", prompt_key: "prompt" }
+    };
+    var spec = templates[type];
+    if (!spec) return;
+    spec = JSON.parse(JSON.stringify(spec));
+    var prefix = (String(spec.node_id).match(/^[A-Za-z]+/) || ["N"])[0].toUpperCase();
+    var usedIds = {};
+    var usedNames = {};
+    nodes.forEach(function (node) {
+      usedIds[node.node_id] = true;
+      usedNames[node.name] = true;
+    });
+    var number = 1;
+    while (usedIds[prefix + number]) number += 1;
+    spec.node_id = prefix + number;
+    var baseName = spec.name;
+    var name = baseName;
+    var suffix = 2;
+    while (usedNames[name]) { name = baseName + " " + suffix; suffix += 1; }
+    spec.name = name;
+    nodes.push(spec);
+    form.nodes.value = JSON.stringify(nodes, null, 2);
+    fitWorkflowNodes();
+    setMsg("workflowMsg", "ok", "已加入模板：" + label);
   }
 
   var workflowReload = document.getElementById("workflowReload");
   if (workflowReload) workflowReload.addEventListener("click", loadWorkflows);
+
+  var workflowTable = document.getElementById("workflowTable");
+  if (workflowTable) workflowTable.addEventListener("click", function (ev) {
+    var target = ev.target;
+    if (!target || !target.closest) return;
+    var edit = target.closest("[data-workflow-edit]");
+    if (edit) {
+      var obj = workflowObject(edit.getAttribute("data-workflow-edit"));
+      if (obj) fillWorkflowForm(obj);
+      return;
+    }
+    var use = target.closest("[data-workflow-use]");
+    if (use) {
+      var workflowId = use.getAttribute("data-workflow-use");
+      var select = document.getElementById("workflowSelect");
+      select.value = workflowId;
+      var form = document.getElementById("workflowRunForm");
+      if (form && form.scrollIntoView) form.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (form && form.task_id && form.task_id.focus) form.task_id.focus();
+      setMsg("workflowRunMsg", "info", "已带入执行：" + workflowId);
+    }
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll("[data-node-template]"), function (button) {
+    button.addEventListener("click", function () {
+      addNodeTemplate(button.getAttribute("data-node-template"), (button.textContent || "").trim());
+    });
+  });
 
   var workflowForm = document.getElementById("workflowForm");
   if (workflowForm) workflowForm.addEventListener("submit", function (ev) {
@@ -504,6 +782,7 @@
     var nodes;
     try { nodes = JSON.parse(workflowForm.nodes.value || "[]"); }
     catch (e) { setMsg("workflowMsg", "bad", "节点 JSON 解析失败：" + e.message); return; }
+    var editingId = state.workflowEditId;
     var body = {
       workflow_id: (workflowForm.workflow_id.value || "").trim(),
       name: (workflowForm.name.value || "").trim(),
@@ -511,18 +790,38 @@
       description: (workflowForm.description.value || "").trim(),
       nodes: nodes
     };
-    setMsg("workflowMsg", "info", "登记中…");
-    api("/api/v1/workflows", { method: "POST", token: currentToken(), body: body }).then(function (res) {
-      if (res.status === 201) {
-        setMsg("workflowMsg", "ok", "已登记 " + body.workflow_id);
-        workflowForm.reset();
+    if (!editingId && !body.workflow_id) {
+      setMsg("workflowMsg", "bad", "流程编号不能为空");
+      return;
+    }
+    var url = editingId ? "/api/v1/workflows/" + encodeURIComponent(editingId) : "/api/v1/workflows";
+    var payload = editingId ? {
+      name: body.name,
+      task_type: body.task_type,
+      description: body.description,
+      nodes: nodes
+    } : body;
+    setMsg("workflowMsg", "info", editingId ? "更新中…" : "登记中…");
+    api(url, { method: "POST", token: currentToken(), body: payload }).then(function (res) {
+      if (editingId ? res.status === 200 : res.status === 201) {
+        var saved = (res.body && res.body.workflow) || {};
+        var version = saved.version ? " · v" + saved.version : "";
+        var done = (editingId ? "已更新 " : "已登记 ") + (saved.object_id || body.workflow_id) + version;
+        resetWorkflowForm();
+        setMsg("workflowMsg", "ok", done);
         loadWorkflows();
         return;
       }
       var reason = (res.body && res.body.error) || ("接口 " + res.status);
-      var prefix = res.status === 401 ? "令牌不被接受：" : res.status === 403 ? "缺 workflow:write 权限：" : "登记被拒：";
+      var prefix = res.status === 401 ? "令牌不被接受：" : res.status === 403 ? "缺 workflow:write 权限：" : (editingId ? "更新被拒：" : "登记被拒：");
       setMsg("workflowMsg", "bad", prefix + reason);
     }).catch(function () { setMsg("workflowMsg", "bad", "网络或服务不可达"); });
+  });
+
+  var workflowCancel = document.getElementById("workflowCancelBtn");
+  if (workflowCancel) workflowCancel.addEventListener("click", function () {
+    resetWorkflowForm();
+    setMsg("workflowMsg", "info", "已取消编辑");
   });
 
   var workflowRunForm = document.getElementById("workflowRunForm");
@@ -530,22 +829,33 @@
     ev.preventDefault();
     var workflowId = document.getElementById("workflowSelect").value;
     if (!workflowId) { setMsg("workflowRunMsg", "bad", "先选择一份流程定义"); return; }
+    var resumeRunId = document.getElementById("resumeRunSelect").value;
     var context;
     try { context = JSON.parse(workflowRunForm.context.value || "{}"); }
     catch (e) { setMsg("workflowRunMsg", "bad", "执行上下文 JSON 解析失败：" + e.message); return; }
     var body = { task_id: (workflowRunForm.task_id.value || "").trim(), context: context };
-    setMsg("workflowRunMsg", "info", "执行中…");
-    api("/api/v1/workflows/" + encodeURIComponent(workflowId) + "/execute", {
-      method: "POST", token: currentToken(), body: body
+    var target = resumeRunId
+      ? "/api/v1/workflow-runs/" + encodeURIComponent(resumeRunId) + "/resume"
+      : "/api/v1/workflows/" + encodeURIComponent(workflowId) + "/execute";
+    var payload = resumeRunId
+      ? { workflow_id: workflowId, task_id: body.task_id, context: context }
+      : body;
+    setMsg("workflowRunMsg", "info", resumeRunId ? "恢复中…" : "执行中…");
+    api(target, {
+      method: "POST", token: currentToken(), body: payload
     }).then(function (res) {
       if (res.status === 200 && res.body && res.body.run) {
-        setMsg("workflowRunMsg", "ok", "运行已记录：" + res.body.run.run_id);
+        setMsg("workflowRunMsg", "ok", (resumeRunId ? "恢复已记录：" : "运行已记录：") + res.body.run.run_id);
         renderWorkflowRun(res.body);
+        if (resumeRunId) {
+          document.getElementById("resumeRunSelect").value = "";
+          updateResumeButton();
+        }
         loadRuns();
         return;
       }
       var reason = (res.body && res.body.error) || ("接口 " + res.status);
-      var prefix = res.status === 401 ? "令牌不被接受：" : res.status === 403 ? "缺 workflow:execute 权限：" : "执行被拒：";
+      var prefix = res.status === 401 ? "令牌不被接受：" : res.status === 403 ? "缺 workflow:execute 权限：" : (resumeRunId ? "恢复被拒：" : "执行被拒：");
       setMsg("workflowRunMsg", "bad", prefix + reason);
     }).catch(function () { setMsg("workflowRunMsg", "bad", "网络或服务不可达"); });
   });
@@ -1845,8 +2155,8 @@
 (function () {
   "use strict";
   var KEY = "geoops.ui";
-  var MAP = {"序":"OV","总览":"Overview","项目":"Projects","任务":"Tasks","AI 资源":"AI Resources","数据":"Data","流程":"Workflows","规则":"Rules","质量":"Quality","成果":"Deliverables","审核":"Reviews","追溯":"Trace","设置":"Settings","核心":"Core","缺口按验收表逐项清理":"Gaps cleared item by item against the acceptance list","连接中":"Connecting","域对象":"Objects","测绘任务":"Survey tasks","已载规则":"Rules loaded","登记成果":"Registered deliverables","运行原则":"Run principle","规则门在前 · 登记在后":"Gate first · registration second","文件 / 空间 / 专业三层":"File / spatial / professional","人工签认才置 accepted":"Human sign-off before accepted","缺环写 NOT_RECORDED":"Missing link = NOT_RECORDED","十二模块":"Twelve modules","I · 治理":"I · Governance","总览 · 项目 · 任务":"Overview · Projects · Tasks","II · 作业":"II · Operations","III · 验收":"III · Acceptance","质量 · 成果 · 审核":"Quality · Deliverables · Reviews","IV · 证据":"IV · Evidence","追溯 · 设置":"Trace · Settings","工程身份":"Engineering","核心工程 · CORE":"Core project · CORE","未发布":"Not published","未清门槛":"Open gaps","真实遥感影像与专业抽样待用户提供":"Real imagery and professional sampling to be supplied","跨进程文件锁未做":"Cross-process file lock not implemented","统一身份源未接，轮换靠人工":"No unified identity source; rotation is manual","未发布：等级 ≠ 发布资格":"Not published: tier ≠ release readiness","登记":"Register","项":"PRJ","项目册":"Project registry","刷新":"Refresh","登记项目":"Register project","项目 id":"Project id","项目编号":"Project code","项目名称":"Project name","项目类型":"Project type","区域":"Area","坐标参考":"CRS","高程基准":"Vertical datum","需要":"requires","台账":"Ledger","务":"TSK","全部":"All","草稿":"Draft","就绪":"Ready","运行":"Running","完成":"Completed","失败":"Failed","写操作":"Write actions","需令牌":"Token required","新建任务":"New task","任务名称":"Task name","任务类型":"Task type","创建":"Create","迁移状态":"Transition","任务 id":"Task id","目标状态":"Target status","先填任务":"Fill task first","理由":"Reason","迁移":"Transition","资源":"Resources","器":"CAT","资源目录":"Resource catalog","真实模型运行时":"Model runtime","读取中":"Loading","测试提示词":"Test prompt","测试连接":"Test connection","运行模型":"Run model","服务端只从环境变量读端点与密钥：":"Server reads endpoint and key from env only:","登记资源":"Register resource","资源 id":"Resource id","类型":"Type","模型 Model":"Model","工具 Tool":"Tool","名称":"Name","版本":"Version","适配器 / 路径":"Adapter / path","模型类型 / 工具类别":"Model type / tool class","模型 · algorithm":"Model · algorithm","模型 · ai-model":"Model · ai-model","工具 · gis":"Tool · gis","工具 · raster":"Tool · raster","工具 · vector":"Tool · vector","工具 · conversion":"Tool · conversion","能力 / 类别":"Capability / class","接入":"Intake","据":"DS","数据集":"Datasets","登记数据集":"Register dataset","任务 id（可选）":"Task id (optional)","文件路径":"File path","文件绝对路径":"Absolute file path","标签":"Label","读取并登记":"Read and register","同名 sidecar":"Sidecar","需写":"Write required","流":"WF","流程定义":"Workflow definitions","登记流程定义":"Register workflow","流程编号":"Workflow id","说明":"Description","节点 JSON":"Node JSON","登记定义":"Register definition","可用节点：":"Available nodes:","按定义执行":"Execute definition","任务编号（可选）":"Task id (optional)","执行上下文 JSON":"Execution context JSON","执行流程":"Execute workflow","运行历史":"Run history","运行完成才写一行日志（":"A line is written only after a run completes (","登记链路":"Chain","规则门":"Rule gate","变化检测":"Change detection","掩膜写出":"Mask write","成果登记":"Deliverable registration","包":"RULE","规":"RULE","已载规则包":"Loaded rule packs","检查":"Check","质":"QA","发起质检":"Run check","检查对象":"Target type","数据集 Dataset":"Dataset","成果 Deliverable":"Deliverable","对象 id":"Object id","任务 id（可空）":"Task id (optional)","操作人":"Actor","已完成人工抽样 / 专业核验":"Manual sampling / professional verification done","专业抽样依据（勾选后必填）":"Sampling evidence (required when checked)","执行三层质检":"Run three-layer check","。质检报告会写入":". The quality report is written to","本次判定":"Latest result","待":"WAIT","尚未执行":"Not run yet","质检报告":"Quality reports","簿":"DLV","果":"DLV","已登记成果":"Registered deliverables","成果名称":"Deliverable name","成果类型":"Deliverable kind","备注":"Notes","文件簿":"Registered files","签认":"Sign-off","审":"REV","审核记录":"Review records","提交审核":"Submit review","成果 id":"Deliverable id","审核人":"Reviewer","结论":"Decision","通过":"Approve","驳回":"Reject","返工":"Rerun","意见（驳回 / 返工必填）":"Opinion (required for reject / rerun)","写入审核记录":"Write review","反向":"Reverse","溯":"TRC","生成追溯链":"Build trace","生成":"Build","还没有生成追溯链":"No trace built yet","审计记录":"Audit rows","最近审计":"Recent audit","未":"NONE","尚未读取":"Not read yet","审计接口需要":"The audit endpoint requires","系统":"System","设":"SYS","调用方":"Caller","令牌只存本页":"Token is kept in this page only","，不会写入磁盘。权限由服务端":", never written to disk. Permissions come from the server's","存储与策略":"Storage","角色与权限":"Role matrix","权限键":"Permission keys","主导航":"Main navigation","写入口与审计读取需要令牌；令牌只存在本页 sessionStorage":"Write and audit endpoints need a token; it stays in this page's sessionStorage","输入访问令牌":"Enter access token","字号":"Font size","缩小字号":"Decrease font size","放大字号":"Increase font size","切换字重":"Switch font weight","字重：细 / 常规 / 中 / 粗":"Weight: light / regular / medium / bold","配色":"Palette","白":"White","黑":"Black","粉":"Pink","莱茵蓝":"Rhine blue","橙":"Orange","切换明暗":"Toggle light / dark","深空 / 纸面":"Deep space / Paper","内部唯一编号":"Internal unique code","项目全称":"Full project name","行政区或测区":"Administrative area or survey block","1985 国家高程基准":"1985 national vertical datum","按状态筛选":"Filter by status","按 id / 名称 / 项目筛选":"Filter by id / name / project","筛选任务":"Filter tasks","变化检测 2026-11":"Change detection 2026-11","从下表点「迁移」带入":"Filled by clicking Transition below","完成 / 取消必须写理由":"Completion / cancellation needs a reason","资源显示名称":"Display name","builtin:... 或 external:绝对路径":"builtin:... or external:absolute path","已登记项目":"Registered project","绑定到任务后进入追溯链":"Binds to a task and joins the trace chain","例如 一期影像":"e.g. phase-1 imagery","例如 变化检测标准流程":"e.g. standard change detection workflow","可选；会写入定义记录":"Optional; stored in the definition record","TSK-...；填写时任务必须为 RUNNING":"TSK-...; the task must be RUNNING","DS-xxxx 或 DLV-xxxx":"DS-xxxx or DLV-xxxx","绑定追溯链":"Bind to trace chain","姓名或工号":"Name or employee id","抽样位置、样本编号、核验结论":"Sample location, sample id, verification result","变化检测成果 v1":"Change detection deliverable v1","范围、来源、限制":"Scope, source, limits","按成果 id / 文件名 / 任务筛选":"Filter by deliverable id / file name / task","筛选成果":"Filter deliverables","具体问题与依据":"Specific issue and evidence","输入任务 id，例如 TSK-xxxx":"Enter a task id, e.g. TSK-xxxx","按路径 / 原由 / 令牌前缀筛选":"Filter by path / reason / token prefix","筛选审计":"Filter audit","登记于 docs/ENGINEERING_TIER.md":"Registered in docs/ENGINEERING_TIER.md","规则先行、判定留痕、成果可核。只展示接口真实返回的内容：没有记录就写「未记录」，没有接口就写「未开放」。":"Rules first, decisions on record, deliverables checkable. Only what the API actually returns is shown: no record means \"not recorded\", no endpoint means \"not available\".","任何一层没有证据，结果只能是 PARTIAL 或 FAIL；不用推断补链，不用占位冒充真实。":"Without evidence at any layer the result can only be PARTIAL or FAIL; no inferred links, no placeholders posing as real.","AI 资源 · 数据 · 流程 · 规则":"AI resources · Data · Workflows · Rules","真实 AI 模型与外部 GIS 适配器待接":"Real AI model and external GIS adapter still to be connected","Agent 自动执行器仍只做目录登记":"Agent executor still only registers in the catalog","项目编号、名称、类型、区域、坐标参考、高程基准六项必填；编号唯一，缺一项即拒绝。":"Six required fields: code, name, type, area, CRS, vertical datum. Codes are unique; any missing field is rejected.","项目是任务、数据集、成果追溯的根。登记后不可用同编号重复建项。":"A project is the root of tasks, datasets and deliverable traceability. The same code cannot be registered twice.","。缺字段或编号重复时服务端原文拒绝，不落半条记录。":". Missing fields or duplicate codes are rejected verbatim by the server; nothing is half-written.","七态状态机：非法迁移被拒且不落半条记录；完成与取消必须写理由。":"Seven-state machine: illegal transitions are rejected with nothing half-written; completion and cancellation need a reason.","。服务端在读 body 之前校验令牌；没有权限就写不进去。":". The server checks the token before reading the body; without permission nothing is written.","。目标状态只列该任务当前允许迁移的项，非法边会被服务端拒绝。":". Target status lists only transitions allowed from the current state; illegal edges are rejected by the server.","模型、工具、Agent 分开登记。builtin 必须是真实实现，external 路径不存在即标不可用；Agent 引用未知依赖直接拒绝。":"Models, tools and agents are registered separately. builtin must be a real implementation; a missing external path is marked unavailable; an agent referencing an unknown dependency is rejected.","可用性不是标签：builtin 适配器必须是本仓真实实现，external 必须指向存在的路径；不可用会带原因。Agent 引用未登记的模型或工具会被拒绝。":"Availability is not a label: a builtin adapter must exist in this repository, an external one must point to a real path; unavailable entries carry a reason. An agent referencing an unregistered model or tool is rejected.","尚未调用。配置环境变量并重启服务后，这里显示真实模型回复；没有配置时不会生成占位内容。":"Not called yet. After configuring the environment and restarting, the real model reply appears here; without configuration no placeholder is produced.","。密钥不进浏览器、不写入仓库。测试与运行需要":". The key never enters the browser or the repository. Test and run require","Agent 依赖（模型 id 与工具 id，逗号分隔）":"Agent dependencies (model ids and tool ids, comma separated)","。外部路径必须已存在且可读；不可用的资源仍会入册，但会写明原因，不会伪装可用。":". An external path must exist and be readable; unavailable resources are still registered but carry the reason and are never faked as available.","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 classic GeoTIFF 头；复核重探测，文件内容变化即 FAIL。":"Dataset registration reads the real file for sha256; CRS comes from the sidecar or a classic GeoTIFF header; re-validation re-probes and FAILs if the content changed.","；无 CRS 或文件不存在会被拒绝。BigTIFF 与像元解码明确不支持。":"; missing CRS or a missing file is rejected. BigTIFF and pixel decoding are explicitly unsupported.","一次运行里规则门在前、登记在后：判定不过，成果不会被登记。":"In a run the rule gate comes first and registration second: if the gate fails, no deliverable is registered.","定义是登记过的数据：节点 id、类型、阈值都先校验；执行时按这份记录建节点，不另写一套隐藏流程。":"A definition is registered data: node ids, types and thresholds are validated first; execution builds nodes from that record, not from a hidden parallel flow.","。模型节点在未配置端点时会明确记 ERROR，不会假装通过。":". A model node records ERROR when no endpoint is configured and never pretends to pass.","尚未执行；这里只显示真实运行返回，不预填结果。":"Not executed yet; only real run output appears here, never prefilled.","执行会产生真实运行记录；规则门不过、路径缺失或模型未配置都会落成 FAIL / ERROR。任务编号留空时只独立运行，不写任务关联。":"Execution writes a real run record; a failed gate, missing path or unconfigured model lands as FAIL / ERROR. With no task id it runs standalone and writes no task link.","后才返回）；重复 run_id 拒绝，坏行整份拒载。":"before returning); duplicate run_ids are rejected and a corrupt line rejects the whole file.","· CRS / 格距 / 两期一致性":"· CRS / cell size / two-epoch consistency","· 逐格差分 + 4 邻域斑块 + 最小面积":"· Cell-wise difference + 4-neighbour patches + minimum area","· 源头信息保留，nodata 仍为 nodata":"· Source metadata preserved, nodata stays nodata","· 真文件、真 sha256、绑已登记成果":"· Real file, real sha256, bound to a registered deliverable","规则是数据不是代码：校验器缺失或异常判 ERROR，条件不满足判 SKIPPED，两者都不升格为 PASS。":"Rules are data, not code: a missing or failing checker is ERROR, an unmet condition is SKIPPED, and neither is promoted to PASS.","规则包整包校验后装载：缺字段、severity 非法、id 重复、与已载冲突都会整包拒绝，不半装。":"A rule pack is validated as a whole before loading: missing fields, illegal severity, duplicate ids or conflicts with a loaded pack reject the whole pack, never half-load.","文件与结构、空间数据、专业成果验证三层。第三层没有人工抽样与书面依据，只能是 NOT_RECORDED，汇总结果只能是 PARTIAL。":"Three layers: file and structure, spatial data, professional verification. Without manual sampling and written evidence the third layer is NOT_RECORDED and the aggregate can only be PARTIAL.","并以 QualityReport 入域，不是只在前端算一遍。":"and enters the domain as a QualityReport, not just a front-end calculation.","选择数据集或成果后执行三层质检；结果、逐项证据与报告路径会出现在这里。":"Pick a dataset or deliverable and run the three-layer check; the verdict, per-item evidence and report path appear here.","成果登记读真实文件：哈希、大小、路径当场记录；人工审核通过后才 accepted，之后才允许归档。":"Deliverable registration reads the real file: hash, size and path recorded on the spot; only a passing human review makes it accepted, and only then can it be archived.","「归档」只在 accepted 后开放。归档不会改动文件，只把成果状态与归档人、时间写入域对象。":"Archive opens only after accepted. Archiving never touches the file; it records the status, archiver and time on the domain object.","。路径必须存在且为普通文件；符号链接与目录一律拒绝。":". The path must exist and be a regular file; symlinks and directories are rejected.","成果只有经人工通过才置为 accepted；驳回或返工必须写意见，已签认的成果拒绝二次审核。":"A deliverable becomes accepted only through human approval; reject or rerun requires an opinion, and a signed-off deliverable refuses a second review.","需要 review:write。记录写入同时改成果状态；通过即最终验收，驳回或返工不签认。":"Requires review:write. The record and the deliverable status change together; approval is final acceptance, reject or rerun signs nothing.","从任务串回项目、数据集、运行、规则、成果、文件与审核；缺失的一环写 NOT_RECORDED，不拿推断补链。":"Traces from a task back through project, datasets, runs, rules, deliverables, files and reviews; a missing link is NOT_RECORDED, never inferred.","输入已登记任务 id，系统按项目→数据集→运行→规则→成果→文件→审核逐环取证。":"Enter a registered task id; the system evidences each link: project → datasets → runs → rules → deliverables → files → reviews.","权限的令牌。在右上角填入令牌后，这里会显示真实记录。":"permission. Enter a token at the top right to see real records here.","鉴权发生在读取请求体之前；拒绝也留痕，令牌只记哈希前八位。":"Authorization happens before the body is read; refusals are logged too, and only the first eight hash characters of a token are kept.","这里展示服务端真实权限矩阵与调用方令牌授权，不在前端伪造角色。没有令牌就只能读公开接口。":"This shows the server's real permission matrix and the caller's token grants; roles are never faked in the front end. Without a token only public endpoints are readable.","的 PERMISSIONS 与授权文件决定。":"PERMISSIONS and the grant file.","域对象、运行日志、成果簿与质检报告的真实配置状态在这里展示；未配置就写「未配置」。":"The real configuration state of domain objects, run journal, deliverable book and quality reports appears here; unconfigured is written as \"not configured\".","权限键是写操作的边界。GET 公开接口不要求令牌；审计读取与所有写入口都要求对应权限。":"Permission keys bound every write. Public GET endpoints need no token; audit reads and all write entries require the matching permission.","条 /":"items /","中…":"ing…","：三层判定":": three-layer verdict","已创建":"Created","已生成":"Built","已登记":"Registered","已记录":"Recorded","已连接":"Connected","已归档：":"Archived: ","未提供":"Not provided","未记录":"Not recorded","未配置":"Not configured","未挂任务":"No task","只读":"Read-only","离线":"Offline","异常":"Error","拒绝":"Rejected","部分":"Partial","执行中…":"Running…","登记中…":"Registering…","创建被拒：":"Create rejected: ","迁移被拒：":"Transition rejected: ","登记被拒：":"Registration rejected: ","审核被拒：":"Review rejected: ","归档被拒：":"Archive rejected: ","质检被拒：":"Quality check rejected: ","执行被拒：":"Execution rejected: ","资源登记被拒：":"Resource registration rejected: ","成果登记被拒：":"Deliverable registration rejected: ","调用失败：":"Call failed: ","令牌不被接受：":"Token rejected: ","没有这个任务：":"No such task: ","提示词不能为空。":"Prompt cannot be empty.","真实端点已配置":"Real endpoint configured","无密钥（本地端点）":"No key (local endpoint)","成果接口未配置":"Deliverable endpoint not configured","运行已记录：":"Run recorded: ","已迁移到":"Transitioned to ","追溯链完整":"Trace complete","追溯链不完整：缺":"Trace incomplete: missing ","人工抽样必须写依据":"Manual sampling requires evidence","先选择一份流程定义":"Select a workflow definition first","网络或服务不可达":"Network or service unreachable","共":"Total ","页":"page","当前":"Current","全选":"Select all","未配置： 缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\n在服务进程的环境里设置变量后重启；服务端不会生成占位回复。":"Not configured: missing GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\nSet them in the service environment and restart; the server never fabricates a reply.","空":"EMPTY","逐格差分":"Cell-wise difference","尚未配置":"Not configured","目录还是空的":"The registry is still empty","登记模型 / 工具 / Agent 后，这里按可用性列出；不可用的带原因。":"After registering models, tools or agents they are listed by availability; unavailable ones carry the reason.","规则包是数据文件，装载前会整包校验。":"A rule pack is a data file and is validated as a whole before loading.","没有已载规则包":"No rule packs loaded","还没有审核记录":"No review records yet","人工通过才置 accepted；驳回与返工必须写意见。":"Only human approval sets accepted; reject and rerun require an opinion.","提交中…":"Submitting…","读取文件中…":"Reading file…","质检执行中…":"Quality check running…","读取中…":"Loading…","缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME":"missing GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME","在服务进程的环境里设置变量后重启；服务端不会生成占位回复。":"Set them in the service environment and restart; the server never fabricates a reply.","未配置：":"Not configured: ","还没有运行记录":"No runs yet","还没有流程定义":"No workflow definitions yet","还没有登记成果":"No deliverables registered yet","还没有审计记录":"No audit records yet","还没有登记项目":"No projects registered yet","还没有登记数据集":"No datasets registered yet","没有符合条件的任务":"No tasks match the filter","没有符合条件的审计记录":"No audit records match the filter","钥":"KEY","成果簿需要令牌":"The deliverable book requires a token","审计流需要令牌":"The audit stream requires a token","令牌不被接受":"Token rejected","服务端原由：":"Server reason: ","读取":"Read","权限。在右上角填入令牌后再刷新。":"permission. Enter a token at the top right and refresh.","在右上角填入令牌后读取 ":"Enter a token at the top right, then read ","成果必须是真实文件；登记时读 sha256 和大小，审核通过后才能归档。":"A deliverable must be a real file; registration reads sha256 and size, and archiving only follows approval.","项目是任务的前置：先登记编号、类型、区域、CRS 与高程基准。":"A project precedes a task: register code, type, area, CRS and vertical datum first.","服务端没有声明权限键。":"The server declares no permission keys.","统计":"Profile","栅格统计":"Raster profile","读取统计":"Read profile","关闭":"Close","波段":"Band","没有匹配的数据集":"No matching datasets","清除筛选":"Clear filter","精度核验":"Accuracy","参考真值掩膜":"Reference truth mask","预测掩膜（可空）":"Predicted mask (optional)","留空则使用成果登记路径":"Blank uses the registered deliverable path","参考为合成真值（报告会保留标记）":"Synthetic reference (kept in the report)","精度阈值":"Accuracy thresholds","像元尺寸":"Cell size","单波段读取":"Single-band read","有效像元均值":"Mean of valid cells","NaN / Inf 已剔除，不参与值域":"NaN / Inf excluded from value statistics","读取真实像元中…":"Reading real pixels…","文件在登记后被改写，请重新登记":"Dataset file changed after registration; register again","统计不可用":"Profile unavailable","统计失败":"Profile failed","统计请求失败：网络或服务不可达":"Profile request failed: network or service unreachable","精度阈值必须先给参考真值掩膜":"Accuracy thresholds require a reference truth mask","报告已落盘：":"Report written to:","未计算：本次没有提供参考真值掩膜。":"Not computed: no reference truth mask was supplied.","未开放：精度对比的目标类型必须是成果（deliverable）。":"Not available: accuracy comparison requires a deliverable target.","精度计算失败":"Accuracy calculation failed","参考与预测掩膜无法对齐或无法读取":"reference and predicted masks could not be aligned or read","当前关键词没有命中。调整筛选，或":"No dataset matches the current filter. Adjust it, or","精度对比只对成果开放：当前目标是数据集，参考 / 预测 / 阈值均不提交；切到成果后可启用。":"Accuracy comparison is deliverable-only: the current target is a dataset, so reference / predicted / thresholds are not submitted. Switch to a deliverable to enable them.","精度对比只对成果开放：参考真值掩膜必填，预测掩膜留空时使用成果登记路径；不填参考则报告写「未计算」。":"Accuracy comparison is deliverable-only: reference truth is required; leave the predicted path blank to use the registered deliverable path. Without a reference the report says not computed.","「统计」按波段读真实像元，给出有效 / NODATA / 非有限值与值域；「复核」只重探测哈希与 CRS，不会改动文件。":"Profile reads real pixels by band and reports valid / NODATA / non-finite counts and range; Validate only re-probes the hash and CRS and never changes the file.","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 GeoTIFF 头；复核重探测，文件内容变化即 FAIL。":"Dataset registration reads the real file for sha256; CRS comes from the sidecar or GeoTIFF header; re-validation re-probes and FAILs if the content changed.","0–1，可空":"0–1, optional","非有限值":"non-finite","包围盒":"bounds","统计已读取":"Profile loaded","有效像元 ":"valid cells ","标记值 ":"NODATA value ","必须在 0–1 之间":" must be between 0 and 1","阈值 ":"Threshold ","NODATA 已剔除":"NODATA excluded","空间数据":"Spatial data","专业成果验证":"Professional verification","文件与结构":"File and structure","Ref：":"Ref:","Pred：":"Pred:"};
-  var SUBKEYS = ["未配置： 缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\n在服务进程的环境里设置变量后重启；服务端不会生成占位回复。","可用性不是标签：builtin 适配器必须是本仓真实实现，external 必须指向存在的路径；不可用会带原因。Agent 引用未登记的模型或工具会被拒绝。","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 classic GeoTIFF 头；复核重探测，文件内容变化即 FAIL。","模型、工具、Agent 分开登记。builtin 必须是真实实现，external 路径不存在即标不可用；Agent 引用未知依赖直接拒绝。","文件与结构、空间数据、专业成果验证三层。第三层没有人工抽样与书面依据，只能是 NOT_RECORDED，汇总结果只能是 PARTIAL。","执行会产生真实运行记录；规则门不过、路径缺失或模型未配置都会落成 FAIL / ERROR。任务编号留空时只独立运行，不写任务关联。","规则是数据不是代码：校验器缺失或异常判 ERROR，条件不满足判 SKIPPED，两者都不升格为 PASS。","从任务串回项目、数据集、运行、规则、成果、文件与审核；缺失的一环写 NOT_RECORDED，不拿推断补链。","规则先行、判定留痕、成果可核。只展示接口真实返回的内容：没有记录就写「未记录」，没有接口就写「未开放」。","规则包整包校验后装载：缺字段、severity 非法、id 重复、与已载冲突都会整包拒绝，不半装。","成果登记读真实文件：哈希、大小、路径当场记录；人工审核通过后才 accepted，之后才允许归档。","定义是登记过的数据：节点 id、类型、阈值都先校验；执行时按这份记录建节点，不另写一套隐藏流程。","「归档」只在 accepted 后开放。归档不会改动文件，只把成果状态与归档人、时间写入域对象。","任何一层没有证据，结果只能是 PARTIAL 或 FAIL；不用推断补链，不用占位冒充真实。","成果只有经人工通过才置为 accepted；驳回或返工必须写意见，已签认的成果拒绝二次审核。","需要 review:write。记录写入同时改成果状态；通过即最终验收，驳回或返工不签认。","这里展示服务端真实权限矩阵与调用方令牌授权，不在前端伪造角色。没有令牌就只能读公开接口。","缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME","尚未调用。配置环境变量并重启服务后，这里显示真实模型回复；没有配置时不会生成占位内容。","权限键是写操作的边界。GET 公开接口不要求令牌；审计读取与所有写入口都要求对应权限。","域对象、运行日志、成果簿与质检报告的真实配置状态在这里展示；未配置就写「未配置」。","项目编号、名称、类型、区域、坐标参考、高程基准六项必填；编号唯一，缺一项即拒绝。","输入已登记任务 id，系统按项目→数据集→运行→规则→成果→文件→审核逐环取证。","。外部路径必须已存在且可读；不可用的资源仍会入册，但会写明原因，不会伪装可用。","；无 CRS 或文件不存在会被拒绝。BigTIFF 与像元解码明确不支持。","登记模型 / 工具 / Agent 后，这里按可用性列出；不可用的带原因。","成果必须是真实文件；登记时读 sha256 和大小，审核通过后才能归档。","写入口与审计读取需要令牌；令牌只存在本页 sessionStorage","选择数据集或成果后执行三层质检；结果、逐项证据与报告路径会出现在这里。","项目是任务、数据集、成果追溯的根。登记后不可用同编号重复建项。","七态状态机：非法迁移被拒且不落半条记录；完成与取消必须写理由。","项目是任务的前置：先登记编号、类型、区域、CRS 与高程基准。","。目标状态只列该任务当前允许迁移的项，非法边会被服务端拒绝。","。模型节点在未配置端点时会明确记 ERROR，不会假装通过。","并以 QualityReport 入域，不是只在前端算一遍。","。服务端在读 body 之前校验令牌；没有权限就写不进去。","一次运行里规则门在前、登记在后：判定不过，成果不会被登记。","鉴权发生在读取请求体之前；拒绝也留痕，令牌只记哈希前八位。","在服务进程的环境里设置变量后重启；服务端不会生成占位回复。","登记于 docs/ENGINEERING_TIER.md","builtin:... 或 external:绝对路径","Agent 依赖（模型 id 与工具 id，逗号分隔）","人工通过才置 accepted；驳回与返工必须写意见。","后才返回）；重复 run_id 拒绝，坏行整份拒载。","。路径必须存在且为普通文件；符号链接与目录一律拒绝。","权限的令牌。在右上角填入令牌后，这里会显示真实记录。","。缺字段或编号重复时服务端原文拒绝，不落半条记录。","· 源头信息保留，nodata 仍为 nodata","TSK-...；填写时任务必须为 RUNNING","尚未执行；这里只显示真实运行返回，不预填结果。","。密钥不进浏览器、不写入仓库。测试与运行需要","· 逐格差分 + 4 邻域斑块 + 最小面积","的 PERMISSIONS 与授权文件决定。","真实 AI 模型与外部 GIS 适配器待接","· 真文件、真 sha256、绑已登记成果","AI 资源 · 数据 · 流程 · 规则","按成果 id / 文件名 / 任务筛选","输入任务 id，例如 TSK-xxxx","DS-xxxx 或 DLV-xxxx","Agent 自动执行器仍只做目录登记","· CRS / 格距 / 两期一致性","规则包是数据文件，装载前会整包校验。","字重：细 / 常规 / 中 / 粗","按路径 / 原由 / 令牌前缀筛选","缺环写 NOT_RECORDED","真实遥感影像与专业抽样待用户提供","服务端只从环境变量读端点与密钥：","按 id / 名称 / 项目筛选","权限。在右上角填入令牌后再刷新。","人工签认才置 accepted","工具 · conversion","文件 / 空间 / 专业三层","模型 · algorithm","成果 Deliverable","已完成人工抽样 / 专业核验","，不会写入磁盘。权限由服务端","抽样位置、样本编号、核验结论","统一身份源未接，轮换靠人工","未发布：等级 ≠ 发布资格","模型 · ai-model","专业抽样依据（勾选后必填）","意见（驳回 / 返工必填）","规则门在前 · 登记在后","总览 · 项目 · 任务","质量 · 成果 · 审核","变化检测 2026-11","完成 / 取消必须写理由","在右上角填入令牌后读取 ","核心工程 · CORE","模型类型 / 工具类别","工具 · raster","工具 · vector","运行完成才写一行日志（","数据集 Dataset","1985 国家高程基准","绑定到任务后进入追溯链","例如 变化检测标准流程","没有符合条件的审计记录","服务端没有声明权限键。","缺口按验收表逐项清理","同名 sidecar","执行上下文 JSON","从下表点「迁移」带入","可选；会写入定义记录","任务 id（可选）","任务 id（可空）","变化检测成果 v1","无密钥（本地端点）","人工抽样必须写依据","先选择一份流程定义","没有符合条件的任务","III · 验收","跨进程文件锁未做","模型 Model","适配器 / 路径","工具 · gis","任务编号（可选）","。质检报告会写入","还没有生成追溯链","范围、来源、限制","提示词不能为空。","追溯链不完整：缺","网络或服务不可达","还没有登记数据集","II · 作业","IV · 证据","追溯 · 设置","真实模型运行时","工具 Tool","能力 / 类别","节点 JSON","深空 / 纸面","例如 一期影像","具体问题与依据","资源登记被拒：","成果登记被拒：","令牌不被接受：","没有这个任务：","真实端点已配置","成果接口未配置","没有已载规则包","还没有审核记录","还没有运行记录","还没有流程定义","还没有登记成果","还没有审计记录","还没有登记项目","成果簿需要令牌","审计流需要令牌","I · 治理","文件绝对路径","登记流程定义","执行三层质检","写入审核记录","审计接口需要","令牌只存本页","输入访问令牌","内部唯一编号","行政区或测区","资源显示名称","运行已记录：","目录还是空的","读取文件中…","质检执行中…","令牌不被接受","服务端原由：","AI 资源","项目 id","任务 id","测试提示词","资源 id","登记数据集","读取并登记","可用节点：","按定义执行","已载规则包","对象 id","已登记成果","成果 id","生成追溯链","存储与策略","角色与权限","按状态筛选","已登记项目","绑定追溯链","姓名或工号","：三层判定","创建被拒：","迁移被拒：","登记被拒：","审核被拒：","归档被拒：","质检被拒：","执行被拒：","调用失败：","追溯链完整","测绘任务","已载规则","登记成果","运行原则","十二模块","工程身份","未清门槛","登记项目","项目编号","项目名称","项目类型","坐标参考","高程基准","新建任务","任务名称","任务类型","迁移状态","目标状态","先填任务","资源目录","测试连接","运行模型","登记资源","流程定义","流程编号","登记定义","执行流程","运行历史","登记链路","变化检测","掩膜写出","成果登记","发起质检","检查对象","本次判定","尚未执行","质检报告","成果名称","成果类型","审核记录","提交审核","审计记录","最近审计","尚未读取","缩小字号","放大字号","切换字重","切换明暗","项目全称","筛选任务","筛选成果","筛选审计","已归档：","未挂任务","执行中…","登记中…","已迁移到","逐格差分","尚未配置","提交中…","读取中…","未配置：","连接中","域对象","未发布","项目册","写操作","需令牌","读取中","数据集","规则门","操作人","文件簿","审核人","调用方","权限键","主导航","莱茵蓝","条 /","已创建","已生成","已登记","已记录","已连接","未提供","未记录","未配置","总览","项目","任务","数据","流程","规则","质量","成果","审核","追溯","设置","核心","登记","刷新","区域","需要","台账","全部","草稿","就绪","运行","完成","失败","创建","理由","迁移","资源","类型","名称","版本","接入","标签","需写","说明","检查","备注","签认","结论","通过","驳回","返工","反向","生成","系统","字号","配色","中…","只读","离线","异常","拒绝","部分","当前","全选","读取","统计已读取","有效像元 ","标记值 ","必须在 0–1 之间","阈值 ","精度阈值"];
+  var MAP = {"序":"OV","总览":"Overview","项目":"Projects","任务":"Tasks","AI 资源":"AI Resources","数据":"Data","流程":"Workflows","规则":"Rules","质量":"Quality","成果":"Deliverables","审核":"Reviews","追溯":"Trace","设置":"Settings","核心":"Core","缺口按验收表逐项清理":"Gaps cleared item by item against the acceptance list","连接中":"Connecting","域对象":"Objects","测绘任务":"Survey tasks","已载规则":"Rules loaded","登记成果":"Registered deliverables","运行原则":"Run principle","规则门在前 · 登记在后":"Gate first · registration second","文件 / 空间 / 专业三层":"File / spatial / professional","人工签认才置 accepted":"Human sign-off before accepted","缺环写 NOT_RECORDED":"Missing link = NOT_RECORDED","十二模块":"Twelve modules","I · 治理":"I · Governance","总览 · 项目 · 任务":"Overview · Projects · Tasks","II · 作业":"II · Operations","III · 验收":"III · Acceptance","质量 · 成果 · 审核":"Quality · Deliverables · Reviews","IV · 证据":"IV · Evidence","追溯 · 设置":"Trace · Settings","工程身份":"Engineering","核心工程 · CORE":"Core project · CORE","未发布":"Not published","未清门槛":"Open gaps","真实遥感影像与专业抽样待用户提供":"Real imagery and professional sampling to be supplied","跨进程文件锁未做":"Cross-process file lock not implemented","统一身份源未接，轮换靠人工":"No unified identity source; rotation is manual","未发布：等级 ≠ 发布资格":"Not published: tier ≠ release readiness","登记":"Register","项":"PRJ","项目册":"Project registry","刷新":"Refresh","登记项目":"Register project","项目 id":"Project id","项目编号":"Project code","项目名称":"Project name","项目类型":"Project type","区域":"Area","坐标参考":"CRS","高程基准":"Vertical datum","需要":"requires","台账":"Ledger","务":"TSK","全部":"All","草稿":"Draft","就绪":"Ready","运行":"Running","完成":"Completed","失败":"Failed","写操作":"Write actions","需令牌":"Token required","新建任务":"New task","任务名称":"Task name","任务类型":"Task type","创建":"Create","迁移状态":"Transition","任务 id":"Task id","目标状态":"Target status","先填任务":"Fill task first","理由":"Reason","迁移":"Transition","资源":"Resources","器":"CAT","资源目录":"Resource catalog","真实模型运行时":"Model runtime","读取中":"Loading","测试提示词":"Test prompt","测试连接":"Test connection","运行模型":"Run model","服务端只从环境变量读端点与密钥：":"Server reads endpoint and key from env only:","登记资源":"Register resource","资源 id":"Resource id","类型":"Type","模型 Model":"Model","工具 Tool":"Tool","名称":"Name","版本":"Version","适配器 / 路径":"Adapter / path","模型类型 / 工具类别":"Model type / tool class","模型 · algorithm":"Model · algorithm","模型 · ai-model":"Model · ai-model","工具 · gis":"Tool · gis","工具 · raster":"Tool · raster","工具 · vector":"Tool · vector","工具 · conversion":"Tool · conversion","能力 / 类别":"Capability / class","接入":"Intake","据":"DS","数据集":"Datasets","登记数据集":"Register dataset","任务 id（可选）":"Task id (optional)","文件路径":"File path","文件绝对路径":"Absolute file path","标签":"Label","读取并登记":"Read and register","同名 sidecar":"Sidecar","需写":"Write required","流":"WF","流程定义":"Workflow definitions","登记流程定义":"Register workflow","流程编号":"Workflow id","说明":"Description","节点 JSON":"Node JSON","登记定义":"Register definition","编辑":"Edit","正在编辑":"Editing","。保存会生成新版本，编号不可改。":" Saving creates a new version; the id is locked.","取消编辑":"Cancel edit","更新定义":"Update definition","更新中…":"Updating…","已更新 ":"Updated ","更新被拒：":"Update rejected: ","编辑中…":"Editing…","已取消编辑":"Edit cancelled","已加入模板：":"Template added: ","节点模板":"Node templates","模型节点":"Model node","带入执行":"Use in execute","已带入执行：":"Loaded for execution: ","节点 JSON 必须是数组":"Node JSON must be an array","流程编号不能为空":"Workflow id cannot be empty","可用节点：":"Available nodes:","按定义执行":"Execute definition","任务编号（可选）":"Task id (optional)","执行上下文 JSON":"Execution context JSON","执行流程":"Execute workflow","上次运行（可选）":"Previous run (optional)","新建运行":"New run","选择失败运行后，执行按钮切换为恢复；已完成节点会跳过。":"Pick a failed run to switch the action to resume; passed nodes are skipped.","恢复运行":"Resume run","恢复中…":"Resuming…","恢复已记录：":"Resume recorded: ","恢复被拒：":"Resume rejected: ","已带入恢复：":"Loaded for resume: ","恢复自 ":"Resumed from ","运行历史":"Run history","按 run / 任务 / 流程 / 节点筛选":"Filter by run / task / workflow / node","没有匹配的运行":"No runs match the filter","当前关键词没有命中。按 Esc 清空筛选。":"No run matches the current keyword. Press Esc to clear it.","运行完成才写一行日志（":"A line is written only after a run completes (","登记链路":"Chain","规则门":"Rule gate","变化检测":"Change detection","掩膜写出":"Mask write","成果登记":"Deliverable registration","包":"RULE","规":"RULE","已载规则包":"Loaded rule packs","检查":"Check","质":"QA","发起质检":"Run check","检查对象":"Target type","数据集 Dataset":"Dataset","成果 Deliverable":"Deliverable","对象 id":"Object id","任务 id（可空）":"Task id (optional)","操作人":"Actor","已完成人工抽样 / 专业核验":"Manual sampling / professional verification done","专业抽样依据（勾选后必填）":"Sampling evidence (required when checked)","执行三层质检":"Run three-layer check","。质检报告会写入":". The quality report is written to","本次判定":"Latest result","待":"WAIT","尚未执行":"Not run yet","质检报告":"Quality reports","簿":"DLV","果":"DLV","已登记成果":"Registered deliverables","成果名称":"Deliverable name","成果类型":"Deliverable kind","备注":"Notes","文件簿":"Registered files","签认":"Sign-off","审":"REV","审核记录":"Review records","提交审核":"Submit review","成果 id":"Deliverable id","审核人":"Reviewer","结论":"Decision","通过":"Approve","驳回":"Reject","返工":"Rerun","意见（驳回 / 返工必填）":"Opinion (required for reject / rerun)","写入审核记录":"Write review","反向":"Reverse","溯":"TRC","生成追溯链":"Build trace","生成":"Build","还没有生成追溯链":"No trace built yet","审计记录":"Audit rows","最近审计":"Recent audit","未":"NONE","尚未读取":"Not read yet","审计接口需要":"The audit endpoint requires","系统":"System","设":"SYS","调用方":"Caller","令牌只存本页":"Token is kept in this page only","，不会写入磁盘。权限由服务端":", never written to disk. Permissions come from the server's","存储与策略":"Storage","角色与权限":"Role matrix","权限键":"Permission keys","主导航":"Main navigation","写入口与审计读取需要令牌；令牌只存在本页 sessionStorage":"Write and audit endpoints need a token; it stays in this page's sessionStorage","输入访问令牌":"Enter access token","字号":"Font size","缩小字号":"Decrease font size","放大字号":"Increase font size","切换字重":"Switch font weight","字重：细 / 常规 / 中 / 粗":"Weight: light / regular / medium / bold","配色":"Palette","白":"White","黑":"Black","粉":"Pink","莱茵蓝":"Rhine blue","橙":"Orange","切换明暗":"Toggle light / dark","深空 / 纸面":"Deep space / Paper","内部唯一编号":"Internal unique code","项目全称":"Full project name","行政区或测区":"Administrative area or survey block","1985 国家高程基准":"1985 national vertical datum","按状态筛选":"Filter by status","按 id / 名称 / 项目筛选":"Filter by id / name / project","筛选任务":"Filter tasks","变化检测 2026-11":"Change detection 2026-11","从下表点「迁移」带入":"Filled by clicking Transition below","完成 / 取消必须写理由":"Completion / cancellation needs a reason","资源显示名称":"Display name","builtin:... 或 external:绝对路径":"builtin:... or external:absolute path","已登记项目":"Registered project","绑定到任务后进入追溯链":"Binds to a task and joins the trace chain","例如 一期影像":"e.g. phase-1 imagery","例如 变化检测标准流程":"e.g. standard change detection workflow","可选；会写入定义记录":"Optional; stored in the definition record","TSK-...；填写时任务必须为 RUNNING":"TSK-...; the task must be RUNNING","DS-xxxx 或 DLV-xxxx":"DS-xxxx or DLV-xxxx","绑定追溯链":"Bind to trace chain","姓名或工号":"Name or employee id","抽样位置、样本编号、核验结论":"Sample location, sample id, verification result","变化检测成果 v1":"Change detection deliverable v1","范围、来源、限制":"Scope, source, limits","按成果 id / 文件名 / 任务筛选":"Filter by deliverable id / file name / task","筛选成果":"Filter deliverables","具体问题与依据":"Specific issue and evidence","输入任务 id，例如 TSK-xxxx":"Enter a task id, e.g. TSK-xxxx","按路径 / 原由 / 令牌前缀筛选":"Filter by path / reason / token prefix","筛选审计":"Filter audit","登记于 docs/ENGINEERING_TIER.md":"Registered in docs/ENGINEERING_TIER.md","规则先行、判定留痕、成果可核。只展示接口真实返回的内容：没有记录就写「未记录」，没有接口就写「未开放」。":"Rules first, decisions on record, deliverables checkable. Only what the API actually returns is shown: no record means \"not recorded\", no endpoint means \"not available\".","任何一层没有证据，结果只能是 PARTIAL 或 FAIL；不用推断补链，不用占位冒充真实。":"Without evidence at any layer the result can only be PARTIAL or FAIL; no inferred links, no placeholders posing as real.","AI 资源 · 数据 · 流程 · 规则":"AI resources · Data · Workflows · Rules","真实 AI 模型与外部 GIS 适配器待接":"Real AI model and external GIS adapter still to be connected","Agent 自动执行器仍只做目录登记":"Agent executor still only registers in the catalog","项目编号、名称、类型、区域、坐标参考、高程基准六项必填；编号唯一，缺一项即拒绝。":"Six required fields: code, name, type, area, CRS, vertical datum. Codes are unique; any missing field is rejected.","项目是任务、数据集、成果追溯的根。登记后不可用同编号重复建项。":"A project is the root of tasks, datasets and deliverable traceability. The same code cannot be registered twice.","。缺字段或编号重复时服务端原文拒绝，不落半条记录。":". Missing fields or duplicate codes are rejected verbatim by the server; nothing is half-written.","七态状态机：非法迁移被拒且不落半条记录；完成与取消必须写理由。":"Seven-state machine: illegal transitions are rejected with nothing half-written; completion and cancellation need a reason.","。服务端在读 body 之前校验令牌；没有权限就写不进去。":". The server checks the token before reading the body; without permission nothing is written.","。目标状态只列该任务当前允许迁移的项，非法边会被服务端拒绝。":". Target status lists only transitions allowed from the current state; illegal edges are rejected by the server.","模型、工具、Agent 分开登记。builtin 必须是真实实现，external 路径不存在即标不可用；Agent 引用未知依赖直接拒绝。":"Models, tools and agents are registered separately. builtin must be a real implementation; a missing external path is marked unavailable; an agent referencing an unknown dependency is rejected.","可用性不是标签：builtin 适配器必须是本仓真实实现，external 必须指向存在的路径；不可用会带原因。Agent 引用未登记的模型或工具会被拒绝。":"Availability is not a label: a builtin adapter must exist in this repository, an external one must point to a real path; unavailable entries carry a reason. An agent referencing an unregistered model or tool is rejected.","尚未调用。配置环境变量并重启服务后，这里显示真实模型回复；没有配置时不会生成占位内容。":"Not called yet. After configuring the environment and restarting, the real model reply appears here; without configuration no placeholder is produced.","。密钥不进浏览器、不写入仓库。测试与运行需要":". The key never enters the browser or the repository. Test and run require","Agent 依赖（模型 id 与工具 id，逗号分隔）":"Agent dependencies (model ids and tool ids, comma separated)","。外部路径必须已存在且可读；不可用的资源仍会入册，但会写明原因，不会伪装可用。":". An external path must exist and be readable; unavailable resources are still registered but carry the reason and are never faked as available.","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 classic GeoTIFF 头；复核重探测，文件内容变化即 FAIL。":"Dataset registration reads the real file for sha256; CRS comes from the sidecar or a classic GeoTIFF header; re-validation re-probes and FAILs if the content changed.","；无 CRS 或文件不存在会被拒绝。BigTIFF 与像元解码明确不支持。":"; missing CRS or a missing file is rejected. BigTIFF and pixel decoding are explicitly unsupported.","一次运行里规则门在前、登记在后：判定不过，成果不会被登记。":"In a run the rule gate comes first and registration second: if the gate fails, no deliverable is registered.","定义是登记过的数据：节点 id、类型、阈值都先校验；执行时按这份记录建节点，不另写一套隐藏流程。":"A definition is registered data: node ids, types and thresholds are validated first; execution builds nodes from that record, not from a hidden parallel flow.","。模型节点在未配置端点时会明确记 ERROR，不会假装通过。":". A model node records ERROR when no endpoint is configured and never pretends to pass.","尚未执行；这里只显示真实运行返回，不预填结果。":"Not executed yet; only real run output appears here, never prefilled.","执行会产生真实运行记录；规则门不过、路径缺失或模型未配置都会落成 FAIL / ERROR。任务编号留空时只独立运行，不写任务关联。":"Execution writes a real run record; a failed gate, missing path or unconfigured model lands as FAIL / ERROR. With no task id it runs standalone and writes no task link.","后才返回）；重复 run_id 拒绝，坏行整份拒载。":"before returning); duplicate run_ids are rejected and a corrupt line rejects the whole file.","· CRS / 格距 / 两期一致性":"· CRS / cell size / two-epoch consistency","· 逐格差分 + 4 邻域斑块 + 最小面积":"· Cell-wise difference + 4-neighbour patches + minimum area","· 源头信息保留，nodata 仍为 nodata":"· Source metadata preserved, nodata stays nodata","· 真文件、真 sha256、绑已登记成果":"· Real file, real sha256, bound to a registered deliverable","规则是数据不是代码：校验器缺失或异常判 ERROR，条件不满足判 SKIPPED，两者都不升格为 PASS。":"Rules are data, not code: a missing or failing checker is ERROR, an unmet condition is SKIPPED, and neither is promoted to PASS.","规则包整包校验后装载：缺字段、severity 非法、id 重复、与已载冲突都会整包拒绝，不半装。":"A rule pack is validated as a whole before loading: missing fields, illegal severity, duplicate ids or conflicts with a loaded pack reject the whole pack, never half-load.","文件与结构、空间数据、专业成果验证三层。第三层没有人工抽样与书面依据，只能是 NOT_RECORDED，汇总结果只能是 PARTIAL。":"Three layers: file and structure, spatial data, professional verification. Without manual sampling and written evidence the third layer is NOT_RECORDED and the aggregate can only be PARTIAL.","并以 QualityReport 入域，不是只在前端算一遍。":"and enters the domain as a QualityReport, not just a front-end calculation.","选择数据集或成果后执行三层质检；结果、逐项证据与报告路径会出现在这里。":"Pick a dataset or deliverable and run the three-layer check; the verdict, per-item evidence and report path appear here.","成果登记读真实文件：哈希、大小、路径当场记录；人工审核通过后才 accepted，之后才允许归档。":"Deliverable registration reads the real file: hash, size and path recorded on the spot; only a passing human review makes it accepted, and only then can it be archived.","「归档」只在 accepted 后开放。归档不会改动文件，只把成果状态与归档人、时间写入域对象。":"Archive opens only after accepted. Archiving never touches the file; it records the status, archiver and time on the domain object.","。路径必须存在且为普通文件；符号链接与目录一律拒绝。":". The path must exist and be a regular file; symlinks and directories are rejected.","成果只有经人工通过才置为 accepted；驳回或返工必须写意见，已签认的成果拒绝二次审核。":"A deliverable becomes accepted only through human approval; reject or rerun requires an opinion, and a signed-off deliverable refuses a second review.","需要 review:write。记录写入同时改成果状态；通过即最终验收，驳回或返工不签认。":"Requires review:write. The record and the deliverable status change together; approval is final acceptance, reject or rerun signs nothing.","从任务串回项目、数据集、运行、规则、成果、文件与审核；缺失的一环写 NOT_RECORDED，不拿推断补链。":"Traces from a task back through project, datasets, runs, rules, deliverables, files and reviews; a missing link is NOT_RECORDED, never inferred.","输入已登记任务 id，系统按项目→数据集→运行→规则→成果→文件→审核逐环取证。":"Enter a registered task id; the system evidences each link: project → datasets → runs → rules → deliverables → files → reviews.","权限的令牌。在右上角填入令牌后，这里会显示真实记录。":"permission. Enter a token at the top right to see real records here.","鉴权发生在读取请求体之前；拒绝也留痕，令牌只记哈希前八位。":"Authorization happens before the body is read; refusals are logged too, and only the first eight hash characters of a token are kept.","这里展示服务端真实权限矩阵与调用方令牌授权，不在前端伪造角色。没有令牌就只能读公开接口。":"This shows the server's real permission matrix and the caller's token grants; roles are never faked in the front end. Without a token only public endpoints are readable.","的 PERMISSIONS 与授权文件决定。":"PERMISSIONS and the grant file.","域对象、运行日志、成果簿与质检报告的真实配置状态在这里展示；未配置就写「未配置」。":"The real configuration state of domain objects, run journal, deliverable book and quality reports appears here; unconfigured is written as \"not configured\".","权限键是写操作的边界。GET 公开接口不要求令牌；审计读取与所有写入口都要求对应权限。":"Permission keys bound every write. Public GET endpoints need no token; audit reads and all write entries require the matching permission.","条 /":"items /","中…":"ing…","：三层判定":": three-layer verdict","已创建":"Created","已生成":"Built","已登记":"Registered","已记录":"Recorded","已连接":"Connected","已归档：":"Archived: ","未提供":"Not provided","未记录":"Not recorded","未配置":"Not configured","未挂任务":"No task","只读":"Read-only","离线":"Offline","异常":"Error","拒绝":"Rejected","部分":"Partial","执行中…":"Running…","登记中…":"Registering…","创建被拒：":"Create rejected: ","迁移被拒：":"Transition rejected: ","登记被拒：":"Registration rejected: ","审核被拒：":"Review rejected: ","归档被拒：":"Archive rejected: ","质检被拒：":"Quality check rejected: ","执行被拒：":"Execution rejected: ","资源登记被拒：":"Resource registration rejected: ","成果登记被拒：":"Deliverable registration rejected: ","调用失败：":"Call failed: ","令牌不被接受：":"Token rejected: ","没有这个任务：":"No such task: ","提示词不能为空。":"Prompt cannot be empty.","真实端点已配置":"Real endpoint configured","无密钥（本地端点）":"No key (local endpoint)","成果接口未配置":"Deliverable endpoint not configured","运行已记录：":"Run recorded: ","已迁移到":"Transitioned to ","追溯链完整":"Trace complete","追溯链不完整：缺":"Trace incomplete: missing ","人工抽样必须写依据":"Manual sampling requires evidence","先选择一份流程定义":"Select a workflow definition first","网络或服务不可达":"Network or service unreachable","共":"Total ","页":"page","当前":"Current","全选":"Select all","未配置： 缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\n在服务进程的环境里设置变量后重启；服务端不会生成占位回复。":"Not configured: missing GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\nSet them in the service environment and restart; the server never fabricates a reply.","空":"EMPTY","逐格差分":"Cell-wise difference","尚未配置":"Not configured","目录还是空的":"The registry is still empty","登记模型 / 工具 / Agent 后，这里按可用性列出；不可用的带原因。":"After registering models, tools or agents they are listed by availability; unavailable ones carry the reason.","规则包是数据文件，装载前会整包校验。":"A rule pack is a data file and is validated as a whole before loading.","没有已载规则包":"No rule packs loaded","还没有审核记录":"No review records yet","人工通过才置 accepted；驳回与返工必须写意见。":"Only human approval sets accepted; reject and rerun require an opinion.","提交中…":"Submitting…","读取文件中…":"Reading file…","质检执行中…":"Quality check running…","读取中…":"Loading…","缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME":"missing GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME","在服务进程的环境里设置变量后重启；服务端不会生成占位回复。":"Set them in the service environment and restart; the server never fabricates a reply.","未配置：":"Not configured: ","还没有运行记录":"No runs yet","还没有流程定义":"No workflow definitions yet","还没有登记成果":"No deliverables registered yet","还没有审计记录":"No audit records yet","还没有登记项目":"No projects registered yet","还没有登记数据集":"No datasets registered yet","没有符合条件的任务":"No tasks match the filter","没有符合条件的审计记录":"No audit records match the filter","钥":"KEY","成果簿需要令牌":"The deliverable book requires a token","审计流需要令牌":"The audit stream requires a token","令牌不被接受":"Token rejected","服务端原由：":"Server reason: ","读取":"Read","权限。在右上角填入令牌后再刷新。":"permission. Enter a token at the top right and refresh.","在右上角填入令牌后读取 ":"Enter a token at the top right, then read ","成果必须是真实文件；登记时读 sha256 和大小，审核通过后才能归档。":"A deliverable must be a real file; registration reads sha256 and size, and archiving only follows approval.","项目是任务的前置：先登记编号、类型、区域、CRS 与高程基准。":"A project precedes a task: register code, type, area, CRS and vertical datum first.","服务端没有声明权限键。":"The server declares no permission keys.","统计":"Profile","栅格统计":"Raster profile","读取统计":"Read profile","关闭":"Close","波段":"Band","没有匹配的数据集":"No matching datasets","清除筛选":"Clear filter","精度核验":"Accuracy","参考真值掩膜":"Reference truth mask","预测掩膜（可空）":"Predicted mask (optional)","留空则使用成果登记路径":"Blank uses the registered deliverable path","参考为合成真值（报告会保留标记）":"Synthetic reference (kept in the report)","精度阈值":"Accuracy thresholds","像元尺寸":"Cell size","单波段读取":"Single-band read","有效像元均值":"Mean of valid cells","NaN / Inf 已剔除，不参与值域":"NaN / Inf excluded from value statistics","读取真实像元中…":"Reading real pixels…","文件在登记后被改写，请重新登记":"Dataset file changed after registration; register again","统计不可用":"Profile unavailable","统计失败":"Profile failed","统计请求失败：网络或服务不可达":"Profile request failed: network or service unreachable","精度阈值必须先给参考真值掩膜":"Accuracy thresholds require a reference truth mask","报告已落盘：":"Report written to:","未计算：本次没有提供参考真值掩膜。":"Not computed: no reference truth mask was supplied.","未开放：精度对比的目标类型必须是成果（deliverable）。":"Not available: accuracy comparison requires a deliverable target.","精度计算失败":"Accuracy calculation failed","参考与预测掩膜无法对齐或无法读取":"reference and predicted masks could not be aligned or read","当前关键词没有命中。调整筛选，或":"No dataset matches the current filter. Adjust it, or","精度对比只对成果开放：当前目标是数据集，参考 / 预测 / 阈值均不提交；切到成果后可启用。":"Accuracy comparison is deliverable-only: the current target is a dataset, so reference / predicted / thresholds are not submitted. Switch to a deliverable to enable them.","精度对比只对成果开放：参考真值掩膜必填，预测掩膜留空时使用成果登记路径；不填参考则报告写「未计算」。":"Accuracy comparison is deliverable-only: reference truth is required; leave the predicted path blank to use the registered deliverable path. Without a reference the report says not computed.","「统计」按波段读真实像元，给出有效 / NODATA / 非有限值与值域；「复核」只重探测哈希与 CRS，不会改动文件。":"Profile reads real pixels by band and reports valid / NODATA / non-finite counts and range; Validate only re-probes the hash and CRS and never changes the file.","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 GeoTIFF 头；复核重探测，文件内容变化即 FAIL。":"Dataset registration reads the real file for sha256; CRS comes from the sidecar or GeoTIFF header; re-validation re-probes and FAILs if the content changed.","0–1，可空":"0–1, optional","非有限值":"non-finite","包围盒":"bounds","统计已读取":"Profile loaded","有效像元 ":"valid cells ","标记值 ":"NODATA value ","必须在 0–1 之间":" must be between 0 and 1","阈值 ":"Threshold ","NODATA 已剔除":"NODATA excluded","空间数据":"Spatial data","专业成果验证":"Professional verification","文件与结构":"File and structure","Ref：":"Ref:","Pred：":"Pred:"};
+  var SUBKEYS = ["未配置： 缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME\n\n在服务进程的环境里设置变量后重启；服务端不会生成占位回复。","可用性不是标签：builtin 适配器必须是本仓真实实现，external 必须指向存在的路径；不可用会带原因。Agent 引用未登记的模型或工具会被拒绝。","数据集登记时读真实文件算 sha256，CRS 取自 sidecar 或 classic GeoTIFF 头；复核重探测，文件内容变化即 FAIL。","模型、工具、Agent 分开登记。builtin 必须是真实实现，external 路径不存在即标不可用；Agent 引用未知依赖直接拒绝。","文件与结构、空间数据、专业成果验证三层。第三层没有人工抽样与书面依据，只能是 NOT_RECORDED，汇总结果只能是 PARTIAL。","执行会产生真实运行记录；规则门不过、路径缺失或模型未配置都会落成 FAIL / ERROR。任务编号留空时只独立运行，不写任务关联。","规则是数据不是代码：校验器缺失或异常判 ERROR，条件不满足判 SKIPPED，两者都不升格为 PASS。","从任务串回项目、数据集、运行、规则、成果、文件与审核；缺失的一环写 NOT_RECORDED，不拿推断补链。","规则先行、判定留痕、成果可核。只展示接口真实返回的内容：没有记录就写「未记录」，没有接口就写「未开放」。","规则包整包校验后装载：缺字段、severity 非法、id 重复、与已载冲突都会整包拒绝，不半装。","成果登记读真实文件：哈希、大小、路径当场记录；人工审核通过后才 accepted，之后才允许归档。","定义是登记过的数据：节点 id、类型、阈值都先校验；执行时按这份记录建节点，不另写一套隐藏流程。","「归档」只在 accepted 后开放。归档不会改动文件，只把成果状态与归档人、时间写入域对象。","任何一层没有证据，结果只能是 PARTIAL 或 FAIL；不用推断补链，不用占位冒充真实。","成果只有经人工通过才置为 accepted；驳回或返工必须写意见，已签认的成果拒绝二次审核。","需要 review:write。记录写入同时改成果状态；通过即最终验收，驳回或返工不签认。","这里展示服务端真实权限矩阵与调用方令牌授权，不在前端伪造角色。没有令牌就只能读公开接口。","缺少 GEOOPS_MODEL_BASE_URL / GEOOPS_MODEL_NAME","尚未调用。配置环境变量并重启服务后，这里显示真实模型回复；没有配置时不会生成占位内容。","权限键是写操作的边界。GET 公开接口不要求令牌；审计读取与所有写入口都要求对应权限。","域对象、运行日志、成果簿与质检报告的真实配置状态在这里展示；未配置就写「未配置」。","项目编号、名称、类型、区域、坐标参考、高程基准六项必填；编号唯一，缺一项即拒绝。","输入已登记任务 id，系统按项目→数据集→运行→规则→成果→文件→审核逐环取证。","。外部路径必须已存在且可读；不可用的资源仍会入册，但会写明原因，不会伪装可用。","；无 CRS 或文件不存在会被拒绝。BigTIFF 与像元解码明确不支持。","登记模型 / 工具 / Agent 后，这里按可用性列出；不可用的带原因。","成果必须是真实文件；登记时读 sha256 和大小，审核通过后才能归档。","写入口与审计读取需要令牌；令牌只存在本页 sessionStorage","选择数据集或成果后执行三层质检；结果、逐项证据与报告路径会出现在这里。","项目是任务、数据集、成果追溯的根。登记后不可用同编号重复建项。","七态状态机：非法迁移被拒且不落半条记录；完成与取消必须写理由。","项目是任务的前置：先登记编号、类型、区域、CRS 与高程基准。","。目标状态只列该任务当前允许迁移的项，非法边会被服务端拒绝。","。模型节点在未配置端点时会明确记 ERROR，不会假装通过。","并以 QualityReport 入域，不是只在前端算一遍。","。服务端在读 body 之前校验令牌；没有权限就写不进去。","一次运行里规则门在前、登记在后：判定不过，成果不会被登记。","鉴权发生在读取请求体之前；拒绝也留痕，令牌只记哈希前八位。","在服务进程的环境里设置变量后重启；服务端不会生成占位回复。","登记于 docs/ENGINEERING_TIER.md","builtin:... 或 external:绝对路径","Agent 依赖（模型 id 与工具 id，逗号分隔）","人工通过才置 accepted；驳回与返工必须写意见。","后才返回）；重复 run_id 拒绝，坏行整份拒载。","。路径必须存在且为普通文件；符号链接与目录一律拒绝。","权限的令牌。在右上角填入令牌后，这里会显示真实记录。","。缺字段或编号重复时服务端原文拒绝，不落半条记录。","· 源头信息保留，nodata 仍为 nodata","TSK-...；填写时任务必须为 RUNNING","尚未执行；这里只显示真实运行返回，不预填结果。","。密钥不进浏览器、不写入仓库。测试与运行需要","· 逐格差分 + 4 邻域斑块 + 最小面积","的 PERMISSIONS 与授权文件决定。","真实 AI 模型与外部 GIS 适配器待接","· 真文件、真 sha256、绑已登记成果","AI 资源 · 数据 · 流程 · 规则","按成果 id / 文件名 / 任务筛选","输入任务 id，例如 TSK-xxxx","DS-xxxx 或 DLV-xxxx","Agent 自动执行器仍只做目录登记","· CRS / 格距 / 两期一致性","规则包是数据文件，装载前会整包校验。","字重：细 / 常规 / 中 / 粗","按路径 / 原由 / 令牌前缀筛选","缺环写 NOT_RECORDED","真实遥感影像与专业抽样待用户提供","服务端只从环境变量读端点与密钥：","按 id / 名称 / 项目筛选","权限。在右上角填入令牌后再刷新。","人工签认才置 accepted","工具 · conversion","文件 / 空间 / 专业三层","模型 · algorithm","成果 Deliverable","已完成人工抽样 / 专业核验","，不会写入磁盘。权限由服务端","抽样位置、样本编号、核验结论","统一身份源未接，轮换靠人工","未发布：等级 ≠ 发布资格","模型 · ai-model","专业抽样依据（勾选后必填）","意见（驳回 / 返工必填）","规则门在前 · 登记在后","总览 · 项目 · 任务","质量 · 成果 · 审核","变化检测 2026-11","完成 / 取消必须写理由","在右上角填入令牌后读取 ","核心工程 · CORE","模型类型 / 工具类别","工具 · raster","工具 · vector","运行完成才写一行日志（","数据集 Dataset","1985 国家高程基准","绑定到任务后进入追溯链","例如 变化检测标准流程","没有符合条件的审计记录","服务端没有声明权限键。","缺口按验收表逐项清理","同名 sidecar","执行上下文 JSON","从下表点「迁移」带入","可选；会写入定义记录","任务 id（可选）","任务 id（可空）","变化检测成果 v1","无密钥（本地端点）","人工抽样必须写依据","先选择一份流程定义","没有符合条件的任务","III · 验收","跨进程文件锁未做","模型 Model","适配器 / 路径","工具 · gis","任务编号（可选）","。质检报告会写入","还没有生成追溯链","范围、来源、限制","提示词不能为空。","追溯链不完整：缺","网络或服务不可达","还没有登记数据集","II · 作业","IV · 证据","追溯 · 设置","真实模型运行时","工具 Tool","能力 / 类别","节点 JSON","深空 / 纸面","例如 一期影像","具体问题与依据","资源登记被拒：","成果登记被拒：","令牌不被接受：","没有这个任务：","真实端点已配置","成果接口未配置","没有已载规则包","还没有审核记录","还没有运行记录","还没有流程定义","还没有登记成果","还没有审计记录","还没有登记项目","成果簿需要令牌","审计流需要令牌","I · 治理","文件绝对路径","登记流程定义","执行三层质检","写入审核记录","审计接口需要","令牌只存本页","输入访问令牌","内部唯一编号","行政区或测区","资源显示名称","运行已记录：","恢复已记录：","恢复被拒：","已带入恢复：","恢复自 ","目录还是空的","读取文件中…","质检执行中…","令牌不被接受","服务端原由：","AI 资源","项目 id","任务 id","测试提示词","资源 id","登记数据集","读取并登记","可用节点：","按定义执行","已载规则包","对象 id","已登记成果","成果 id","生成追溯链","存储与策略","角色与权限","按状态筛选","已登记项目","绑定追溯链","姓名或工号","：三层判定","创建被拒：","迁移被拒：","登记被拒：","审核被拒：","归档被拒：","质检被拒：","执行被拒：","调用失败：","追溯链完整","测绘任务","已载规则","登记成果","运行原则","十二模块","工程身份","未清门槛","登记项目","项目编号","项目名称","项目类型","坐标参考","高程基准","新建任务","任务名称","任务类型","迁移状态","目标状态","先填任务","资源目录","测试连接","运行模型","登记资源","流程定义","流程编号","登记定义","执行流程","运行历史","登记链路","变化检测","掩膜写出","成果登记","发起质检","检查对象","本次判定","尚未执行","质检报告","成果名称","成果类型","审核记录","提交审核","审计记录","最近审计","尚未读取","缩小字号","放大字号","切换字重","切换明暗","项目全称","筛选任务","筛选成果","筛选审计","已归档：","未挂任务","执行中…","登记中…","已迁移到","逐格差分","尚未配置","提交中…","读取中…","未配置：","连接中","域对象","未发布","项目册","写操作","需令牌","读取中","数据集","规则门","操作人","文件簿","审核人","调用方","权限键","主导航","莱茵蓝","条 /","已创建","已生成","已登记","已更新 ","已加入模板：","已带入执行：","已记录","已连接","未提供","未记录","未配置","总览","项目","任务","数据","流程","规则","质量","成果","审核","追溯","设置","核心","登记","刷新","区域","需要","台账","全部","草稿","就绪","运行","完成","失败","创建","理由","迁移","资源","类型","名称","版本","接入","标签","需写","说明","检查","备注","签认","结论","通过","驳回","返工","反向","生成","系统","字号","配色","中…","只读","离线","异常","拒绝","部分","当前","全选","读取","统计已读取","有效像元 ","标记值 ","必须在 0–1 之间","阈值 ","精度阈值"];
   function readUi() { try { return JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { return {}; } }
   var LANG = (function () {
     var q = (location.search.match(/[?&]lang=(en|zh)/) || [])[1];
@@ -1893,6 +2203,7 @@
       .replace(/(\d+)\s*个/g, "$1").replace(/(\d+)\s*件/g, "$1")
       .replace(/(\d+)\s*份/g, "$1").replace(/(\d+)\s*项/g, "$1")
       .replace(/(\d+)\s*条/g, "$1").replace(/(\d+)\s*包/g, "$1")
+      .replace(/(\d+)\s*次/g, "$1")
       .replace(/(\d+)\s*条\s*\/\s*/g, "$1 items / ")
       .replace(/\s{2,}/g, " ");
     return lead + out + tail;

@@ -285,7 +285,13 @@ class WorkflowService:
                 ) from exc
         if self.journal is not None:
             try:
-                self.journal.record(run, task_id=task_id, project_id=project_id, actor=actor)
+                self.journal.record(
+                    run,
+                    task_id=task_id,
+                    project_id=project_id,
+                    actor=actor,
+                    workflow_id=workflow_id,
+                )
             except Exception as exc:
                 raise WorkflowError("run %s completed but the journal refused it: %s" % (run.run_id, exc)) from exc
         return {
@@ -337,7 +343,13 @@ class WorkflowService:
                 raise WorkflowError("run %s completed but could not attach to task %s: %s" % (run.run_id, task_id, exc)) from exc
         if self.journal is not None:
             try:
-                self.journal.record(run, task_id=task_id, project_id=project_id, actor=actor)
+                self.journal.record(
+                    run,
+                    task_id=task_id,
+                    project_id=project_id,
+                    actor=actor,
+                    workflow_id=workflow_id,
+                )
             except Exception as exc:
                 raise WorkflowError("run %s completed but the journal refused it: %s" % (run.run_id, exc)) from exc
         return {

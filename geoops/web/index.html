@@ -391,11 +391,11 @@
           <div id="workflowTable"></div>
           <div class="note">定义是登记过的数据：节点 id、类型、阈值都先校验；执行时按这份记录建节点，不另写一套隐藏流程。</div>
         </div>
-        <div class="card">
+        <div class="card" id="workflowFormCard">
           <h3><span class="h-zh">登记流程定义</span><span class="h-en">Register</span></h3>
           <form id="workflowForm" class="stack">
             <div class="wrow">
-              <label class="field"><span>流程编号</span><input name="workflow_id" placeholder="WF-CHANGE-001" autocomplete="off"></label>
+              <label class="field"><span>流程编号</span><input id="workflowIdInput" name="workflow_id" placeholder="WF-CHANGE-001" autocomplete="off"></label>
               <label class="field"><span>名称</span><input name="name" placeholder="例如 变化检测标准流程" autocomplete="off"></label>
             </div>
             <div class="wrow">
@@ -403,10 +403,19 @@
               <label class="field"><span>说明</span><input name="description" placeholder="可选；会写入定义记录" autocomplete="off"></label>
             </div>
             <label class="field"><span>节点 JSON</span><textarea name="nodes" rows="7" placeholder='[{"node_id":"R1","name":"规则门","type":"rule_check","task_type":"change_detection"},{"node_id":"C2","name":"逐格差分","type":"change_detection","threshold":1.0,"min_area_m2":150}]'></textarea></label>
+            <div class="wrow workflow-templates">
+              <span class="tpl-label">节点模板</span>
+              <button class="btn ghost sm" type="button" data-node-template="rule_check" data-node-label="规则门">规则门</button>
+              <button class="btn ghost sm" type="button" data-node-template="change_detection" data-node-label="变化检测">变化检测</button>
+              <button class="btn ghost sm" type="button" data-node-template="artifact_register" data-node-label="成果登记">成果登记</button>
+              <button class="btn ghost sm" type="button" data-node-template="model_chat" data-node-label="模型节点">模型节点</button>
+            </div>
             <div class="wrow">
-              <button class="btn" type="submit">登记定义</button>
+              <button class="btn" id="workflowSubmitBtn" type="submit">登记定义</button>
+              <button class="btn ghost" id="workflowCancelBtn" type="button" hidden>取消编辑</button>
               <span class="wmsg" id="workflowMsg"></span>
             </div>
+            <div class="note" id="workflowEditNote" hidden>正在编辑 <code id="workflowEditId"></code>。保存会生成新版本，编号不可改。</div>
             <div class="note">可用节点：<code>rule_check</code> / <code>change_detection</code> / <code>artifact_register</code> / <code>model_chat</code>。模型节点在未配置端点时会明确记 ERROR，不会假装通过。</div>
           </form>
         </div>
@@ -419,9 +428,13 @@
             <label class="field"><span>流程定义</span><select id="workflowSelect" name="workflow_id"><option value="">读取中</option></select></label>
             <label class="field"><span>任务编号（可选）</span><input name="task_id" placeholder="TSK-...；填写时任务必须为 RUNNING" autocomplete="off"></label>
           </div>
+          <div class="wrow">
+            <label class="field"><span>上次运行（可选）</span><select id="resumeRunSelect" name="resume_run_id"><option value="">新建运行</option></select></label>
+            <span class="note resume-hint" id="resumeHint">选择失败运行后，执行按钮切换为恢复；已完成节点会跳过。</span>
+          </div>
           <label class="field"><span>执行上下文 JSON</span><textarea name="context" rows="5" placeholder='{"baseline_path":"var/demo/baseline.asc","comparison_path":"var/demo/comparison.asc","change_output_path":"var/demo/change_mask.asc"}'></textarea></label>
           <div class="wrow">
-            <button class="btn" type="submit">执行流程</button>
+            <button class="btn" id="workflowExecuteBtn" type="submit">执行流程</button>
             <span class="wmsg" id="workflowRunMsg"></span>
           </div>
         </form>
@@ -432,7 +445,10 @@
       <div class="grid2">
         <div class="card">
           <h3><span class="h-zh">运行历史</span><span class="h-en">Run history</span><span class="right"><span class="pill idle" id="runsCount">—</span></span></h3>
-          <div class="toolbar"><button class="btn ghost" id="runReload">刷新</button></div>
+          <div class="toolbar">
+            <label class="search grow"><input id="runQuery" type="search" placeholder="按 run / 任务 / 流程 / 节点筛选" autocomplete="off"></label>
+            <button class="btn ghost" id="runReload">刷新</button>
+          </div>
           <div id="runTable"></div>
           <div class="note">运行完成才写一行日志（<code>fsync</code> 后才返回）；重复 run_id 拒绝，坏行整份拒载。</div>
         </div>
